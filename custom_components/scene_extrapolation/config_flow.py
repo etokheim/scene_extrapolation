@@ -120,6 +120,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class CannotReadScenesFile(HomeAssistantError):
     """Error to indicate we cannot read the file."""
 
+# TODO: We will probably also have to add an options update event listener
+# which runs when the config is updated. This event handler should probably
+# reload the components configuration...
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle the options flow for Scene Extrapolation (configure button on integration card)"""
 
