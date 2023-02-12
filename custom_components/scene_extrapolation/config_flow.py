@@ -18,9 +18,10 @@ _LOGGER = logging.getLogger(__name__)
 # TODO adjust the data schema to the data that you need
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required("host"): str,
-        vol.Required("username"): str,
-        vol.Required("password"): str,
+        vol.Required("scene_dusk"): str,
+        vol.Required("scene_day"): str,
+        vol.Required("scene_sundown"): str,
+        vol.Required("boolean_nightlights"): str,
     }
 )
 
@@ -53,10 +54,22 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     #     your_validate_func, data["username"], data["password"]
     # )
 
-    hub = PlaceholderHub(data["host"])
+    scenes = None
 
-    if not await hub.authenticate(data["username"], data["password"]):
-        raise InvalidAuth
+    try:
+        with open("./config/scenes.yaml", "r") as file: # Open file in "r" (read mode)
+            scenes = file.read()
+
+        _LOGGER.info("Successfully found and opened the scenes.yaml file")
+        _LOGGER.info(scenes)
+
+    except Exception as exception:
+        raise CannotReadScenesFile() from exception
+
+    # hub = PlaceholderHub(data["host"])
+
+    # if not await hub.authenticate(data["username"], data["password"]):
+    #    raise InvalidAuth
 
     # If you cannot connect:
     # throw CannotConnect
@@ -85,10 +98,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         try:
             info = await validate_input(self.hass, user_input)
-        except CannotConnect:
-            errors["base"] = "cannot_connect"
-        except InvalidAuth:
-            errors["base"] = "invalid_auth"
+        except CannotReadScenesFile:
+            errors["base"] = "cant_read_scenes_file"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
@@ -100,9 +111,5 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
 
-class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
-
-
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate there is invalid auth."""
+class CannotReadScenesFile(HomeAssistantError):
+    """Error to indicate we cannot read the file."""
