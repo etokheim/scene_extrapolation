@@ -8,6 +8,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
@@ -15,13 +16,10 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO adjust the data schema to the data that you need
+# User configuration data (when setting up the integration for the first time)
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required("scene_dusk"): str,
-        vol.Required("scene_day"): str,
-        vol.Required("scene_sundown"): str,
-        vol.Required("boolean_nightlights"): str,
+        vol.Required("device_name"): str,
     }
 )
 
@@ -42,7 +40,7 @@ class PlaceholderHub:
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect.
+    """Validate the user input.
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
@@ -77,7 +75,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     # InvalidAuth
 
     # Return info that you want to store in the config entry.
-    return {"title": "Name of the device"}
+    return {"title": data["device_name"]}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -110,6 +108,56 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Create the options flow."""
+        return OptionsFlowHandler(config_entry)
+
 
 class CannotReadScenesFile(HomeAssistantError):
     """Error to indicate we cannot read the file."""
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle the options flow for Scene Extrapolation (configure button on integration card)"""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        "show_things",
+                        default=self.config_entry.options.get("show_things"),
+                    ): bool,
+                    vol.Optional(
+                        "scene_dusk",
+                        default=self.config_entry.options.get("scene_dusk"),
+                    ): str,
+                    vol.Optional(
+                        "scene_day",
+                        default=self.config_entry.options.get("scene_day"),
+                    ): str,
+                    vol.Optional(
+                        "scene_sundown",
+                        default=self.config_entry.options.get("scene_sundown"),
+                    ): str,
+                    vol.Optional(
+                        "scene_nightlights",
+                        default=self.config_entry.options.get("scene_nightlights"),
+                    ): str,
+                }
+            ),
+        )
