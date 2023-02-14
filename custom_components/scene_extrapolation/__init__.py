@@ -18,10 +18,12 @@ DOMAIN = "scene_extrapolation"
 ATTR_NAME = "name"
 DEFAULT_NAME = "World"
 
-def setup(hass, config):
+PLATFORMS: list[Platform] = [Platform.SCENE]
+
+async def async_setup(hass, config):
     """Set up is called when Home Assistant is loading our component."""
 
-    def apply_lighting(call):
+    async def apply_lighting(call):
         """Handle the service call."""
 
         _LOGGER.info("Received a new service call!")
@@ -37,7 +39,10 @@ def setup(hass, config):
         # 3. Extrapolate the light color and brightness
         # 4. Apply the extrapolated values
 
-    hass.services.register(DOMAIN, "apply_lighting", apply_lighting)
+    # Doesn't work with async..?
+    # hass.services.register(DOMAIN, "apply_lighting", apply_lighting)
+
+    # hass.helpers.discovery.load_platform(DOMAIN, 'scene', {}, config)
 
     # Return boolean to indicate that initialization was successful.
     return True
@@ -58,19 +63,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     #     "set_sleep_timer",
     # )
 
-    # Cannot be setup inside the event loop - is there an async version of this? Or do we have
-    # to use the non-async setup method?
-    # hass.services.register(DOMAIN, "hello", handle_hello)
-
-    # await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    # if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-    #     hass.data[DOMAIN].pop(entry.entry_id)
+    #if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+    #    hass.data[DOMAIN].pop(entry.entry_id)
 
-    # return unload_ok
+    #return unload_ok
     return True
