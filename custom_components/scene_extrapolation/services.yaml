@@ -34,3 +34,11 @@ apply_lighting:
             - "low"
             - "medium"
             - "high"
+    scene:
+      name: Scene
+      description: The day scene
+      default: []
+      selector:
+        entity:
+          domain: scene
+          multiple: false

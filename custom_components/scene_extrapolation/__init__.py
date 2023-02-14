@@ -31,6 +31,12 @@ def setup(hass, config):
 
         #hass.states.set("hello_service.hello", name)
 
+        # TODO:
+        # 1. Parse the scenes.yaml file
+        # 2. Find the best way to get scenes selected in the config flow
+        # 3. Extrapolate the light color and brightness
+        # 4. Apply the extrapolated values
+
     hass.services.register(DOMAIN, "apply_lighting", apply_lighting)
 
     # Return boolean to indicate that initialization was successful.
