@@ -6,6 +6,48 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.components.scene import Scene
+from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+
+from homeassistant.components.light import (
+    ATTR_BRIGHTNESS,
+    ATTR_BRIGHTNESS_PCT,
+    ATTR_BRIGHTNESS_STEP,
+    ATTR_BRIGHTNESS_STEP_PCT,
+    ATTR_COLOR_NAME,
+    ATTR_COLOR_TEMP,
+    ATTR_COLOR_TEMP_KELVIN,
+    ATTR_HS_COLOR,
+    ATTR_KELVIN,
+    ATTR_RGB_COLOR,
+    ATTR_SUPPORTED_COLOR_MODES,
+    ATTR_TRANSITION,
+    ATTR_XY_COLOR,
+    COLOR_MODE_BRIGHTNESS,
+    COLOR_MODE_COLOR_TEMP,
+    COLOR_MODE_HS,
+    COLOR_MODE_RGB,
+    COLOR_MODE_RGBW,
+    COLOR_MODE_XY,
+)
+
+from homeassistant.const import (
+    ATTR_AREA_ID,
+    ATTR_DOMAIN,
+    ATTR_ENTITY_ID,
+    ATTR_SERVICE,
+    ATTR_SERVICE_DATA,
+    ATTR_SUPPORTED_FEATURES,
+    CONF_NAME,
+    EVENT_CALL_SERVICE,
+    EVENT_HOMEASSISTANT_STARTED,
+    EVENT_STATE_CHANGED,
+    SERVICE_TURN_OFF,
+    SERVICE_TURN_ON,
+    STATE_OFF,
+    STATE_ON,
+    SUN_EVENT_SUNRISE,
+    SUN_EVENT_SUNSET,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,23 +88,36 @@ class ExtrapolationScene(Scene):
         """Activate the scene."""
         _LOGGER.info("Received call to activate extrapolation scene!")
 
-        # POC TODO:
-        # 1. Manipulate an existing light
         hass = self._hass
 
         light = hass.states.get("light.left_desk_lamp")
+
         _LOGGER.info(light)
-        _LOGGER.info(type(light))
-        _LOGGER.info(light.state)
-        _LOGGER.info(type(light.state))
-        _LOGGER.info(light.attributes)
-        _LOGGER.info(type(light.attributes))
+        _LOGGER.info(light.entity_id)
+
+        data = {
+            ATTR_ENTITY_ID: light.entity_id,
+            ATTR_RGB_COLOR: (255, 0, 0),
+            ATTR_BRIGHTNESS: 255
+        }
+
+        _LOGGER.info(
+            "%s: SERVICE_TURN_ON: 'service_data': %s",
+            self._name,
+            data
+        )
+
+        await self.hass.services.async_call(
+            LIGHT_DOMAIN,
+            SERVICE_TURN_ON,
+            data
+        )
 
         # Copy attributes to a new dict, without a reference to the old one
-        new_attributes = dict(light.attributes)
-        new_attributes["color_temp_kelvin"] = 6000
+        #new_attributes = dict(light.attributes)
+        #new_attributes["color_temp_kelvin"] = 6000
 
-        hass.states.async_set("light.left_desk_lamp", light.state, new_attributes)
+        #hass.states.async_set("light.left_desk_lamp", light.state, new_attributes)
         # hass.states.async_set("light.left_desk_lamp", light_state, attributes, force_update, context)
 
         # TODO:
