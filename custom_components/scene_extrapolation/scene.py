@@ -15,8 +15,10 @@ async def async_setup_entry(
 ) -> bool:
     """Configure the platform."""
 
+    # Create our new scene entity
+    # TODO: Let the user override the name (with a default value)
     async_add_entities([
-        ExtrapolationScene("Extrapolation Scene")
+        ExtrapolationScene("Extrapolation Scene", hass)
     ])
 
     return True
@@ -24,10 +26,11 @@ async def async_setup_entry(
 class ExtrapolationScene(Scene):
     """Representation the ExtrapolationScene."""
 
-    def __init__(self, name):
+    def __init__(self, name, hass):
         """Initialize an ExtrapolationScene."""
         self._scene_id = int(1675829059099)
         self._name = name
+        self._hass = hass
 
     @property
     def name(self):
@@ -42,6 +45,25 @@ class ExtrapolationScene(Scene):
     async def async_activate(self):
         """Activate the scene."""
         _LOGGER.info("Received call to activate extrapolation scene!")
+
+        # POC TODO:
+        # 1. Manipulate an existing light
+        hass = self._hass
+
+        light = hass.states.get("light.left_desk_lamp")
+        _LOGGER.info(light)
+        _LOGGER.info(type(light))
+        _LOGGER.info(light.state)
+        _LOGGER.info(type(light.state))
+        _LOGGER.info(light.attributes)
+        _LOGGER.info(type(light.attributes))
+
+        # Copy attributes to a new dict, without a reference to the old one
+        new_attributes = dict(light.attributes)
+        new_attributes["color_temp_kelvin"] = 6000
+
+        hass.states.async_set("light.left_desk_lamp", light.state, new_attributes)
+        # hass.states.async_set("light.left_desk_lamp", light_state, attributes, force_update, context)
 
         # TODO:
         # 1. Parse the scenes.yaml file
