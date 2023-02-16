@@ -110,7 +110,46 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.OptionsFlow:
         """Create the options flow."""
 
-        # Parse the scenes file and send it to the options flow
+
+
+        return OptionsFlowHandler(config_entry)
+
+
+class CannotReadScenesFile(HomeAssistantError):
+    """Error to indicate we cannot read the file."""
+
+# TODO: We will probably also have to add an options update event listener
+# which runs when the config is updated. This event handler should probably
+# reload the components configuration...
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle the options flow for Scene Extrapolation (configure button on integration card)"""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        # TODO: There must be a better way to get the scene's light configuration than
+        # reading and parsing the yaml file manually, like we are doing now.
+
+        # Something like:
+        # scenes = self.hass.states.async_entity_ids("scene")
+
+        # Get the first scene
+        # scene = self.hass.states.get(scenes[0])
+
+        # Get that scene's first light's rgb_color (not it's current state, but the
+        # one defined in the scene)
+        # scene.attributes["entity_id"][0]["rgb_color"])
+
+
+        # Read and parse the scenes.yaml file
         scenes = None
 
         try:
@@ -125,33 +164,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except Exception as exception:
             raise CannotReadScenesFile() from exception
 
-        return OptionsFlowHandler(config_entry, scenes)
-
-
-class CannotReadScenesFile(HomeAssistantError):
-    """Error to indicate we cannot read the file."""
-
-# TODO: We will probably also have to add an options update event listener
-# which runs when the config is updated. This event handler should probably
-# reload the components configuration...
-class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle the options flow for Scene Extrapolation (configure button on integration card)"""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry, scenes) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
-        self.scenes = scenes
-
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Manage the options."""
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-
         scene_names = []
 
-        for scene in self.scenes:
+        for scene in scenes:
             scene_names.append(scene["name"])
 
         schema = vol.Schema(
