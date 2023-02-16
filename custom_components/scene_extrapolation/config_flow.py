@@ -1,3 +1,6 @@
+# TODO: Change all "scene_day" strings to global variables imported from consts.
+# That way we can change the name and variable easily with the rename symbol function.
+
 """Config flow for Scene Extrapolation integration."""
 from __future__ import annotations
 
@@ -5,12 +8,15 @@ import logging
 from typing import Any
 
 import voluptuous as vol
+import homeassistant.helpers.config_validation as config_validation
+import yaml
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import selector
 
 from .const import DOMAIN
 
@@ -52,17 +58,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     #     your_validate_func, data["username"], data["password"]
     # )
 
-    scenes = None
-
-    try:
-        with open("./config/scenes.yaml", "r") as file: # Open file in "r" (read mode)
-            scenes = file.read()
-
-        _LOGGER.info("Successfully found and opened the scenes.yaml file")
-        _LOGGER.info(scenes)
-
-    except Exception as exception:
-        raise CannotReadScenesFile() from exception
 
     # hub = PlaceholderHub(data["host"])
 
@@ -114,7 +109,23 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
         """Create the options flow."""
-        return OptionsFlowHandler(config_entry)
+
+        # Parse the scenes file and send it to the options flow
+        scenes = None
+
+        try:
+            with open("./config/scenes.yaml", "r") as file: # Open file in "r" (read mode)
+                data = file.read()
+
+                scenes = yaml.load(data, Loader=yaml.loader.SafeLoader)
+
+            _LOGGER.info("Successfully found and opened the scenes.yaml file")
+            _LOGGER.info(scenes)
+
+        except Exception as exception:
+            raise CannotReadScenesFile() from exception
+
+        return OptionsFlowHandler(config_entry, scenes)
 
 
 class CannotReadScenesFile(HomeAssistantError):
@@ -126,9 +137,10 @@ class CannotReadScenesFile(HomeAssistantError):
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle the options flow for Scene Extrapolation (configure button on integration card)"""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+    def __init__(self, config_entry: config_entries.ConfigEntry, scenes) -> None:
         """Initialize options flow."""
         self.config_entry = config_entry
+        self.scenes = scenes
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -137,30 +149,51 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        scene_names = []
+
+        for scene in self.scenes:
+            scene_names.append(scene["name"])
+
+        schema = vol.Schema(
+            {
+                # vol.Required(
+                #     "scene_day",
+                #     default=list(self.scenes),
+                # ): config_validation.multi_select(scene_names),
+                vol.Required(
+                    "scene_day",
+                    default=self.config_entry.options.get("scene_day")
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=scene_names,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Required(
+                    "scene_sundown",
+                    default=self.config_entry.options.get("scene_sundown")
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=scene_names,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                # vol.Required(
+                #     "show_things",
+                #     default=self.config_entry.options.get("show_things"),
+                # ): bool,
+                # vol.Optional(
+                #     "scene_dusk",
+                #     default=self.config_entry.options.get("scene_dusk"),
+                # ): str,
+            }
+        )
+
+        _LOGGER.info(schema)
+
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        "show_things",
-                        default=self.config_entry.options.get("show_things"),
-                    ): bool,
-                    vol.Optional(
-                        "scene_dusk",
-                        default=self.config_entry.options.get("scene_dusk"),
-                    ): str,
-                    vol.Optional(
-                        "scene_day",
-                        default=self.config_entry.options.get("scene_day"),
-                    ): str,
-                    vol.Optional(
-                        "scene_sundown",
-                        default=self.config_entry.options.get("scene_sundown"),
-                    ): str,
-                    vol.Optional(
-                        "scene_nightlights",
-                        default=self.config_entry.options.get("scene_nightlights"),
-                    ): str,
-                }
-            ),
+            data_schema=schema,
         )
