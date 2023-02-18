@@ -79,7 +79,8 @@ class ExtrapolationScene(Scene):
         self.hass = hass
         self.config_entry = config_entry
         # TODO: Figure out how to set the area of the scene
-        self._area = config_entry.options.get("area") or config_entry.data.get("area") or None
+        # TODO: Get the ID of the area, not the name (hard coded ID for now)
+        self._area = "office" or config_entry.options.get("area") or config_entry.data.get("area") or None
 
     @property
     def name(self):
@@ -93,7 +94,6 @@ class ExtrapolationScene(Scene):
 
     async def async_activate(self):
         """Activate the scene."""
-        _LOGGER.info("Received call to activate extrapolation scene!")
 
         # Read and parse the scenes.yaml file
         scenes = None
@@ -104,27 +104,15 @@ class ExtrapolationScene(Scene):
 
                 scenes = yaml.load(data, Loader=yaml.loader.SafeLoader)
 
-            _LOGGER.info("Successfully found and opened the scenes.yaml file")
-            _LOGGER.info(scenes)
-
         except Exception as exception:
             raise CannotReadScenesFile() from exception
 
-        # TODO: Get the configured data from the options flow
+        # TODO: Get all of the configured data from the options flow
         scene_day_name = self.config_entry.options.get("scene_day")
         scene_sundown_name = self.config_entry.options.get("scene_sundown")
 
         scene_day = get_scene_by_name(scenes, scene_day_name)
-        _LOGGER.info("scene_day_name")
-        _LOGGER.info(scene_day_name)
-        _LOGGER.info(scene_day)
-
         scene_sundown = get_scene_by_name(scenes, scene_sundown_name)
-        _LOGGER.info("scene_sundown_name")
-        _LOGGER.info(scene_sundown_name)
-        _LOGGER.info(scene_sundown)
-
-
 
         # TODO: Get the time of the previous and next solar event
         # TODO: Calculate the current scene change progress based on how far we've come between
@@ -133,10 +121,9 @@ class ExtrapolationScene(Scene):
 
         # Calculate current light states
         new_entity_states = extrapolate_entity_states(scene_day, scene_sundown, scene_transition_progress_percent)
-        _LOGGER.info("new_entity_states")
-        _LOGGER.info(new_entity_states)
 
         for new_entity_state in new_entity_states:
+            # TODO: Change to .debug
             _LOGGER.info(
                 "%s: SERVICE_TURN_ON: 'service_data': %s",
                 self.name,
@@ -149,34 +136,20 @@ class ExtrapolationScene(Scene):
                 new_entity_state
             )
 
-        # Copy attributes to a new dict, without a reference to the old one
-        #new_attributes = dict(light.attributes)
-        #new_attributes["color_temp_kelvin"] = 6000
-
-        #hass.states.async_set("light.left_desk_lamp", light.state, new_attributes)
-        # hass.states.async_set("light.left_desk_lamp", light_state, attributes, force_update, context)
-
-        # TODO:
-        # 1. Parse the scenes.yaml file
-        # 2. Find the best way to get scenes selected in the config flow
-        # 3. Extrapolate the light color and brightness
-        # 4. Apply the extrapolated values
-
 class CannotReadScenesFile(HomeAssistantError):
     """Error to indicate we cannot read the file."""
 
 def get_scene_by_name(scenes, name):
-    _LOGGER.info("Looking for " + name)
+    """Searches through the supplied array after the supplied name. Then returns that."""
     for scene in scenes:
         if scene["name"] == name:
-            _LOGGER.info("Found " + name)
             return scene
-
-        _LOGGER.info(scene["name"] + " !== " + name)
 
     return False
 
-def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_percent):
+def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_percent) -> list:
+    """Takes in a from and to scene and returns an a list of new entity states.
+    The new states is the extrapolated state between the two scenes."""
     # TODO: Handle switch lights, not just rbg
 
     entities_with_extrapolated_state = []
@@ -192,6 +165,7 @@ def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_pe
                 _LOGGER.info("Found " + from_entity_name + " in both the from and to scenes")
                 break
             else:
+                # TODO: turn into .debug at some point
                 _LOGGER.warning("Couldn't find " + from_entity_name + " in the scene we are extrapolating to. Assuming it should be turned off.")
                 to_entity_name = False
 

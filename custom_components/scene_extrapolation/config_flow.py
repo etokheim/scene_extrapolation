@@ -77,12 +77,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle the initial step."""
 
-        area_registry_instance = await area_registry.async_get_registry(self.hass)
-        areas = area_registry_instance.async_list_areas()
-
-        area_names = []
-        for area in areas:
-            area_names.append(area.name)
+        areas, area_names = await get_areas_and_area_names(self.hass)
 
         # User configuration data (when setting up the integration for the first time)
         data_schema = vol.Schema(
@@ -175,9 +170,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
                 scenes = yaml.load(data, Loader=yaml.loader.SafeLoader)
 
-            _LOGGER.info("Successfully found and opened the scenes.yaml file")
-            _LOGGER.info(scenes)
-
         except Exception as exception:
             raise CannotReadScenesFile() from exception
 
@@ -186,29 +178,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         for scene in scenes:
             scene_names.append(scene["name"])
 
-        area_registry_instance = await area_registry.async_get_registry(self.hass)
-
-        areas = area_registry_instance.async_list_areas()
-
-        _LOGGER.info(areas)
-        area_names = []
-
-        for area in areas:
-            _LOGGER.info(area)
-            area_names.append(area.name)
-
-        scenes = self.hass.states.async_entity_ids("scene")
-        _LOGGER.info(scenes)
-
-        scene = self.hass.states.get("scene.day")
-        _LOGGER.info("scene")
-        _LOGGER.info(scene)
-        _LOGGER.info("scene.attributes")
-        _LOGGER.info(scene.attributes)
-        _LOGGER.info(scene.attributes.get("group_name"))
-
-        _LOGGER.info("scene_inspect")
-        _LOGGER.info(inspect.getmembers(scene))
+        areas, area_names = await get_areas_and_area_names(self.hass)
 
         schema = vol.Schema(
             {
@@ -258,9 +228,19 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
 
-        _LOGGER.info(schema)
-
         return self.async_show_form(
             step_id="init",
             data_schema=schema,
         )
+
+
+async def get_areas_and_area_names(hass) -> list:
+    # TODO: Apparently this is deprecated. Should use async_get instead
+    area_registry_instance = await area_registry.async_get_registry(hass)
+    areas = area_registry_instance.async_list_areas()
+
+    area_names = []
+    for area in areas:
+        area_names.append(area.name)
+
+    return [areas, area_names]
