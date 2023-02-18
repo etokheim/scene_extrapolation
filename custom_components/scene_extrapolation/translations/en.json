@@ -12,6 +12,7 @@
         "data": {
           "device_name": "Device name",
           "scene_name": "Scene name",
+          "area": "Area",
           "scene_dusk": "Dusk scene ID",
           "scene_day": "Day scene ID",
           "scene_sundown": "Sundown scene ID",

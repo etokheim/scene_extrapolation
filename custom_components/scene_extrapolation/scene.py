@@ -78,8 +78,8 @@ class ExtrapolationScene(Scene):
         self._name = name
         self.hass = hass
         self.config_entry = config_entry
-        self._area = "office"
-        # self._area = config_entry.options.get("area")
+        # TODO: Figure out how to set the area of the scene
+        self._area = config_entry.options.get("area") or config_entry.data.get("area") or None
 
     @property
     def name(self):
