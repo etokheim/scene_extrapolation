@@ -56,14 +56,16 @@ _LOGGER = logging.getLogger(__name__)
 
 # pylint: disable=unused-argument
 async def async_setup_entry(
-        hass: HomeAssistant, entry: ConfigEntry, async_add_entities: bool
+        hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: bool
 ) -> bool:
     """Configure the platform."""
 
     # Create our new scene entity
     # TODO: Let the user override the name (with a default value)
+    scene_name = config_entry.data.get("scene_name")
+
     async_add_entities([
-        ExtrapolationScene("Extrapolation Scene", hass, entry)
+        ExtrapolationScene(scene_name, hass, config_entry)
     ])
 
     return True

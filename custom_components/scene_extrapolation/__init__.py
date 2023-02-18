@@ -23,31 +23,10 @@ PLATFORMS: list[Platform] = [Platform.SCENE]
 async def async_setup(hass, config):
     """Set up is called when Home Assistant is loading our component."""
 
-    async def apply_lighting(call):
-        """Handle the service call."""
-
-        _LOGGER.info("Received a new service call!")
-        _LOGGER.info(call)
-
-        #name = call.data.get(ATTR_NAME, DEFAULT_NAME)
-
-        #hass.states.set("hello_service.hello", name)
-
-        # TODO:
-        # 1. Parse the scenes.yaml file
-        # 2. Find the best way to get scenes selected in the config flow
-        # 3. Extrapolate the light color and brightness
-        # 4. Apply the extrapolated values
-
-    # Doesn't work with async..?
-    # hass.services.register(DOMAIN, "apply_lighting", apply_lighting)
-
-    # hass.helpers.discovery.load_platform(DOMAIN, 'scene', {}, config)
-
     # Return boolean to indicate that initialization was successful.
     return True
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up Scene Extrapolation from a config entry."""
 
     # hass.data.setdefault(DOMAIN, {})
@@ -63,7 +42,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     #     "set_sleep_timer",
     # )
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
     return True
 

@@ -11,6 +11,7 @@
       "user": {
         "data": {
           "device_name": "Device name",
+          "scene_name": "Scene name",
           "scene_dusk": "Dusk scene ID",
           "scene_day": "Day scene ID",
           "scene_sundown": "Sundown scene ID",
