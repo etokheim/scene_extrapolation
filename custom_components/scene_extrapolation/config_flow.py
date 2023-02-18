@@ -10,6 +10,7 @@ from typing import Any
 import voluptuous as vol
 import homeassistant.helpers.config_validation as config_validation
 import yaml
+import inspect
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
@@ -17,6 +18,7 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
+from homeassistant.helpers import area_registry
 
 from .const import DOMAIN
 
@@ -26,6 +28,7 @@ _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required("device_name"): str,
+        vol.Optional("scene_name", "Extrapolation Scene"): str,
     }
 )
 
@@ -110,8 +113,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.OptionsFlow:
         """Create the options flow."""
 
-
-
         return OptionsFlowHandler(config_entry)
 
 
@@ -169,12 +170,50 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         for scene in scenes:
             scene_names.append(scene["name"])
 
+        area_registry_instance = await area_registry.async_get_registry(self.hass)
+
+        areas = area_registry_instance.async_list_areas()
+
+        _LOGGER.info(areas)
+        area_names = []
+
+        for area in areas:
+            _LOGGER.info(area)
+            area_names.append(area.name)
+
+        scenes = self.hass.states.async_entity_ids("scene")
+        _LOGGER.info(scenes)
+
+        scene = self.hass.states.get("scene.day")
+        _LOGGER.info("scene")
+        _LOGGER.info(scene)
+        _LOGGER.info("scene.attributes")
+        _LOGGER.info(scene.attributes)
+        _LOGGER.info(scene.attributes.get("group_name"))
+
+        _LOGGER.info("scene_inspect")
+        _LOGGER.info(inspect.getmembers(scene))
+
         schema = vol.Schema(
             {
                 # vol.Required(
                 #     "scene_day",
                 #     default=list(self.scenes),
                 # ): config_validation.multi_select(scene_names),
+                vol.Required(
+                    "area",
+                    default=self.config_entry.options.get("area")
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=area_names,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Optional(
+                    "scene_dusk",
+                    default=self.config_entry.options.get("scene_dusk"),
+                ): str,
                 vol.Required(
                     "scene_day",
                     default=self.config_entry.options.get("scene_day")
