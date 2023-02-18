@@ -32,7 +32,7 @@
         "description": "Creates a scene in your selected area which, when activated, lights your room in the appropriate way, based on the sun elevation. The scene is best matched with an automation that triggers the scene every minute or so.",
         "data": {
           "area": "Area",
-          "device_name": "Device name",
+          "scene_name": "Scene name",
           "scene_dusk": "Dusk scene ID",
           "scene_day": "Day scene ID",
           "scene_sundown": "Sundown scene ID",

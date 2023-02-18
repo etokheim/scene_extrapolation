@@ -61,8 +61,7 @@ async def async_setup_entry(
     """Configure the platform."""
 
     # Create our new scene entity
-    # TODO: Let the user override the name (with a default value)
-    scene_name = config_entry.data.get("scene_name")
+    scene_name = config_entry.options.get("scene_name") or config_entry.data.get("scene_name") or "Extrapolation Scene"
 
     async_add_entities([
         ExtrapolationScene(scene_name, hass, config_entry)

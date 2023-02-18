@@ -28,7 +28,7 @@ _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required("device_name"): str,
-        vol.Optional("scene_name", "Extrapolation Scene"): str,
+        vol.Optional("scene_name", default="Extrapolation Scene"): str,
     }
 )
 
@@ -200,6 +200,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 #     "scene_day",
                 #     default=list(self.scenes),
                 # ): config_validation.multi_select(scene_names),
+                vol.Optional("scene_name", default=self.config_entry.options.get("scene_name") or self.config_entry.data.get("scene_name")): str,
                 vol.Required(
                     "area",
                     default=self.config_entry.options.get("area")
@@ -210,10 +211,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     ),
                 ),
-                vol.Optional(
-                    "scene_dusk",
-                    default=self.config_entry.options.get("scene_dusk"),
-                ): str,
                 vol.Required(
                     "scene_day",
                     default=self.config_entry.options.get("scene_day")
