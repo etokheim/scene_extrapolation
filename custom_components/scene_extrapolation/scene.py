@@ -12,6 +12,8 @@ from homeassistant.components.scene import Scene
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.exceptions import HomeAssistantError
 
+from .config_flow import get_scenes
+
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_BRIGHTNESS_PCT,
@@ -111,16 +113,7 @@ class ExtrapolationScene(Scene):
         """Activate the scene."""
 
         # Read and parse the scenes.yaml file
-        scenes = None
-
-        try:
-            with open("./config/scenes.yaml", "r") as file: # Open file in "r" (read mode)
-                data = file.read()
-
-                scenes = yaml.load(data, Loader=yaml.loader.SafeLoader)
-
-        except Exception as exception:
-            raise CannotReadScenesFile() from exception
+        scenes = await get_scenes()
 
         # TODO: Get the times for the next solar events
         sun_events = [
@@ -231,6 +224,7 @@ def get_scene_by_name(scenes, name):
 
     return False
 
+# TODO: Check entity type and only extrapolate the supported ones
 def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_percent) -> list:
     """Takes in a from and to scene and returns an a list of new entity states.
     The new states is the extrapolated state between the two scenes."""

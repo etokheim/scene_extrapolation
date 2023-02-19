@@ -172,44 +172,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         # scene.attributes["entity_id"][0]["rgb_color"])
 
 
-        # Read and parse the scenes.yaml file
-        scenes = None
-
-        try:
-            scenes_locations = ["./config/", "./"]
-            verified_scenes_location = None
-
-            for scenes_location in scenes_locations:
-                if not os.path.exists(scenes_location):
-                    continue
-
-                location_content = os.listdir(scenes_location)
-
-                if "scenes.yaml" in location_content:
-                    _LOGGER.info("scenes.yaml was found in %s", scenes_location)
-                    verified_scenes_location = scenes_location
-                    break
-
-            if not verified_scenes_location:
-                raise CannotFindScenesFile()
-
-            with open(verified_scenes_location + "scenes.yaml", "r") as file: # Open file in "r" (read mode)
-                data = file.read()
-
-                scenes = yaml.load(data, Loader=yaml.loader.SafeLoader)
-
-        except CannotFindScenesFile:
-            _LOGGER.warning("Cannot find the scenes.yaml file. We assume that the user has no scenes.")
-            scenes = []
-
-        except Exception as exception:
-            pwd = os.getcwd()
-            _LOGGER.warn("Couldn't find the scenes.yaml file in: %s, which has the following content:", pwd)
-
-            location_content = os.listdir()
-            _LOGGER.warn(location_content)
-            raise CannotReadScenesFile() from exception
-
+        scenes = await get_scenes()
         scene_names = []
 
         for scene in scenes:
@@ -321,3 +284,42 @@ async def get_areas_and_area_names(hass) -> list:
         area_names.append(area.name)
 
     return [areas, area_names]
+
+async def get_scenes() -> list:
+    """Returns the scenes.yaml content"""
+    try:
+        scenes_locations = ["./config/", "./"]
+        verified_scenes_location = None
+
+        for scenes_location in scenes_locations:
+            if not os.path.exists(scenes_location):
+                continue
+
+            location_content = os.listdir(scenes_location)
+
+            if "scenes.yaml" in location_content:
+                _LOGGER.info("scenes.yaml was found in %s", scenes_location)
+                verified_scenes_location = scenes_location
+                break
+
+        if not verified_scenes_location:
+            raise CannotFindScenesFile()
+
+        with open(verified_scenes_location + "scenes.yaml", "r") as file: # Open file in "r" (read mode)
+            data = file.read()
+
+            scenes = yaml.load(data, Loader=yaml.loader.SafeLoader)
+
+    except CannotFindScenesFile:
+        _LOGGER.warning("Cannot find the scenes.yaml file. We assume that the user has no scenes.")
+        scenes = []
+
+    except Exception as exception:
+        pwd = os.getcwd()
+        _LOGGER.warn("Couldn't find the scenes.yaml file in: %s, which has the following content:", pwd)
+
+        location_content = os.listdir()
+        _LOGGER.warn(location_content)
+        raise CannotReadScenesFile() from exception
+
+    return scenes
