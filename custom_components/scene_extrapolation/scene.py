@@ -163,16 +163,31 @@ class ExtrapolationScene(Scene):
 
         # Apply the new light states
         for new_entity_state in new_entity_states:
+            _LOGGER.warning("new_entity_state")
+            _LOGGER.warning(new_entity_state)
+            service_type = SERVICE_TURN_ON
+            if "state" in new_entity_state:
+                _LOGGER.warning(new_entity_state["state"])
+                if new_entity_state["state"] == "off":
+                    service_type = SERVICE_TURN_OFF
+                    _LOGGER.warning(service_type)
+                else:
+                    service_type = SERVICE_TURN_ON
+
+                # TODO: Find a better way
+                new_entity_state.pop("state")
+
             # TODO: Change to .debug
             _LOGGER.info(
-                "%s: SERVICE_TURN_ON: 'service_data': %s",
+                "%s: %s: 'service_data': %s",
                 self.name,
+                service_type,
                 new_entity_state
             )
 
             await self.hass.services.async_call(
                 LIGHT_DOMAIN,
-                SERVICE_TURN_ON,
+                service_type,
                 new_entity_state
             )
 
@@ -228,14 +243,17 @@ def get_scene_by_name(scenes, name):
 def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_percent) -> list:
     """Takes in a from and to scene and returns an a list of new entity states.
     The new states is the extrapolated state between the two scenes."""
-    # TODO: Handle switch lights, not just rbg
 
     entities_with_extrapolated_state = []
 
     for from_entity_name in from_scene["entities"]:
         from_entity = from_scene["entities"][from_entity_name]
-        rgb_from = from_entity["rgb_color"]
-        brightness_from = from_entity["brightness"]
+        to_entity_name = None
+        final_entity = {
+            ATTR_ENTITY_ID: from_entity_name,
+        }
+        _LOGGER.info("from_entity")
+        _LOGGER.info(from_entity)
 
         # Match the current entity to the same entity in the to_scene
         for to_entity_name in to_scene["entities"]:
@@ -247,35 +265,57 @@ def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_pe
                 _LOGGER.warning("Couldn't find " + from_entity_name + " in the scene we are extrapolating to. Assuming it should be turned off.")
                 to_entity_name = False
 
-        # If the current entity doesn't exist in the to_scene, then we assume it's new state
-        # should be off
-        if not to_entity_name:
-            rgb_to = [0, 0, 0]
-            brightness_to = 0
-        else:
+        if to_entity_name is not False:
             to_entity = to_scene["entities"][to_entity_name]
-            rgb_to = to_entity["rgb_color"]
-            brightness_to = to_entity["brightness"]
 
-        # Calculate what the current color should be
-        # The if statement checks whether the result tried to divide by zero, which throws an
-        # error, if so, we know that the from and to values are the same, and we can fall back
-        # to the from value
-        rgb_extrapolated = [
-            int(rgb_from[0] - abs(rgb_from[0] - rgb_to[0]) * scene_transition_progress_percent / 100),
-            int(rgb_from[1] - abs(rgb_from[1] - rgb_to[1]) * scene_transition_progress_percent / 100),
-            int(rgb_from[2] - abs(rgb_from[2] - rgb_to[2]) * scene_transition_progress_percent / 100)
-        ]
+        # Handle entities with brightness support
+        if "brightness" in from_entity:
+            brightness_from = from_entity["brightness"]
 
-        _LOGGER.info("From rgb: " + ", ".join(str(x) for x in rgb_from) + ", " + str(brightness_from) + ". To rgb: " + ", ".join(str(x) for x in rgb_to) + ", " + str(brightness_to))
+            if not to_entity_name:
+                brightness_to = 0
+            else:
+                brightness_to = to_entity["brightness"]
 
-        # Calculate what the current brightness should be
-        brightness_extrapolated = int(100 / abs(brightness_from - brightness_to) * scene_transition_progress_percent) if abs(brightness_from - brightness_to) else brightness_from
+            # Calculate what the current brightness should be
+            brightness_extrapolated = int(100 / abs(brightness_from - brightness_to) * scene_transition_progress_percent) if abs(brightness_from - brightness_to) else brightness_from
 
-        entities_with_extrapolated_state.append({
-            ATTR_ENTITY_ID: from_entity_name,
-            ATTR_RGB_COLOR: rgb_extrapolated,
-            ATTR_BRIGHTNESS: brightness_extrapolated
-        })
+            final_entity[ATTR_BRIGHTNESS] = brightness_extrapolated
+        else:
+            if scene_transition_progress_percent >= 50 and from_entity["state"] == "on" and to_entity["state"] == "off":
+                final_entity["state"] = "off"
+            elif scene_transition_progress_percent >= 50 and from_entity["state"] == "off" and to_entity["state"] == "on":
+                final_entity["state"] = "on"
+            elif scene_transition_progress_percent >= 50:
+                final_entity["state"] = to_entity["state"]
+            elif scene_transition_progress_percent < 50:
+                final_entity["state"] = from_entity["state"]
+
+        # Handle entities with RGB support
+        if "rgb_color" in from_entity:
+            rgb_from = from_entity["rgb_color"]
+
+            # If the current entity doesn't exist in the to_scene, then we assume it's new state
+            # should be off
+            if not to_entity_name:
+                rgb_to = [0, 0, 0]
+            else:
+                rgb_to = to_entity["rgb_color"]
+
+            # Calculate what the current color should be
+            # The if statement checks whether the result tried to divide by zero, which throws an
+            # error, if so, we know that the from and to values are the same, and we can fall back
+            # to the from value
+            rgb_extrapolated = [
+                int(rgb_from[0] - abs(rgb_from[0] - rgb_to[0]) * scene_transition_progress_percent / 100),
+                int(rgb_from[1] - abs(rgb_from[1] - rgb_to[1]) * scene_transition_progress_percent / 100),
+                int(rgb_from[2] - abs(rgb_from[2] - rgb_to[2]) * scene_transition_progress_percent / 100)
+            ]
+
+            _LOGGER.info("From rgb: " + ", ".join(str(x) for x in rgb_from) + ", " + str(brightness_from) + ". To rgb: " + ", ".join(str(x) for x in rgb_to) + ", " + str(brightness_to))
+
+            final_entity[ATTR_RGB_COLOR] = rgb_extrapolated
+
+        entities_with_extrapolated_state.append(final_entity)
 
     return entities_with_extrapolated_state
