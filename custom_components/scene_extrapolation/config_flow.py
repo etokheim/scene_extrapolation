@@ -23,12 +23,12 @@ from homeassistant.helpers import area_registry
 from .const import (
     DOMAIN,
     SCENE_NAME,
-    SCENE_NIGHT_RISING,
-    SCENE_DAWN,
-    SCENE_DAY_RISING,
-    SCENE_DAY_SETTING,
-    SCENE_DUSK,
-    SCENE_NIGHT_SETTING,
+    SCENE_NIGHT_RISING_NAME,
+    SCENE_DAWN_NAME,
+    SCENE_DAY_RISING_NAME,
+    SCENE_DAY_SETTING_NAME,
+    SCENE_DUSK_NAME,
+    SCENE_NIGHT_SETTING_NAME,
     AREA
 )
 
@@ -208,8 +208,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ),
                 vol.Required(
-                    SCENE_NIGHT_RISING,
-                    default=self.config_entry.options.get(SCENE_NIGHT_RISING)
+                    SCENE_NIGHT_RISING_NAME,
+                    default=self.config_entry.options.get(SCENE_NIGHT_RISING_NAME)
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=scene_names,
@@ -218,8 +218,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ),
                 vol.Required(
-                    SCENE_DAWN,
-                    default=self.config_entry.options.get(SCENE_DAWN)
+                    SCENE_DAWN_NAME,
+                    default=self.config_entry.options.get(SCENE_DAWN_NAME)
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=scene_names,
@@ -228,8 +228,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ),
                 vol.Required(
-                    SCENE_DAY_RISING,
-                    default=self.config_entry.options.get(SCENE_DAY_RISING)
+                    SCENE_DAY_RISING_NAME,
+                    default=self.config_entry.options.get(SCENE_DAY_RISING_NAME)
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=scene_names,
@@ -238,8 +238,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ),
                 vol.Required(
-                    SCENE_DAY_SETTING,
-                    default=self.config_entry.options.get(SCENE_DAY_SETTING)
+                    SCENE_DAY_SETTING_NAME,
+                    default=self.config_entry.options.get(SCENE_DAY_SETTING_NAME)
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=scene_names,
@@ -248,8 +248,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ),
                 vol.Required(
-                    SCENE_DUSK,
-                    default=self.config_entry.options.get(SCENE_DUSK)
+                    SCENE_DUSK_NAME,
+                    default=self.config_entry.options.get(SCENE_DUSK_NAME)
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=scene_names,
@@ -258,8 +258,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ),
                 vol.Required(
-                    SCENE_NIGHT_SETTING,
-                    default=self.config_entry.options.get(SCENE_NIGHT_SETTING)
+                    SCENE_NIGHT_SETTING_NAME,
+                    default=self.config_entry.options.get(SCENE_NIGHT_SETTING_NAME)
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=scene_names,

@@ -56,12 +56,12 @@ from homeassistant.const import (
 from .const import (
     DOMAIN,
     SCENE_NAME,
-    SCENE_NIGHT_RISING,
-    SCENE_DAWN,
-    SCENE_DAY_RISING,
-    SCENE_DAY_SETTING,
-    SCENE_DUSK,
-    SCENE_NIGHT_SETTING,
+    SCENE_NIGHT_RISING_NAME,
+    SCENE_DAWN_NAME,
+    SCENE_DAY_RISING_NAME,
+    SCENE_DAY_SETTING_NAME,
+    SCENE_DUSK_NAME,
+    SCENE_NIGHT_SETTING_NAME,
     AREA
 )
 
@@ -125,33 +125,33 @@ class ExtrapolationScene(Scene):
         # TODO: Get the times for the next solar events
         sun_events = [
             SunEvent(
-                name = SCENE_NIGHT_RISING,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_NIGHT_RISING)),
+                name = SCENE_NIGHT_RISING_NAME,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_NIGHT_RISING_NAME)),
                 time = 10800 # 03:00
             ),
             SunEvent(
-                name = SCENE_DAWN,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAWN)),
+                name = SCENE_DAWN_NAME,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAWN_NAME)),
                 time = 25200 # 07:00
             ),
             SunEvent(
-                name = SCENE_DAY_RISING,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAY_RISING)),
+                name = SCENE_DAY_RISING_NAME,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAY_RISING_NAME)),
                 time = 27000 # 07:30
             ),
             SunEvent(
-                name = SCENE_DAY_SETTING,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAY_SETTING)),
+                name = SCENE_DAY_SETTING_NAME,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAY_SETTING_NAME)),
                 time = 48600 # 13:30
             ),
             SunEvent(
-                name = SCENE_DUSK,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DUSK)),
+                name = SCENE_DUSK_NAME,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DUSK_NAME)),
                 time = 65700 # 18:15
             ),
             SunEvent(
-                name = SCENE_NIGHT_SETTING,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_NIGHT_SETTING)),
+                name = SCENE_NIGHT_SETTING_NAME,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_NIGHT_SETTING_NAME)),
                 time = 68400 # 19:00
             ),
         ]
