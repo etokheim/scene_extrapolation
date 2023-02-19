@@ -138,6 +138,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class CannotReadScenesFile(HomeAssistantError):
     """Error to indicate we cannot read the file."""
 
+class CannotFindScenesFile(HomeAssistantError):
+    """Error to indicate we cannot find the file."""
+
 # TODO: We will probably also have to add an options update event listener
 # which runs when the config is updated. This event handler should probably
 # reload the components configuration...
@@ -173,17 +176,38 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         scenes = None
 
         try:
-            with open("./config/scenes.yaml", "r") as file: # Open file in "r" (read mode)
+            scenes_locations = ["./config/", "./"]
+            verified_scenes_location = None
+
+            for scenes_location in scenes_locations:
+                if not os.path.exists(scenes_location):
+                    continue
+
+                location_content = os.listdir(scenes_location)
+
+                if "scenes.yaml" in location_content:
+                    _LOGGER.info("scenes.yaml was found in %s", scenes_location)
+                    verified_scenes_location = scenes_location
+                    break
+
+            if not verified_scenes_location:
+                raise CannotFindScenesFile()
+
+            with open(verified_scenes_location + "scenes.yaml", "r") as file: # Open file in "r" (read mode)
                 data = file.read()
 
                 scenes = yaml.load(data, Loader=yaml.loader.SafeLoader)
+
+        except CannotFindScenesFile:
+            _LOGGER.warning("Cannot find the scenes.yaml file. We assume that the user has no scenes.")
+            scenes = []
 
         except Exception as exception:
             pwd = os.getcwd()
             _LOGGER.warn("Couldn't find the scenes.yaml file in: %s, which has the following content:", pwd)
 
-            ls = os.listdir()
-            _LOGGER.warn(ls)
+            location_content = os.listdir()
+            _LOGGER.warn(location_content)
             raise CannotReadScenesFile() from exception
 
         scene_names = []
