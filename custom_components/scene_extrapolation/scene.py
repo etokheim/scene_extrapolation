@@ -53,6 +53,18 @@ from homeassistant.const import (
     SUN_EVENT_SUNSET,
 )
 
+from .const import (
+    DOMAIN,
+    SCENE_NAME,
+    SCENE_NIGHT_RISING,
+    SCENE_DAWN,
+    SCENE_DAY_RISING,
+    SCENE_DAY_SETTING,
+    SCENE_DUSK,
+    SCENE_NIGHT_SETTING,
+    AREA
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 # pylint: disable=unused-argument
@@ -81,6 +93,8 @@ class ExtrapolationScene(Scene):
         self.config_entry = config_entry
         # TODO: Figure out how to set the area of the scene
         # TODO: Get the ID of the area, not the name (hard coded ID for now)
+        # Should probably store the ID in the config, instead of the name
+        # then find the name when editing the config flow in the UI
         self._area = "office" or config_entry.options.get("area") or config_entry.data.get("area") or None
 
     @property
@@ -108,42 +122,36 @@ class ExtrapolationScene(Scene):
         except Exception as exception:
             raise CannotReadScenesFile() from exception
 
-        # TODO: Get all of the configured data from the options flow
-
-        # TODO: Get the time of the previous and next solar event
-        # TODO: Calculate the current scene change progress based on how far we've come between
-        # the previous event and the next one
-
-        # TODO: Define x times of day, then extrapolate between them, with the supplied scenes
+        # TODO: Get the times for the next solar events
         sun_events = [
             SunEvent(
-                name = "night_rising",
-                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_day")),
+                name = SCENE_NIGHT_RISING,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_NIGHT_RISING)),
                 time = 10800 # 03:00
             ),
             SunEvent(
-                name = "dawn",
-                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_sundown")),
+                name = SCENE_DAWN,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAWN)),
                 time = 25200 # 07:00
             ),
             SunEvent(
-                name = "day_rising",
-                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_day")),
+                name = SCENE_DAY_RISING,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAY_RISING)),
                 time = 27000 # 07:30
             ),
             SunEvent(
-                name = "day_setting",
-                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_sundown")),
+                name = SCENE_DAY_SETTING,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAY_SETTING)),
                 time = 48600 # 13:30
             ),
             SunEvent(
-                name = "dusk",
-                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_day")),
+                name = SCENE_DUSK,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DUSK)),
                 time = 65700 # 18:15
             ),
             SunEvent(
-                name = "night_setting",
-                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_sundown")),
+                name = SCENE_NIGHT_SETTING,
+                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_NIGHT_SETTING)),
                 time = 68400 # 19:00
             ),
         ]

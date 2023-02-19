@@ -20,7 +20,17 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
 from homeassistant.helpers import area_registry
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    SCENE_NAME,
+    SCENE_NIGHT_RISING,
+    SCENE_DAWN,
+    SCENE_DAY_RISING,
+    SCENE_DAY_SETTING,
+    SCENE_DUSK,
+    SCENE_NIGHT_SETTING,
+    AREA
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -186,10 +196,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 #     "scene_day",
                 #     default=list(self.scenes),
                 # ): config_validation.multi_select(scene_names),
-                vol.Optional("scene_name", default=self.config_entry.options.get("scene_name") or self.config_entry.data.get("scene_name")): str,
+                vol.Optional(SCENE_NAME, default=self.config_entry.options.get(SCENE_NAME) or self.config_entry.data.get(SCENE_NAME)): str,
                 vol.Optional(
-                    "area",
-                    default=self.config_entry.options.get("area") or self.config_entry.data.get("area")
+                    AREA,
+                    default=self.config_entry.options.get(AREA) or self.config_entry.data.get(AREA)
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=area_names,
@@ -198,8 +208,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ),
                 vol.Required(
-                    "scene_day",
-                    default=self.config_entry.options.get("scene_day")
+                    SCENE_NIGHT_RISING,
+                    default=self.config_entry.options.get(SCENE_NIGHT_RISING)
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=scene_names,
@@ -208,8 +218,48 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                 ),
                 vol.Required(
-                    "scene_sundown",
-                    default=self.config_entry.options.get("scene_sundown")
+                    SCENE_DAWN,
+                    default=self.config_entry.options.get(SCENE_DAWN)
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=scene_names,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Required(
+                    SCENE_DAY_RISING,
+                    default=self.config_entry.options.get(SCENE_DAY_RISING)
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=scene_names,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Required(
+                    SCENE_DAY_SETTING,
+                    default=self.config_entry.options.get(SCENE_DAY_SETTING)
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=scene_names,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Required(
+                    SCENE_DUSK,
+                    default=self.config_entry.options.get(SCENE_DUSK)
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=scene_names,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Required(
+                    SCENE_NIGHT_SETTING,
+                    default=self.config_entry.options.get(SCENE_NIGHT_SETTING)
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=scene_names,

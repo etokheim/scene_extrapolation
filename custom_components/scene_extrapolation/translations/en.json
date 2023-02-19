@@ -12,12 +12,7 @@
         "data": {
           "device_name": "Device name",
           "scene_name": "Scene name",
-          "area": "Area",
-          "scene_dusk": "Dusk scene ID",
-          "scene_day": "Day scene ID",
-          "scene_sundown": "Sundown scene ID",
-          "scene_nightlights": "Nightlights scene ID",
-          "show_things": "Show things"
+          "area": "Area"
         }
       }
     }
@@ -34,10 +29,13 @@
         "data": {
           "area": "Area",
           "scene_name": "Scene name",
-          "scene_dusk": "Dusk scene ID",
-          "scene_day": "Day scene ID",
-          "scene_sundown": "Sundown scene ID",
-          "scene_nightlights": "Nightlights scene ID",
+          "scene_night_rising": "Night rising scene",
+          "scene_dawn": "Dawn scene",
+          "scene_day_rising": "Day rising scene",
+          "scene_day_setting": "Day setting scene",
+          "scene_dusk": "Dusk scene",
+          "scene_night_setting": "Night setting scene",
+          "scene_nightlights": "Nightlights scene",
           "show_things": "Show things"
         }
       }
