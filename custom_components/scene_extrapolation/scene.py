@@ -3,6 +3,7 @@ Create a scene entity which when activated calculates the appropriate lighting b
 """
 import logging
 import inspect
+from datetime import datetime
 import yaml
 
 from homeassistant.config_entries import ConfigEntry
@@ -108,20 +109,58 @@ class ExtrapolationScene(Scene):
             raise CannotReadScenesFile() from exception
 
         # TODO: Get all of the configured data from the options flow
-        scene_day_name = self.config_entry.options.get("scene_day")
-        scene_sundown_name = self.config_entry.options.get("scene_sundown")
-
-        scene_day = get_scene_by_name(scenes, scene_day_name)
-        scene_sundown = get_scene_by_name(scenes, scene_sundown_name)
 
         # TODO: Get the time of the previous and next solar event
         # TODO: Calculate the current scene change progress based on how far we've come between
         # the previous event and the next one
-        scene_transition_progress_percent = 50
+
+        # TODO: Define x times of day, then extrapolate between them, with the supplied scenes
+        sun_events = [
+            SunEvent(
+                name = "night_rising",
+                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_day")),
+                time = 10800 # 03:00
+            ),
+            SunEvent(
+                name = "dawn",
+                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_sundown")),
+                time = 25200 # 07:00
+            ),
+            SunEvent(
+                name = "day_rising",
+                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_day")),
+                time = 27000 # 07:30
+            ),
+            SunEvent(
+                name = "day_setting",
+                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_sundown")),
+                time = 48600 # 13:30
+            ),
+            SunEvent(
+                name = "dusk",
+                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_day")),
+                time = 65700 # 18:15
+            ),
+            SunEvent(
+                name = "night_setting",
+                scene = get_scene_by_name(scenes, self.config_entry.options.get("scene_sundown")),
+                time = 68400 # 19:00
+            ),
+        ]
+
+        current_sun_event = get_sun_event(offset = 0, sun_events = sun_events)
+        next_sun_event = get_sun_event(offset = 1, sun_events = sun_events)
+
+        scene_transition_progress_percent = 100 / next_sun_event.time * seconds_since_midnight()
 
         # Calculate current light states
-        new_entity_states = extrapolate_entity_states(scene_day, scene_sundown, scene_transition_progress_percent)
+        new_entity_states = extrapolate_entity_states(
+            current_sun_event.scene,
+            next_sun_event.scene,
+            scene_transition_progress_percent
+        )
 
+        # Apply the new light states
         for new_entity_state in new_entity_states:
             # TODO: Change to .debug
             _LOGGER.info(
@@ -135,6 +174,43 @@ class ExtrapolationScene(Scene):
                 SERVICE_TURN_ON,
                 new_entity_state
             )
+
+class SunEvent():
+    """Creates a sun event"""
+    def __init__(self, name, time, scene):
+        self.name = name
+        self.time = time
+        self.scene = scene
+
+def get_sun_event(sun_events, offset = 0) -> SunEvent:
+    """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead"""
+    current_time = seconds_since_midnight()
+
+    # Find the event closest in time to now, but still in the future
+    closest_match = None
+    for sun_event in sun_events:
+        if sun_event.time > current_time:
+            if closest_match is None:
+                closest_match = sun_event
+            elif sun_event.time < closest_match.time:
+                closest_match = sun_event
+
+    # If we couldn't find a match for today, then we return the (next) day's first event
+    if closest_match is None:
+        # Find the days first event
+        days_first_event = None
+        for sun_event in sun_events:
+            if days_first_event is None:
+                days_first_event = sun_event
+            elif sun_event.time < days_first_event.time:
+                days_first_event = sun_event
+
+    return closest_match or days_first_event
+
+def seconds_since_midnight() -> int:
+    """Returns the number of seconds since midnight"""
+    now = datetime.now()
+    return (now - now.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
 
 class CannotReadScenesFile(HomeAssistantError):
     """Error to indicate we cannot read the file."""
@@ -162,7 +238,7 @@ def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_pe
         # Match the current entity to the same entity in the to_scene
         for to_entity_name in to_scene["entities"]:
             if from_entity_name == to_entity_name:
-                _LOGGER.info("Found " + from_entity_name + " in both the from and to scenes")
+                # _LOGGER.info("Found " + from_entity_name + " in both the from and to scenes")
                 break
             else:
                 # TODO: turn into .debug at some point
@@ -180,8 +256,9 @@ def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_pe
             brightness_to = to_entity["brightness"]
 
         # Calculate what the current color should be
-        # The if statement checks whether the result tried to divide by zero, which throws an error,
-        # if so, we know that the from and to values are the same, and we can fall back to the from value
+        # The if statement checks whether the result tried to divide by zero, which throws an
+        # error, if so, we know that the from and to values are the same, and we can fall back
+        # to the from value
         rgb_extrapolated = [
             int(rgb_from[0] - abs(rgb_from[0] - rgb_to[0]) * scene_transition_progress_percent / 100),
             int(rgb_from[1] - abs(rgb_from[1] - rgb_to[1]) * scene_transition_progress_percent / 100),
