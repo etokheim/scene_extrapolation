@@ -1,10 +1,8 @@
-# TODO: Change all "scene_day" strings to global variables imported from consts.
-# That way we can change the name and variable easily with the rename symbol function.
-
 """Config flow for Scene Extrapolation integration."""
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import voluptuous as vol
@@ -181,6 +179,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 scenes = yaml.load(data, Loader=yaml.loader.SafeLoader)
 
         except Exception as exception:
+            pwd = os.getcwd()
+            _LOGGER.warn("Couldn't find the scenes.yaml file in: %s, which has the following content:", pwd)
+
+            ls = os.listdir()
+            _LOGGER.warn(ls)
             raise CannotReadScenesFile() from exception
 
         scene_names = []
