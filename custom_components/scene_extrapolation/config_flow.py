@@ -53,6 +53,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
     # TODO validate the data can be used to set up a connection.
+    # TODO: Try to transform names to IDs in this function
 
     # If your PyPI package is not built with async, pass your methods
     # to the executor:
@@ -298,7 +299,7 @@ async def get_scenes() -> list:
             location_content = os.listdir(scenes_location)
 
             if "scenes.yaml" in location_content:
-                _LOGGER.info("scenes.yaml was found in %s", scenes_location)
+                # _LOGGER.info("scenes.yaml was found in %s", scenes_location)
                 verified_scenes_location = scenes_location
                 break
 

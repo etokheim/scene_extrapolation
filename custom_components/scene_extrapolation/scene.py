@@ -152,34 +152,7 @@ class ExtrapolationScene(Scene):
         current_sun_event = get_sun_event(offset = 0, sun_events = sun_events)
         next_sun_event = get_sun_event(offset = 1, sun_events = sun_events)
 
-        _LOGGER.info("Current sun event: %s", current_sun_event.name)
-        _LOGGER.info("Next sun event: %s", next_sun_event.name)
-
-        # Account for passing midnight
-        seconds_between_current_and_next_sun_events = None
-        seconds_till_next_sun_event = None
-
-        # If midnight is between the current and next sun events, do some special handling
-        if current_sun_event.time > next_sun_event.time:
-            # 86400 = 24 hours
-            # Takes the time left of the day + the time to the first sun_event the next day to
-            # calculate how many seconds it is between them.
-            seconds_between_current_and_next_sun_events = 86400 - current_sun_event.time + next_sun_event.time
-        else:
-            seconds_between_current_and_next_sun_events = current_sun_event.time - next_sun_event.time
-
-        if seconds_since_midnight() > next_sun_event.time:
-            seconds_till_next_sun_event = 86400 - seconds_since_midnight() + next_sun_event.time
-        else:
-            seconds_till_next_sun_event = next_sun_event.time - seconds_since_midnight()
-
-        _LOGGER.info("Seconds between: %s", seconds_between_current_and_next_sun_events)
-        _LOGGER.info("current_sun_event.time: %s, next.time: %s", current_sun_event.time, next_sun_event.time)
-        scene_transition_progress_percent = 100 / seconds_between_current_and_next_sun_events * seconds_till_next_sun_event
-
-        _LOGGER.info("Current sun event: %s", current_sun_event)
-        _LOGGER.info("Next sun event: %s", next_sun_event)
-        _LOGGER.info("Transition between scenes percent: %s", scene_transition_progress_percent)
+        scene_transition_progress_percent = get_scene_transition_progress_percent(current_sun_event, next_sun_event)
 
         # Calculate current light states
         new_entity_states = extrapolate_entity_states(
@@ -190,27 +163,22 @@ class ExtrapolationScene(Scene):
 
         # Apply the new light states
         for new_entity_state in new_entity_states:
-            _LOGGER.warning("new_entity_state")
-            _LOGGER.warning(new_entity_state)
             service_type = SERVICE_TURN_ON
             if "state" in new_entity_state:
-                _LOGGER.warning(new_entity_state["state"])
                 if new_entity_state["state"] == "off":
                     service_type = SERVICE_TURN_OFF
-                    _LOGGER.warning(service_type)
                 else:
                     service_type = SERVICE_TURN_ON
 
                 # TODO: Find a better way
                 new_entity_state.pop("state")
 
-            # TODO: Change to .debug
-            _LOGGER.info(
-                "%s: %s: 'service_data': %s",
-                self.name,
-                service_type,
-                new_entity_state
-            )
+            # _LOGGER.info(
+            #     "%s: %s: 'service_data': %s",
+            #     self.name,
+            #     service_type,
+            #     new_entity_state
+            # )
 
             await self.hass.services.async_call(
                 LIGHT_DOMAIN,
@@ -255,6 +223,7 @@ def get_sun_event(sun_events, offset = 0) -> SunEvent:
 def seconds_since_midnight() -> int:
     """Returns the number of seconds since midnight"""
     now = datetime.now()
+    return 70000
     return (now - now.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
 
 class CannotReadScenesFile(HomeAssistantError):
@@ -267,6 +236,27 @@ def get_scene_by_name(scenes, name):
             return scene
 
     return False
+
+def get_scene_transition_progress_percent(current_sun_event, next_sun_event) -> int:
+    # Account for passing midnight
+    seconds_between_current_and_next_sun_events = None
+    seconds_till_next_sun_event = None
+
+    # If midnight is between the current and next sun events, do some special handling
+    if current_sun_event.time > next_sun_event.time:
+        # 86400 = 24 hours
+        # Takes the time left of the day + the time to the first sun_event the next day to
+        # calculate how many seconds it is between them.
+        seconds_between_current_and_next_sun_events = 86400 - current_sun_event.time + next_sun_event.time
+    else:
+        seconds_between_current_and_next_sun_events = next_sun_event.time - current_sun_event.time
+
+    if seconds_since_midnight() > next_sun_event.time:
+        seconds_till_next_sun_event = 86400 - seconds_since_midnight() + next_sun_event.time
+    else:
+        seconds_till_next_sun_event = next_sun_event.time - seconds_since_midnight()
+
+    return 100 / seconds_between_current_and_next_sun_events * (seconds_between_current_and_next_sun_events - seconds_till_next_sun_event)
 
 # TODO: Check entity type and only extrapolate the supported ones
 def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_percent) -> list:
@@ -281,8 +271,6 @@ def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_pe
         final_entity = {
             ATTR_ENTITY_ID: from_entity_name,
         }
-        _LOGGER.info("from_entity")
-        _LOGGER.info(from_entity)
 
         # Match the current entity to the same entity in the to_scene
         for to_entity_name in to_scene["entities"]:
@@ -291,7 +279,7 @@ def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_pe
                 break
             else:
                 # TODO: turn into .debug at some point
-                _LOGGER.warning("Couldn't find " + from_entity_name + " in the scene we are extrapolating to. Assuming it should be turned off.")
+                _LOGGER.debug("Couldn't find " + from_entity_name + " in the scene we are extrapolating to. Assuming it should be turned off.")
                 to_entity_name = False
 
         if to_entity_name is not False:
@@ -340,8 +328,6 @@ def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_pe
                 int(rgb_from[1] - abs(rgb_from[1] - rgb_to[1]) * scene_transition_progress_percent / 100),
                 int(rgb_from[2] - abs(rgb_from[2] - rgb_to[2]) * scene_transition_progress_percent / 100)
             ]
-
-            _LOGGER.info("From rgb: " + ", ".join(str(x) for x in rgb_from) + ", " + str(brightness_from) + ". To rgb: " + ", ".join(str(x) for x in rgb_to) + ", " + str(brightness_to))
 
             final_entity[ATTR_RGB_COLOR] = rgb_extrapolated
 
