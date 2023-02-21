@@ -152,7 +152,34 @@ class ExtrapolationScene(Scene):
         current_sun_event = get_sun_event(offset = 0, sun_events = sun_events)
         next_sun_event = get_sun_event(offset = 1, sun_events = sun_events)
 
-        scene_transition_progress_percent = 100 / next_sun_event.time * seconds_since_midnight()
+        _LOGGER.info("Current sun event: %s", current_sun_event.name)
+        _LOGGER.info("Next sun event: %s", next_sun_event.name)
+
+        # Account for passing midnight
+        seconds_between_current_and_next_sun_events = None
+        seconds_till_next_sun_event = None
+
+        # If midnight is between the current and next sun events, do some special handling
+        if current_sun_event.time > next_sun_event.time:
+            # 86400 = 24 hours
+            # Takes the time left of the day + the time to the first sun_event the next day to
+            # calculate how many seconds it is between them.
+            seconds_between_current_and_next_sun_events = 86400 - current_sun_event.time + next_sun_event.time
+        else:
+            seconds_between_current_and_next_sun_events = current_sun_event.time - next_sun_event.time
+
+        if seconds_since_midnight() > next_sun_event.time:
+            seconds_till_next_sun_event = 86400 - seconds_since_midnight() + next_sun_event.time
+        else:
+            seconds_till_next_sun_event = next_sun_event.time - seconds_since_midnight()
+
+        _LOGGER.info("Seconds between: %s", seconds_between_current_and_next_sun_events)
+        _LOGGER.info("current_sun_event.time: %s, next.time: %s", current_sun_event.time, next_sun_event.time)
+        scene_transition_progress_percent = 100 / seconds_between_current_and_next_sun_events * seconds_till_next_sun_event
+
+        _LOGGER.info("Current sun event: %s", current_sun_event)
+        _LOGGER.info("Next sun event: %s", next_sun_event)
+        _LOGGER.info("Transition between scenes percent: %s", scene_transition_progress_percent)
 
         # Calculate current light states
         new_entity_states = extrapolate_entity_states(
@@ -202,7 +229,7 @@ def get_sun_event(sun_events, offset = 0) -> SunEvent:
     """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead"""
     current_time = seconds_since_midnight()
 
-    # Find the event closest in time to now, but still in the future
+    # Find the event closest, but still in the future
     closest_match = None
     for sun_event in sun_events:
         if sun_event.time > current_time:
@@ -210,6 +237,9 @@ def get_sun_event(sun_events, offset = 0) -> SunEvent:
                 closest_match = sun_event
             elif sun_event.time < closest_match.time:
                 closest_match = sun_event
+
+    _LOGGER.error("Couldn't find a sun event for today... Current time is %s", current_time)
+    _LOGGER.error(sun_events)
 
     # If we couldn't find a match for today, then we return the (next) day's first event
     if closest_match is None:
