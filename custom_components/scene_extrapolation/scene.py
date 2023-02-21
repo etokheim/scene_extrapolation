@@ -115,6 +115,8 @@ class ExtrapolationScene(Scene):
         # Read and parse the scenes.yaml file
         scenes = await get_scenes()
 
+        # TODO: If the nightlights boolean is on, turn on the nightlights instead
+
         # TODO: Get the times for the next solar events
         sun_events = [
             SunEvent(

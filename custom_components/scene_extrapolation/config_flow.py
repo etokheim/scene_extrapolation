@@ -27,7 +27,9 @@ from .const import (
     SCENE_DAY_SETTING_NAME,
     SCENE_DUSK_NAME,
     SCENE_NIGHT_SETTING_NAME,
-    AREA
+    AREA,
+    NIGHTLIGHTS_BOOLEAN,
+    NIGHTLIGHTS_SCENE
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -181,6 +183,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
         areas, area_names = await get_areas_and_area_names(self.hass)
 
+        boolean_names = self.hass.states.async_entity_ids("input_boolean")
+        # All scenes, not just those in scenes.yaml
+        all_scenes = self.hass.states.async_entity_ids("scene")
+
+        # TODO: Filter the displayed scenes based on the area input, so it's easier to find
+        # the correct scene
         schema = vol.Schema(
             {
                 # vol.Required(
@@ -254,6 +262,26 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=scene_names,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Optional(
+                    NIGHTLIGHTS_BOOLEAN,
+                    default=self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN)
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=boolean_names,
+                        multiple=False,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Optional(
+                    NIGHTLIGHTS_SCENE,
+                    default=self.config_entry.options.get(NIGHTLIGHTS_SCENE)
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=all_scenes,
                         multiple=False,
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     ),

@@ -36,7 +36,8 @@
           "scene_dusk": "Dusk scene",
           "scene_night_setting": "Night setting scene",
           "scene_nightlights": "Nightlights scene",
-          "show_things": "Show things"
+          "nightlights_boolean": "Turn on nightlights scene instead when this in on",
+          "nightlights_scene": "Nightlights scene"
         }
       }
     }
