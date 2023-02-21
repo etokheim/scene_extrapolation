@@ -230,28 +230,27 @@ def get_sun_event(sun_events, offset = 0) -> SunEvent:
     current_time = seconds_since_midnight()
 
     # Find the event closest, but still in the future
-    closest_match = None
-    for sun_event in sun_events:
-        if sun_event.time > current_time:
-            if closest_match is None:
-                closest_match = sun_event
-            elif sun_event.time < closest_match.time:
-                closest_match = sun_event
-
-    _LOGGER.error("Couldn't find a sun event for today... Current time is %s", current_time)
-    _LOGGER.error(sun_events)
+    closest_match_index = None
+    for index, sun_event in enumerate(sun_events):
+        if sun_event.time <= current_time:
+            if closest_match_index is None:
+                closest_match_index = index
+            elif sun_event.time > sun_events[closest_match_index].time:
+                closest_match_index = index
 
     # If we couldn't find a match for today, then we return the (next) day's first event
-    if closest_match is None:
+    if closest_match_index is None:
         # Find the days first event
-        days_first_event = None
-        for sun_event in sun_events:
-            if days_first_event is None:
-                days_first_event = sun_event
-            elif sun_event.time < days_first_event.time:
-                days_first_event = sun_event
+        for index, sun_event in enumerate(sun_events):
+            if closest_match_index is None:
+                closest_match_index = index
+            elif sun_event.time < sun_events[closest_match_index].time:
+                closest_match_index = index
 
-    return closest_match or days_first_event
+    offset_index = closest_match_index + offset
+
+    # The % strips away any overshooting of the list length
+    return sun_events[offset_index % len(sun_events)]
 
 def seconds_since_midnight() -> int:
     """Returns the number of seconds since midnight"""
