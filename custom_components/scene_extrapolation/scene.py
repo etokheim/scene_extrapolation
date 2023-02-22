@@ -225,7 +225,6 @@ def get_sun_event(sun_events, offset = 0) -> SunEvent:
 def seconds_since_midnight() -> int:
     """Returns the number of seconds since midnight"""
     now = datetime.now()
-    return 70000
     return (now - now.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
 
 class CannotReadScenesFile(HomeAssistantError):
