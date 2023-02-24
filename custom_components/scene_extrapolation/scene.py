@@ -156,6 +156,8 @@ class ExtrapolationScene(Scene):
 
         scene_transition_progress_percent = get_scene_transition_progress_percent(current_sun_event, next_sun_event)
 
+        _LOGGER.info("Current sun event: %s, next: %s, transition progress: %s, seconds since midnight: %s", current_sun_event.name, next_sun_event.name, scene_transition_progress_percent, seconds_since_midnight())
+
         # Calculate current light states
         new_entity_states = extrapolate_entity_states(
             current_sun_event.scene,
@@ -175,12 +177,12 @@ class ExtrapolationScene(Scene):
                 # TODO: Find a better way
                 new_entity_state.pop("state")
 
-            # _LOGGER.info(
-            #     "%s: %s: 'service_data': %s",
-            #     self.name,
-            #     service_type,
-            #     new_entity_state
-            # )
+            _LOGGER.info(
+                "%s: %s: 'service_data': %s",
+                self.name,
+                service_type,
+                new_entity_state
+            )
 
             await self.hass.services.async_call(
                 LIGHT_DOMAIN,
@@ -225,6 +227,7 @@ def get_sun_event(sun_events, offset = 0) -> SunEvent:
 def seconds_since_midnight() -> int:
     """Returns the number of seconds since midnight"""
     now = datetime.now()
+    return 27000
     return (now - now.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
 
 class CannotReadScenesFile(HomeAssistantError):
@@ -239,6 +242,8 @@ def get_scene_by_name(scenes, name):
     return False
 
 def get_scene_transition_progress_percent(current_sun_event, next_sun_event) -> int:
+    """Get a percentage value for how far into the transitioning between the from and to scene
+    we currently are."""
     # Account for passing midnight
     seconds_between_current_and_next_sun_events = None
     seconds_till_next_sun_event = None
@@ -330,7 +335,14 @@ def extrapolate_entity_states(from_scene, to_scene, scene_transition_progress_pe
                 int(rgb_from[2] - abs(rgb_from[2] - rgb_to[2]) * scene_transition_progress_percent / 100)
             ]
 
+            #_LOGGER.info("From rgb: " + ", ".join(str(x) for x in rgb_from) + ", " + str(brightness_from) + ". To rgb: " + ", ".join(str(x) for x in rgb_to) + ", " + str(brightness_to))
+            _LOGGER.info("From:  %s", rgb_from + [brightness_from])
+            _LOGGER.info("Final: %s", rgb_extrapolated + [brightness_extrapolated])
+            _LOGGER.info("To:    %s", rgb_to + [brightness_to])
             final_entity[ATTR_RGB_COLOR] = rgb_extrapolated
+
+            # If using color mode, then we must supply the corresponding color value as well, it seems
+            # final_entity["color_mode"] = "color_temp"
 
         entities_with_extrapolated_state.append(final_entity)
 
