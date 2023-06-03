@@ -5,6 +5,7 @@ import logging
 import inspect
 from datetime import datetime
 import yaml
+import time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -13,6 +14,7 @@ from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import DeviceInfo
+import homeassistant.helpers.entity_registry as entity_registry
 
 from .config_flow import get_scenes
 
@@ -91,24 +93,56 @@ class ExtrapolationScene(Scene):
 
     def __init__(self, name, hass: HomeAssistant, config_entry: ConfigEntry):
         """Initialize an ExtrapolationScene."""
+        self.entity_id = "scene." + name.replace(" ", "_").casefold()
         self._scene_id = int(1675829059999)
-        self._name = name
         self.hass = hass
         self.config_entry = config_entry
 
+        self._attr_icon = "mdi:auto-fix"
+        self._attr_name = name
+
         # Set the unique ID, which is required. If not the device_info won't be checked, and location etc
         # can't be set.
-        self._attr_unique_id = "thisisAunique1D"
+        # When a unique ID is set, the user can edit the entity from the UI (change area, name etc). When set
+        # the device_info() function is also run, though it doesn't seem to create a device. Maybe it's just
+        # for linking the current entity to an existing device? Anyways, I removed it.
+        self._attr_unique_id = self.entity_id + str( round(time.time()) )
+
         # TODO: Figure out how to set the area of the scene
         # TODO: Get the ID of the area, not the name (hard coded ID for now)
         # Should probably store the ID in the config, instead of the name
         # then find the name when editing the config flow in the UI
-        self._area = "office" or config_entry.options.get("area") or config_entry.data.get("area") or None
+        self._area_id = config_entry.options.get("area") or config_entry.data.get("area") or None
+        self._area_id = self._area_id.casefold()
+
+        # When is the entity id set? It's obviously not set here. Check if its set when activatIng a scene
+        _LOGGER.error("---------")
+        _LOGGER.error("Scene intialization. ID: %s, area_id: %s", self.entity_id, self._area_id)
+        _LOGGER.error("---------")
+
+        hass.async_add_executor_job(self.update_registry)
+
+
+    def update_registry(self):
+        # TODO: Find the proper way to do this hack (couldn't figure out how to add the scene to an area immediately)
+        # Wait for the scene to be registered in the registry before we can update it
+        time.sleep(0.1)
+
+        entity_registry_instance = entity_registry.async_get(self.hass)
+
+        entity_registry_instance.async_update_entity(
+            self.entity_id,
+            #aliases={"initial_alias_1", "initial_alias_2"},
+            area_id=self._area_id,
+            #device_class="user-class",
+            #name="User Name",
+            #icon="hass:user-icon",
+        )
 
     @property
     def name(self):
         """Return the display name of this device."""
-        return self._name
+        return self._attr_name
 
     @property
     def scene_id(self):
@@ -118,29 +152,15 @@ class ExtrapolationScene(Scene):
     @property
     def unique_id(self):
         """Return the unique ID of this scene."""
-        _LOGGER.warn("Unique ID was read! :)")
+        _LOGGER.warning("Unique ID was read! :)")
         return self._attr_unique_id
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device (service) info."""
-
-        _LOGGER.warn("Device info was read! :)")
-
-        # we create a virtual service/device for Hue scenes
-        # so we have a parent for grouped lights and scenes
-        return DeviceInfo(
-            # identifiers={(DOMAIN, self.group.id)},
-            #entry_type=DeviceEntryType.SERVICE,
-            #name="Fisk",
-            # manufacturer="Me",
-            suggested_area="Fisk",
-            area_id="fisk",
-            # via_device=(DOMAIN, self.bridge.api.config.bridge_device.id),
-        )
 
     async def async_activate(self):
         """Activate the scene."""
+
+        _LOGGER.error("---------")
+        _LOGGER.error("Scene activation. ID: %s", self.entity_id)
+        _LOGGER.error("---------")
 
         # Read and parse the scenes.yaml file
         scenes = await get_scenes()
