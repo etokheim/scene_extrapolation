@@ -304,8 +304,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
 
 async def get_areas_and_area_names(hass) -> list:
-    # TODO: Apparently this is deprecated. Should use async_get instead
-    area_registry_instance = await area_registry.async_get_registry(hass)
+    area_registry_instance = area_registry.async_get(hass)
     areas = area_registry_instance.async_list_areas()
 
     area_names = []
