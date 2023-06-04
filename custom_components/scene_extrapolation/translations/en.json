@@ -12,32 +12,32 @@
         "data": {
           "device_name": "Device name",
           "scene_name": "Scene name",
-          "area": "Area"
+          "area_name": "Area"
         }
       }
     }
   },
   "options": {
     "error": {
-      "cant_read_scenes_file": "Can't read scenes file",
+      "cant_read_scenes_file": "Can't read scenes.yaml the file",
       "unknown": "Unexpected error"
     },
     "step": {
       "init": {
         "title": "Extrapolation Scene",
-        "description": "Creates a scene in your selected area which, when activated, lights your room in the appropriate way, based on the sun elevation. The scene is best matched with an automation that triggers the scene every minute or so.",
+        "description": "Creates a scene in your selected area which, when activated, lights your room in the appropriate way, based on the sun elevation. The scene is best matched with an automation that triggers the scene every minute or so.\n\n**Only supports native Home Assistant Scenes** (Not scenes from the Hue integration as an example). The nightlights scene can however be any type of scene.",
         "data": {
-          "area": "Area",
-          "scene_name": "Scene name",
-          "scene_night_rising": "Night rising scene",
-          "scene_dawn": "Dawn scene",
-          "scene_day_rising": "Day rising scene",
-          "scene_day_setting": "Day setting scene",
-          "scene_dusk": "Dusk scene",
-          "scene_night_setting": "Night setting scene",
-          "scene_nightlights": "Nightlights scene",
-          "nightlights_boolean": "Turn on nightlights scene instead when this in on",
-          "nightlights_scene": "Nightlights scene"
+          "area_name": "Area",
+          "scene_name_name": "Scene name",
+          "scene_night_rising_name": "Night rising scene",
+          "scene_dawn_name": "Dawn scene",
+          "scene_day_rising_name": "Day rising scene",
+          "scene_day_setting_name": "Day setting scene",
+          "scene_dusk_name": "Dusk scene",
+          "scene_night_setting_name": "Night setting scene",
+          "scene_nightlights_name": "Nightlights scene",
+          "nightlights_boolean_name": "Turn on nightlights scene instead when this in on",
+          "nightlights_scene_name": "Nightlights scene"
         }
       }
     }

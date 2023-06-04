@@ -6,6 +6,7 @@ import inspect
 from datetime import datetime
 import yaml
 import time
+import uuid
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -16,7 +17,8 @@ from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import DeviceInfo
 import homeassistant.helpers.entity_registry as entity_registry
 
-from .config_flow import get_scenes
+# TODO: Move this function to __init__ maybe? At least somewhere more fitting for reuse
+from .config_flow import get_native_scenes
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -68,7 +70,6 @@ from .const import (
     SCENE_DAY_SETTING_NAME,
     SCENE_DUSK_NAME,
     SCENE_NIGHT_SETTING_NAME,
-    AREA
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -93,8 +94,13 @@ class ExtrapolationScene(Scene):
 
     def __init__(self, name, hass: HomeAssistant, config_entry: ConfigEntry):
         """Initialize an ExtrapolationScene."""
+        _LOGGER.error("---------")
+        _LOGGER.error("Pre scene intialization. ID: %s, area_id: (not available yet), unique_id: %s", self.entity_id, self.unique_id)
+        _LOGGER.error("---------")
+        # TODO: Setting the entity_id to an already existing entity_id throws no errors. Instead a number is
+        # appended to the expected entity_id. Ie. [entity_id]_2
         self.entity_id = "scene." + name.replace(" ", "_").casefold()
-        self._scene_id = int(1675829059999)
+        self._scene_id = self.entity_id
         self.hass = hass
         self.config_entry = config_entry
 
@@ -106,18 +112,17 @@ class ExtrapolationScene(Scene):
         # When a unique ID is set, the user can edit the entity from the UI (change area, name etc). When set
         # the device_info() function is also run, though it doesn't seem to create a device. Maybe it's just
         # for linking the current entity to an existing device? Anyways, I removed it.
-        self._attr_unique_id = self.entity_id + str( round(time.time()) )
+        self._attr_unique_id = self.entity_id + "_" + str( uuid.uuid4() )
 
         # TODO: Figure out how to set the area of the scene
         # TODO: Get the ID of the area, not the name (hard coded ID for now)
         # Should probably store the ID in the config, instead of the name
         # then find the name when editing the config flow in the UI
-        self._area_id = config_entry.options.get("area") or config_entry.data.get("area") or None
-        self._area_id = self._area_id.casefold()
+        self._area_id = config_entry.options.get(ATTR_AREA_ID) or config_entry.data.get(ATTR_AREA_ID) or None
 
         # When is the entity id set? It's obviously not set here. Check if its set when activatIng a scene
         _LOGGER.error("---------")
-        _LOGGER.error("Scene intialization. ID: %s, area_id: %s", self.entity_id, self._area_id)
+        _LOGGER.error("Scene intialization. ID: %s, area_id: %s, unique_id: %s", self.entity_id, self._area_id, self.unique_id)
         _LOGGER.error("---------")
 
         hass.async_add_executor_job(self.update_registry)
@@ -163,7 +168,7 @@ class ExtrapolationScene(Scene):
         _LOGGER.error("---------")
 
         # Read and parse the scenes.yaml file
-        scenes = await get_scenes()
+        scenes = await get_native_scenes()
 
         # TODO: If the nightlights boolean is on, turn on the nightlights instead
 
@@ -171,32 +176,32 @@ class ExtrapolationScene(Scene):
         sun_events = [
             SunEvent(
                 name = SCENE_NIGHT_RISING_NAME,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_NIGHT_RISING_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_NIGHT_RISING_NAME)),
                 time = 10800 # 03:00
             ),
             SunEvent(
                 name = SCENE_DAWN_NAME,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAWN_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DAWN_NAME)),
                 time = 25200 # 07:00
             ),
             SunEvent(
                 name = SCENE_DAY_RISING_NAME,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAY_RISING_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DAY_RISING_NAME)),
                 time = 27000 # 07:30
             ),
             SunEvent(
                 name = SCENE_DAY_SETTING_NAME,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DAY_SETTING_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DAY_SETTING_NAME)),
                 time = 48600 # 13:30
             ),
             SunEvent(
                 name = SCENE_DUSK_NAME,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_DUSK_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DUSK_NAME)),
                 time = 65700 # 18:15
             ),
             SunEvent(
                 name = SCENE_NIGHT_SETTING_NAME,
-                scene = get_scene_by_name(scenes, self.config_entry.options.get(SCENE_NIGHT_SETTING_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_NIGHT_SETTING_NAME)),
                 time = 68400 # 19:00
             ),
         ]
@@ -286,10 +291,11 @@ def seconds_since_midnight() -> int:
 class CannotReadScenesFile(HomeAssistantError):
     """Error to indicate we cannot read the file."""
 
-def get_scene_by_name(scenes, name):
+def get_scene_by_id(scenes, id):
     """Searches through the supplied array after the supplied name. Then returns that."""
     for scene in scenes:
-        if scene["name"] == name:
+        # TODO: change to id... or entity_id?
+        if scene["name"] == id:
             return scene
 
     return False
