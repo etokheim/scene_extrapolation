@@ -70,16 +70,16 @@ async def validate_input(hass: HomeAssistant, user_input: dict[str, Any], config
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
 
+    # _LOGGER.info("data: %s", config_entry.data)
+    # _LOGGER.info("user_input: %s", user_input)
     data_to_store = {
-        "scene_name": user_input["scene_name"],
-        ATTR_AREA_ID: get_area_id_by_name( hass, user_input[AREA_NAME] ) or config_entry.data.get(ATTR_AREA_ID)
+        SCENE_NAME: user_input[SCENE_NAME] if SCENE_NAME in user_input else config_entry.data.get(SCENE_NAME),
+        ATTR_AREA_ID: get_area_id_by_name( hass, user_input[AREA_NAME] ) if AREA_NAME in user_input else config_entry.data.get(ATTR_AREA_ID)
     }
 
-    # If we are in the options flow (the integration has already been set up), then we'll fetch the device name and add it to the data
+    # If we are in the options flow (the integration has already been set up)
     options_flow = True if config_entry else False
     if options_flow:
-        data_to_store["device_name"] = config_entry.data.get("device_name")
-
         # Find the ID of each supplied scene and store that instead of the name. (This way users can change the scene names without breaking the configuration).
         user_supplied_scene_names = [SCENE_NIGHT_RISING_NAME, SCENE_DAWN_NAME, SCENE_DAY_RISING_NAME, SCENE_DAY_SETTING_NAME, SCENE_DUSK_NAME, SCENE_NIGHT_SETTING_NAME, NIGHTLIGHTS_SCENE_NAME]
         user_supplied_scene_id_keys = [SCENE_NIGHT_RISING_ID, SCENE_DAWN_ID, SCENE_DAY_RISING_ID, SCENE_DAY_SETTING_ID, SCENE_DUSK_ID, SCENE_NIGHT_SETTING_ID, NIGHTLIGHTS_SCENE_ID]
@@ -91,15 +91,6 @@ async def validate_input(hass: HomeAssistant, user_input: dict[str, Any], config
             scene_name = user_input[current_user_supplied_scene_name]
             data_to_store[current_user_supplied_scene_id_key] = get_scene_by_name(hass, scene_name)["entity_id"]
 
-    if AREA_NAME in user_input:
-        area_name = user_input[AREA_NAME]
-
-        area_entries, area_names = await get_areas_and_area_names(hass)
-        area_name_index = area_names.index(area_name)
-
-        area_entry = area_entries[area_name_index]
-        data_to_store[ATTR_AREA_ID] = area_entry.id
-
     if NIGHTLIGHTS_BOOLEAN_NAME in user_input:
         # TODO: Just use get_boolean_id_by_name?
         nightlights_boolean = user_input[NIGHTLIGHTS_BOOLEAN_NAME]
@@ -110,6 +101,7 @@ async def validate_input(hass: HomeAssistant, user_input: dict[str, Any], config
         data_to_store[NIGHTLIGHTS_BOOLEAN_ID] = nightlights_boolean.entity_id
 
     # Return info that you want to store in the config entry.
+    _LOGGER.info("data_to_store: %s", data_to_store)
     return data_to_store
 
 
@@ -128,10 +120,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # User configuration data (when setting up the integration for the first time)
         config_flow_schema = vol.Schema(
             {
-                vol.Required("device_name"): str,
                 vol.Optional("scene_name", default="Extrapolation Scene"): str,
                 vol.Optional(
-                    "area_name",
+                    AREA_NAME,
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=area_names,
@@ -157,7 +148,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
         else:
-            return self.async_create_entry(title=validated_input["device_name"], data=user_input)
+            return self.async_create_entry(title=validated_input[SCENE_NAME], data=validated_input)
 
         # (If we haven't returned already)
         # Show the form again, just with the errors
@@ -206,7 +197,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 native_scene_names.append(native_scene["name"])
 
             all_scenes, all_scene_names = await get_scenes_and_scene_names(self.hass) # All scenes, not just those in scenes.yaml
-            areas, area_names = await get_areas_and_area_names(self.hass)
             booleans, boolean_names = await get_input_booleans_and_boolean_names(self.hass)
 
             # TODO: Filter the displayed scenes based on the area input, so it's easier to find
@@ -217,17 +207,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     #     "scene_day",
                     #     default=list(self.scenes),
                     # ): config_validation.multi_select(scene_names),
-                    vol.Optional(SCENE_NAME, default=self.config_entry.options.get(SCENE_NAME) or self.config_entry.data.get(SCENE_NAME)): str,
-                    vol.Optional(
-                        AREA_NAME,
-                        default=get_area_name_by_id( self.hass, self.config_entry.options.get(ATTR_AREA_ID) or self.config_entry.data.get(ATTR_AREA_ID) )
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=area_names,
-                            multiple=False,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        ),
-                    ),
                     vol.Required(
                         SCENE_NIGHT_RISING_NAME,
                         default=get_scene_name_by_id( self.hass, self.config_entry.options.get(SCENE_NIGHT_RISING_ID) )
@@ -331,7 +310,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
         else:
-            return self.async_create_entry(title=validated_input["device_name"], data=validated_input)
+            return self.async_create_entry(title=validated_input[SCENE_NAME], data=validated_input)
 
         # (If we haven't returned already)
         # Show the form again, just with the errors
@@ -353,7 +332,10 @@ def get_input_boolean_by_id(hass, id):
     """ Finds the input_boolean matching the supplied id """
     input_booleans = hass.states.async_all("input_boolean")
 
-    input_boolean = next( filter(lambda input_boolean: input_boolean.as_dict()["entity_id"] == id, input_booleans) )
+    try:
+        input_boolean = next( filter(lambda input_boolean: input_boolean.as_dict()["entity_id"] == id, input_booleans) )
+    except StopIteration:
+        return None
 
     # Convert the matching input_boolean to a dict
     input_boolean = input_boolean.as_dict()
@@ -363,7 +345,7 @@ def get_input_boolean_by_id(hass, id):
 def get_input_boolean_name_by_id(hass, id):
     """ Supply a input_boolean ID to get its name """
     input_boolean = get_input_boolean_by_id(hass, id)
-    return input_boolean["attributes"]["friendly_name"]
+    return input_boolean["attributes"]["friendly_name"] if input_boolean else None
 
 async def get_scenes_and_scene_names(hass) -> list:
     """ Get a list of all the scene objects and another list with just the scene names """
@@ -433,19 +415,6 @@ async def get_areas_and_area_names(hass: HomeAssistant) -> list:
         areas_as_list.append(area)
 
     return [areas_as_list, area_names]
-
-def get_area_by_id(hass, id) -> dict:
-    """ Finds the area matching the supplied id """
-    area_registry_instance = area_registry.async_get(hass)
-    area = area_registry_instance.async_get_area(id)
-
-    return area
-
-def get_area_name_by_id(hass, id) -> str:
-    """ Supply a area ID to get its name """
-    area = get_area_by_id(hass, id)
-
-    return area.name if area else None
 
 def get_area_id_by_name(hass, name) -> dict:
     """ Finds the area matching the supplied id """
