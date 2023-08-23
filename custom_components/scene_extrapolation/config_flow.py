@@ -172,6 +172,9 @@ class CannotReadScenesFile(HomeAssistantError):
 class CannotFindScenesFile(HomeAssistantError):
     """Error to indicate we cannot find the file."""
 
+class WrongObjectType(HomeAssistantError):
+    """Error to indicate that the variable holding the scenes is of the wrong type."""
+
 # TODO: We will probably also have to add an options update event listener
 # which runs when the config is updated. This event handler should probably
 # reload the components configuration...
@@ -460,6 +463,13 @@ async def get_native_scenes() -> list:
             data = file.read()
 
             scenes = yaml.load(data, Loader=yaml.loader.SafeLoader)
+
+        if type(scenes) is not list:
+            raise WrongObjectType()
+
+    except WrongObjectType:
+        _LOGGER.warning("The scenes object is of the wrong type. This is normal if the user hasn't defined any scenes yet. Proceeding with an empty scenes list.")
+        scenes = []
 
     except CannotFindScenesFile:
         _LOGGER.warning("Cannot find the scenes.yaml file. We assume that the user has no scenes.")
