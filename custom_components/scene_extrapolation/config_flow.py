@@ -76,7 +76,9 @@ async def validate_input(hass: HomeAssistant, user_input: dict[str, Any], config
     # _LOGGER.info("user_input: %s", user_input)
     data_to_store = {
         SCENE_NAME: user_input[SCENE_NAME] if SCENE_NAME in user_input else config_entry.data.get(SCENE_NAME),
-        ATTR_AREA_ID: get_area_id_by_name( hass, user_input[AREA_NAME] ) if AREA_NAME in user_input else config_entry.data.get(ATTR_AREA_ID)
+        # Too tired to explain this mess now. It seems to work though, so let's just not touch it! 😅
+        ATTR_AREA_ID:   get_area_id_by_name( hass, user_input[AREA_NAME] ) if AREA_NAME in user_input else
+                        config_entry.data.get(ATTR_AREA_ID) if config_entry is not None else None
     }
 
     # If we are in the options flow (the integration has already been set up)
