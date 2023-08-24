@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any
+import uuid
 
 import voluptuous as vol
 import homeassistant.helpers.config_validation as config_validation
@@ -36,6 +37,7 @@ from homeassistant.const import (
     STATE_ON,
     SUN_EVENT_SUNRISE,
     SUN_EVENT_SUNSET,
+    CONF_UNIQUE_ID
 )
 
 from .const import (
@@ -148,6 +150,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
         else:
+            # Append a unique ID for this scene before saving the data
+            validated_input[CONF_UNIQUE_ID] = str( uuid.uuid4() )
+
             return self.async_create_entry(title=validated_input[SCENE_NAME], data=validated_input)
 
         # (If we haven't returned already)

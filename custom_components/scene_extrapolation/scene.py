@@ -59,6 +59,7 @@ from homeassistant.const import (
     STATE_ON,
     SUN_EVENT_SUNRISE,
     SUN_EVENT_SUNSET,
+    CONF_UNIQUE_ID
 )
 
 from .const import (
@@ -106,13 +107,7 @@ class ExtrapolationScene(Scene):
 
         self._attr_icon = "mdi:auto-fix"
         self._attr_name = name
-
-        # Set the unique ID, which is required. If not the device_info won't be checked, and location etc
-        # can't be set.
-        # When a unique ID is set, the user can edit the entity from the UI (change area, name etc). When set
-        # the device_info() function is also run, though it doesn't seem to create a device. Maybe it's just
-        # for linking the current entity to an existing device? Anyways, I removed it.
-        self._attr_unique_id = self.entity_id + "_" + str( uuid.uuid4() )
+        self._attr_unique_id = config_entry.data.get(CONF_UNIQUE_ID)
 
         # TODO: Figure out how to set the area of the scene
         # TODO: Get the ID of the area, not the name (hard coded ID for now)
@@ -137,11 +132,7 @@ class ExtrapolationScene(Scene):
 
         entity_registry_instance.async_update_entity(
             self.entity_id,
-            #aliases={"initial_alias_1", "initial_alias_2"},
-            area_id=self._area_id,
-            #device_class="user-class",
-            #name="User Name",
-            #icon="hass:user-icon",
+            area_id=self._area_id, # TODO: Only set this once - as the user can't change the config, but can edit the scene's area directly. Always setting this overwrites any changes.
         )
 
     @property
@@ -157,7 +148,6 @@ class ExtrapolationScene(Scene):
     @property
     def unique_id(self):
         """Return the unique ID of this scene."""
-        _LOGGER.warning("Unique ID was read! :)")
         return self._attr_unique_id
 
     async def async_activate(self):
@@ -288,17 +278,16 @@ def seconds_since_midnight() -> int:
     return 27000
     return (now - now.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
 
-class CannotReadScenesFile(HomeAssistantError):
-    """Error to indicate we cannot read the file."""
+class MissingConfiguration(HomeAssistantError):
+    """Error to indicate there is missing configuration."""
 
 def get_scene_by_id(scenes, id):
     """Searches through the supplied array after the supplied name. Then returns that."""
     for scene in scenes:
-        # TODO: change to id... or entity_id?
         if scene["name"] == id:
             return scene
 
-    return False
+    raise MissingConfiguration("Hey - you have to configure the extension first! A scene field is missing a value (or have an incorrect one set)")
 
 def get_scene_transition_progress_percent(current_sun_event, next_sun_event) -> int:
     """Get a percentage value for how far into the transitioning between the from and to scene
@@ -333,6 +322,8 @@ def extrapolate_number(from_number, to_number, scene_transition_progress_percent
 def get_extrapolated_entity_states(from_scene, to_scene, scene_transition_progress_percent) -> list:
     """Takes in a from and to scene and returns an a list of new entity states.
     The new states is the extrapolated state between the two scenes."""
+
+    _LOGGER.warning("from_scene: %s, to_scene: %s, scene_transition_progress_percent: %s", from_scene, to_scene, scene_transition_progress_percent)
 
     entities_with_extrapolated_state = []
 
