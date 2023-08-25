@@ -40,7 +40,10 @@ from homeassistant.components.light import (
     COLOR_MODE_RGB,
     COLOR_MODE_RGBW,
     COLOR_MODE_XY,
+    COLOR_MODE_ONOFF,
 )
+
+COLOR_MODE = "color_mode"
 
 from homeassistant.const import (
     ATTR_AREA_ID,
@@ -167,14 +170,7 @@ class ExtrapolationScene(Scene):
 
         # TODO: If the nightlights boolean is on, turn on the nightlights instead
 
-        _LOGGER.info(
-            "Trying to get %s, %s",
-            SCENE_NIGHT_RISING_ID,
-            self.config_entry.options.get(SCENE_NIGHT_RISING_ID),
-        )
-        _LOGGER.info("From %s", self.config_entry.options)
-
-        # TODO: Get the times for the next solar events
+        # TODO: Automatically get the times for the next solar events
         sun_events = [
             SunEvent(
                 name=SCENE_NIGHT_RISING_NAME,
@@ -245,7 +241,7 @@ class ExtrapolationScene(Scene):
         await apply_entity_states(new_entity_states, self.hass)
 
 
-async def apply_entity_states(entities, hass):
+async def apply_entity_states(entities, hass: HomeAssistant):
     """Applies the entities states"""
     for entity in entities:
         service_type = SERVICE_TURN_ON
@@ -255,12 +251,16 @@ async def apply_entity_states(entities, hass):
             else:
                 service_type = SERVICE_TURN_ON
 
+            del entity["state"]
+
             # TODO: Find a better way
             # entity.pop("state")
 
         _LOGGER.info("%s: 'service_data': %s", service_type, entity)
 
-        await hass.services.async_call(LIGHT_DOMAIN, service_type, entity)
+        await hass.services.async_call(
+            domain=LIGHT_DOMAIN, service=service_type, service_data=entity
+        )
 
 
 class SunEvent:
@@ -393,35 +393,35 @@ def get_extrapolated_entity_states(
 
     entities_with_extrapolated_state = []
 
-    for from_entity_name in from_scene["entities"]:
-        from_entity = from_scene["entities"][from_entity_name]
-        to_entity_name = None
-        final_entity = None
+    for from_entity_id in from_scene["entities"]:
+        from_entity = from_scene["entities"][from_entity_id]
+        to_entity_id = None
+        final_entity = {ATTR_ENTITY_ID: from_entity_id}
 
         # Match the current entity to the same entity in the to_scene
-        for potential_to_entity_name in to_scene["entities"]:
-            if from_entity_name == potential_to_entity_name:
+        for potentially_matching_to_entity_id in to_scene["entities"]:
+            if from_entity_id == potentially_matching_to_entity_id:
                 # _LOGGER.info("Found " + from_entity_name + " in both the from and to scenes")
-                to_entity_name = potential_to_entity_name
+                to_entity_id = potentially_matching_to_entity_id
                 break
             else:
                 # TODO: turn into .debug at some point
                 _LOGGER.debug(
                     "Couldn't find "
-                    + from_entity_name
+                    + from_entity_id
                     + " in the scene we are extrapolating to. Assuming it should be turned off."
                 )
-                to_entity_name = False
+                to_entity_id = False
 
-        if to_entity_name is not False:
-            to_entity = to_scene["entities"][to_entity_name]
+        if to_entity_id is not False:
+            to_entity = to_scene["entities"][to_entity_id]
 
         # Set the starting point for the final entity to either the from or to entity so that
         # any values we don't explicitly handle are still set when updating the entity.
-        if scene_transition_progress_percent < 50 or to_entity is False:
-            final_entity = from_entity
-        elif scene_transition_progress_percent >= 50:
-            final_entity = to_entity
+        # if scene_transition_progress_percent < 50 or to_entity is False:
+        #     final_entity = from_entity
+        # elif scene_transition_progress_percent >= 50:
+        #     final_entity = to_entity
 
         _LOGGER.warn("from_entity: %s", from_entity)
         _LOGGER.error("to_entity: %s", to_entity)
@@ -437,10 +437,8 @@ def get_extrapolated_entity_states(
             )
             final_entity[ATTR_BRIGHTNESS] = brightness_extrapolated
 
-        # Handle state, but only do it if the entity doesn't support brightness.
-        # If not, the light can end up turning off prematurely. Ie. if the light is being dimmed from 100 -> 0 brightness, the final state will be off. Therefor the state musn't be set before the brightness is 0. Same with rgb etc.
         # Handle on/off lights
-        elif "state" in from_entity:
+        if from_entity[COLOR_MODE] == COLOR_MODE_ONOFF:
             to_state = to_entity["state"] if to_entity else "off"
 
             if (
@@ -455,8 +453,10 @@ def get_extrapolated_entity_states(
                 and to_state
             ):
                 final_entity["state"] = "on"
+            else:
+                final_entity["state"] = from_entity["state"]
 
-        if ATTR_COLOR_TEMP in from_entity and to_entity:
+        if from_entity[COLOR_MODE] == ATTR_COLOR_TEMP and to_entity:
             color_temp_extrapolated = extrapolate_number(
                 from_entity[ATTR_COLOR_TEMP],
                 to_entity[ATTR_COLOR_TEMP],
@@ -464,7 +464,7 @@ def get_extrapolated_entity_states(
             )
             final_entity[ATTR_COLOR_TEMP] = color_temp_extrapolated
 
-        if ATTR_COLOR_TEMP_KELVIN in from_entity and to_entity:
+        if from_entity[COLOR_MODE] == ATTR_COLOR_TEMP_KELVIN and to_entity:
             color_temp_kelvin_extrapolated = extrapolate_number(
                 from_entity[ATTR_COLOR_TEMP_KELVIN],
                 to_entity[ATTR_COLOR_TEMP_KELVIN],
@@ -473,12 +473,12 @@ def get_extrapolated_entity_states(
             final_entity[ATTR_COLOR_TEMP_KELVIN] = color_temp_kelvin_extrapolated
 
         # Handle entities with RGB support
-        if ATTR_RGB_COLOR in from_entity:
+        if from_entity[COLOR_MODE] == ATTR_RGB_COLOR:
             rgb_from = from_entity[ATTR_RGB_COLOR]
 
             # If the current entity doesn't exist in the to_scene, then we assume it's new state
             # should be off
-            if not to_entity_name:
+            if not to_entity_id:
                 rgb_to = [0, 0, 0]
             else:
                 rgb_to = to_entity[ATTR_RGB_COLOR]
@@ -488,23 +488,14 @@ def get_extrapolated_entity_states(
             # error, if so, we know that the from and to values are the same, and we can fall back
             # to the from value
             rgb_extrapolated = [
-                int(
-                    rgb_from[0]
-                    - abs(rgb_from[0] - rgb_to[0])
-                    * scene_transition_progress_percent
-                    / 100
+                extrapolate_value(
+                    rgb_from[0], rgb_to[0], scene_transition_progress_percent
                 ),
-                int(
-                    rgb_from[1]
-                    - abs(rgb_from[1] - rgb_to[1])
-                    * scene_transition_progress_percent
-                    / 100
+                extrapolate_value(
+                    rgb_from[1], rgb_to[1], scene_transition_progress_percent
                 ),
-                int(
-                    rgb_from[2]
-                    - abs(rgb_from[2] - rgb_to[2])
-                    * scene_transition_progress_percent
-                    / 100
+                extrapolate_value(
+                    rgb_from[2], rgb_to[2], scene_transition_progress_percent
                 ),
             ]
 
@@ -516,8 +507,44 @@ def get_extrapolated_entity_states(
             _LOGGER.info("To:    %s", rgb_to + [to_entity[ATTR_BRIGHTNESS]])
             final_entity[ATTR_RGB_COLOR] = rgb_extrapolated
 
+        # Handle entities in HS mode
+        if from_entity[COLOR_MODE] == COLOR_MODE_HS:
+            hs_from = from_entity[ATTR_HS_COLOR]
+
+            # If the current entity doesn't exist in the to_scene, then we assume it's new state
+            # should be off
+            if not to_entity_id:
+                hs_to = [0, 0]
+            else:
+                hs_to = to_entity[ATTR_HS_COLOR]
+
+            # Calculate what the current color should be
+            # The if statement checks whether the result tried to divide by zero, which throws an
+            # error, if so, we know that the from and to values are the same, and we can fall back
+            # to the from value
+            hs_extrapolated = [
+                extrapolate_value(
+                    hs_from[0], hs_to[0], scene_transition_progress_percent
+                ),
+                extrapolate_value(
+                    hs_from[1], hs_to[1], scene_transition_progress_percent
+                ),
+            ]
+
+            _LOGGER.info("From:  %s", hs_from + [from_entity[ATTR_BRIGHTNESS]])
+            _LOGGER.info("Final: %s", hs_extrapolated + [final_entity[ATTR_BRIGHTNESS]])
+            _LOGGER.info("To:    %s", hs_to + [to_entity[ATTR_BRIGHTNESS]])
+            final_entity[ATTR_HS_COLOR] = hs_extrapolated
+
         _LOGGER.warn("final_entity: %s", final_entity)
 
         entities_with_extrapolated_state.append(final_entity)
 
     return entities_with_extrapolated_state
+
+
+def extrapolate_value(from_value, to_value, scene_transition_progress_percent):
+    return (
+        from_value
+        - abs(from_value - to_value) * scene_transition_progress_percent / 100
+    )
