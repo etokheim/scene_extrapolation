@@ -66,11 +66,17 @@ from .const import (
     DOMAIN,
     SCENE_NAME,
     SCENE_NIGHT_RISING_NAME,
+    SCENE_NIGHT_RISING_ID,
     SCENE_DAWN_NAME,
+    SCENE_DAWN_ID,
     SCENE_DAY_RISING_NAME,
+    SCENE_DAY_RISING_ID,
     SCENE_DAY_SETTING_NAME,
+    SCENE_DAY_SETTING_ID,
     SCENE_DUSK_NAME,
+    SCENE_DUSK_ID,
     SCENE_NIGHT_SETTING_NAME,
+    SCENE_NIGHT_SETTING_ID,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -158,40 +164,43 @@ class ExtrapolationScene(Scene):
         _LOGGER.error("---------")
 
         # Read and parse the scenes.yaml file
-        scenes = await get_native_scenes()
+        scenes = await get_native_scenes(self.hass)
 
         # TODO: If the nightlights boolean is on, turn on the nightlights instead
+
+        _LOGGER.info("Trying to get %s, %s", SCENE_NIGHT_RISING_ID, self.config_entry.options.get(SCENE_NIGHT_RISING_ID))
+        _LOGGER.info("From %s", self.config_entry.options)
 
         # TODO: Get the times for the next solar events
         sun_events = [
             SunEvent(
                 name = SCENE_NIGHT_RISING_NAME,
-                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_NIGHT_RISING_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_NIGHT_RISING_ID)),
                 time = 10800 # 03:00
             ),
             SunEvent(
                 name = SCENE_DAWN_NAME,
-                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DAWN_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DAWN_ID)),
                 time = 25200 # 07:00
             ),
             SunEvent(
                 name = SCENE_DAY_RISING_NAME,
-                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DAY_RISING_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DAY_RISING_ID)),
                 time = 27000 # 07:30
             ),
             SunEvent(
                 name = SCENE_DAY_SETTING_NAME,
-                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DAY_SETTING_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DAY_SETTING_ID)),
                 time = 48600 # 13:30
             ),
             SunEvent(
                 name = SCENE_DUSK_NAME,
-                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DUSK_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_DUSK_ID)),
                 time = 65700 # 18:15
             ),
             SunEvent(
                 name = SCENE_NIGHT_SETTING_NAME,
-                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_NIGHT_SETTING_NAME)),
+                scene = get_scene_by_id(scenes, self.config_entry.options.get(SCENE_NIGHT_SETTING_ID)),
                 time = 68400 # 19:00
             ),
         ]
@@ -281,10 +290,20 @@ def seconds_since_midnight() -> int:
 class MissingConfiguration(HomeAssistantError):
     """Error to indicate there is missing configuration."""
 
+# Note: I wanted to match the ID, but problem is: the entity_id isn't available in scenes.yaml!? The only way to get it would be to
+# look up scene entities, where I'd probably get both scene.id and scene.entity_id, then match the scene.id to the scene.id from
+# the scenes.yaml file, AND THEN finally match ids and saturate the scenes.yaml data with entitiy ids. Which is too much work
+# and probably compute as well for me to bother right now...
+# All these IDs are very inconsistent and confusing: entity_id, unique_id and id? Really?
 def get_scene_by_id(scenes, id):
     """Searches through the supplied array after the supplied name. Then returns that."""
+    if id is None:
+        raise HomeAssistantError("Developer goes: Ehhh... Something's wrong. I'm searching for an non-existant ID...")
+
     for scene in scenes:
-        if scene["name"] == id:
+        _LOGGER.info("Is %s == %s", scene["id"], id)
+        _LOGGER.info(scene)
+        if scene["entity_id"] == id:
             return scene
 
     raise MissingConfiguration("Hey - you have to configure the extension first! A scene field is missing a value (or have an incorrect one set)")

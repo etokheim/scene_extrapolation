@@ -219,7 +219,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     # ): config_validation.multi_select(scene_names),
                     vol.Required(
                         SCENE_NIGHT_RISING_NAME,
-                        default=get_scene_name_by_id( self.hass, self.config_entry.options.get(SCENE_NIGHT_RISING_ID) )
+                        default=get_scene_name_by_entity_id( self.hass, self.config_entry.options.get(SCENE_NIGHT_RISING_ID) )
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=native_scene_names,
@@ -229,7 +229,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                     vol.Required(
                         SCENE_DAWN_NAME,
-                        default=get_scene_name_by_id( self.hass, self.config_entry.options.get(SCENE_DAWN_ID) )
+                        default=get_scene_name_by_entity_id( self.hass, self.config_entry.options.get(SCENE_DAWN_ID) )
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=native_scene_names,
@@ -239,7 +239,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                     vol.Required(
                         SCENE_DAY_RISING_NAME,
-                        default=get_scene_name_by_id( self.hass, self.config_entry.options.get(SCENE_DAY_RISING_ID) )
+                        default=get_scene_name_by_entity_id( self.hass, self.config_entry.options.get(SCENE_DAY_RISING_ID) )
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=native_scene_names,
@@ -249,7 +249,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                     vol.Required(
                         SCENE_DAY_SETTING_NAME,
-                        default=get_scene_name_by_id( self.hass, self.config_entry.options.get(SCENE_DAY_SETTING_ID) )
+                        default=get_scene_name_by_entity_id( self.hass, self.config_entry.options.get(SCENE_DAY_SETTING_ID) )
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=native_scene_names,
@@ -259,7 +259,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                     vol.Required(
                         SCENE_DUSK_NAME,
-                        default=get_scene_name_by_id( self.hass, self.config_entry.options.get(SCENE_DUSK_ID) )
+                        default=get_scene_name_by_entity_id( self.hass, self.config_entry.options.get(SCENE_DUSK_ID) )
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=native_scene_names,
@@ -269,7 +269,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                     vol.Required(
                         SCENE_NIGHT_SETTING_NAME,
-                        default=get_scene_name_by_id( self.hass, self.config_entry.options.get(SCENE_NIGHT_SETTING_ID) )
+                        default=get_scene_name_by_entity_id( self.hass, self.config_entry.options.get(SCENE_NIGHT_SETTING_ID) )
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=native_scene_names,
@@ -289,7 +289,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                     vol.Optional(
                         NIGHTLIGHTS_SCENE_NAME,
-                        default=get_scene_name_by_id( self.hass, self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID) )
+                        default=get_scene_name_by_entity_id( self.hass, self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID) )
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=all_scene_names,
@@ -384,9 +384,9 @@ def get_scene_by_name(hass, name) -> dict:
 
     return scene
 
-def get_scene_by_id(hass, id) -> dict:
-    """ Finds the scene matching the supplied id """
-    # TODO: Is there a better, more direct way to get a scene by ID?
+def get_scene_by_entity_id(hass, entity_id) -> dict:
+    """ Finds the scene matching the supplied entity_id """
+    # TODO: Is there a better, more direct way to get a scene by ID? Here we fetch all scenes and then filter out one...
     # I tried the following, which seemed simple, but couldn't find a good way to get it's friendly name.
     #    entity_registry_instance = entity_registry.async_get(hass)
     #    scene = entity_registry_instance.async_get(id)
@@ -396,7 +396,7 @@ def get_scene_by_id(hass, id) -> dict:
     scenes = hass.states.async_all("scene")
 
     try:
-        scene = next( filter(lambda scene: scene.as_dict()["entity_id"] == id, scenes) )
+        scene = next( filter(lambda scene: scene.as_dict()["entity_id"] == entity_id, scenes) )
     except StopIteration:
         return None
 
@@ -405,9 +405,9 @@ def get_scene_by_id(hass, id) -> dict:
 
     return scene
 
-def get_scene_name_by_id(hass, id) -> str:
+def get_scene_name_by_entity_id(hass, entity_id) -> str:
     """ Supply a scene ID to get its name """
-    scene = get_scene_by_id(hass, id)
+    scene = get_scene_by_entity_id(hass, entity_id)
 
     return scene["attributes"]["friendly_name"] if scene else None
 
@@ -433,8 +433,9 @@ def get_area_id_by_name(hass, name) -> dict:
 
     return area.id
 
-async def get_native_scenes() -> list:
-    """Returns scenes from scenes.yaml. Only Home Assistant native scenes are stored here. Ie. not Hue scenes"""
+async def get_native_scenes(hass = None) -> list:
+    """Returns scenes from scenes.yaml. Only Home Assistant native scenes are stored here. Ie. not Hue scenes.
+    Alternately supply a hass object to return the scenes with their entity_ids attached."""
     # TODO: There must be a better way to get the scene's light configuration than
     # reading and parsing the yaml file manually, like we are doing now.
 
@@ -490,4 +491,21 @@ async def get_native_scenes() -> list:
         _LOGGER.warn(location_content)
         raise CannotReadScenesFile() from exception
 
+    # If we get the hass object supplied, we are also able to search for entity_ids and saturate the scenes with them.
+    if hass:
+        scenes = saturate_with_entity_ids(scenes, hass)
+
     return scenes
+
+def saturate_with_entity_ids(scenes, hass):
+    """Let's do stupid since Home Assistant is stupid... Meaning, we'll go get the scenes.yaml's scene's entity_ids manually, since they're not there for some reason. Only scene.id resides in scenes.yaml."""
+    saturated_scenes = []
+    ha_scenes = hass.states.async_all("scene")
+
+    for scene in scenes:
+        # Loop through ha_scenes and match the ID in order to find the corresponding scene from the registry (which contains the entity_id we want)
+        ha_scene = next( filter(lambda ha_scene: ha_scene.attributes["id"] == scene["id"], ha_scenes) )
+        scene["entity_id"] = ha_scene.entity_id
+        saturated_scenes.append(scene)
+
+    return saturated_scenes
