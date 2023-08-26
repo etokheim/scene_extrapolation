@@ -9,6 +9,8 @@
     },
     "step": {
       "user": {
+        "title": "Initial Setup",
+        "description": "**Remember to configure the integration after submitting**",
         "data": {
           "device_name": "Device name",
           "scene_name": "Scene name",
@@ -24,8 +26,8 @@
     },
     "step": {
       "init": {
-        "title": "Extrapolation Scene",
-        "description": "Creates a scene in your selected area which, when activated, lights your room in the appropriate way, based on the sun elevation. The scene is best matched with an automation that triggers the scene every minute or so.\n\n**Only supports native Home Assistant Scenes** (Not scenes from the Hue integration as an example). The nightlights scene can however be any type of scene.",
+        "title": "Configure Scene Extrapolation",
+        "description": "Creates a scene in your selected area which, when activated, lights your room in the appropriate way, based on the sun elevation. The scene is best matched with an automation that triggers the scene every minute or so.\n\n**Only supports native Home Assistant Scenes** (Ie. not scenes from the Hue integration). The nightlights scene can however be any type of scene.",
         "data": {
           "area_name": "Area",
           "scene_name_name": "Scene name",
