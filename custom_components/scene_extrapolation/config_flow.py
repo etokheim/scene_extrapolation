@@ -231,9 +231,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         errors = {}
 
         try:
-            native_scenes = await get_native_scenes()
+            native_scenes = await get_native_scenes(hass=self.hass)
+
+            # If the user has input an area ID, we want to sort the scenes related to that ID to the top of the dropdowns - for conveniences sake
+            area_id = self.config_entry.data.get("area_id")
+            if area_id:
+                native_scenes = sort_by_area_id(native_scenes, area_id)
+
             native_scene_names = []
-            _LOGGER.error(native_scenes)
 
             for native_scene in native_scenes:
                 native_scene_names.append(native_scene["name"])
@@ -588,6 +593,18 @@ async def get_native_scenes(hass=None) -> list:
         scenes = saturate_data(scenes, hass)
 
     return scenes
+
+
+def sort_by_area_id(entities, area_id):
+    sorted_entities = []
+
+    for entity in entities:
+        if entity["area_id"] == area_id:
+            sorted_entities.insert(0, entity)
+        else:
+            sorted_entities.append(entity)
+
+    return sorted_entities
 
 
 def saturate_data(scenes, hass: HomeAssistant):
