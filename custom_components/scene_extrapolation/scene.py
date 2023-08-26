@@ -201,7 +201,7 @@ class ExtrapolationScene(Scene):
         sun_events = [
             SunEvent(
                 name=SCENE_NIGHT_RISING_NAME,
-                scene=get_scene_by_id(
+                scene=get_scene_by_uuid(
                     scenes, self.config_entry.options.get(SCENE_NIGHT_RISING_ID)
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
@@ -210,7 +210,7 @@ class ExtrapolationScene(Scene):
             ),
             SunEvent(
                 name=SCENE_DAWN_NAME,
-                scene=get_scene_by_id(
+                scene=get_scene_by_uuid(
                     scenes, self.config_entry.options.get(SCENE_DAWN_ID)
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
@@ -219,7 +219,7 @@ class ExtrapolationScene(Scene):
             ),
             SunEvent(
                 name=SCENE_DAY_RISING_NAME,
-                scene=get_scene_by_id(
+                scene=get_scene_by_uuid(
                     scenes, self.config_entry.options.get(SCENE_DAY_RISING_ID)
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
@@ -228,7 +228,7 @@ class ExtrapolationScene(Scene):
             ),
             SunEvent(
                 name=SCENE_DAY_SETTING_NAME,
-                scene=get_scene_by_id(
+                scene=get_scene_by_uuid(
                     scenes, self.config_entry.options.get(SCENE_DAY_SETTING_ID)
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
@@ -237,7 +237,7 @@ class ExtrapolationScene(Scene):
             ),
             SunEvent(
                 name=SCENE_DUSK_NAME,
-                scene=get_scene_by_id(
+                scene=get_scene_by_uuid(
                     scenes, self.config_entry.options.get(SCENE_DUSK_ID)
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
@@ -246,7 +246,7 @@ class ExtrapolationScene(Scene):
             ),
             SunEvent(
                 name=SCENE_NIGHT_SETTING_NAME,
-                scene=get_scene_by_id(
+                scene=get_scene_by_uuid(
                     scenes, self.config_entry.options.get(SCENE_NIGHT_SETTING_ID)
                 ),
                 start_time=86400,  # 00:00
@@ -390,15 +390,15 @@ class MissingConfiguration(HomeAssistantError):
     """Error to indicate there is missing configuration."""
 
 
-def get_scene_by_id(scenes, id):
-    """Searches through the supplied array after the supplied name. Then returns that."""
-    if id is None:
+def get_scene_by_uuid(scenes, uuid):
+    """Searches through the supplied array after the supplied scene uuid. Then returns that."""
+    if uuid is None:
         raise HomeAssistantError(
-            "Developer goes: Ehhh... Something's wrong. I'm searching for an non-existant ID..."
+            "Developer goes: Ehhh... Something's wrong. I'm searching for an non-existant uuid..."
         )
 
     for scene in scenes:
-        if scene["entity_id"] == id:
+        if scene["entity_id"] == uuid:
             return scene
 
     raise MissingConfiguration(
