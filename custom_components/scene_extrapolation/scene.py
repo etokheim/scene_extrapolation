@@ -2,11 +2,11 @@
 Create a scene entity which when activated calculates the appropriate lighting by extrapolating between user configured scenes.
 """
 import logging
-import inspect
 from datetime import datetime
-import yaml
 import time
-import uuid
+from astral.sun import sun, time_at_elevation, midnight
+from astral import LocationInfo, SunDirection
+import pytz
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -103,6 +103,15 @@ async def async_setup_entry(
     return True
 
 
+class SunEvent:
+    """Creates a sun event"""
+
+    def __init__(self, name, start_time, scene) -> None:
+        self.name = name
+        self.start_time = start_time
+        self.scene = scene
+
+
 class ExtrapolationScene(Scene):
     """Representation the ExtrapolationScene."""
 
@@ -127,6 +136,27 @@ class ExtrapolationScene(Scene):
             config_entry.options.get(ATTR_AREA_ID)
             or config_entry.data.get(ATTR_AREA_ID)
             or None
+        )
+
+        latitude = self.hass.config.latitude
+        longitude = self.hass.config.longitude
+        time_zone = self.hass.config.time_zone
+
+        city = LocationInfo(timezone=time_zone, latitude=latitude, longitude=longitude)
+        self.solar_events = sun(
+            city.observer, date=datetime.now(tz=pytz.timezone(time_zone))
+        )
+
+        self.solar_events["midnight"] = midnight(
+            city.observer,
+            date=datetime.now(tz=pytz.timezone(time_zone)),
+        )
+
+        time_at_10deg = time_at_elevation(
+            city.observer,
+            elevation=10,
+            direction=SunDirection.RISING,
+            date=datetime.now(tz=pytz.timezone(time_zone)),
         )
 
         hass.async_add_executor_job(self.update_registry)
@@ -161,74 +191,89 @@ class ExtrapolationScene(Scene):
     async def async_activate(self):
         """Activate the scene."""
 
-        _LOGGER.error("---------")
-        _LOGGER.error("Scene activation. ID: %s", self.entity_id)
-        _LOGGER.error("---------")
-
         # Read and parse the scenes.yaml file
         scenes = await get_native_scenes(self.hass)
 
         # TODO: If the nightlights boolean is on, turn on the nightlights instead
 
         # TODO: Automatically get the times for the next solar events
+
         sun_events = [
             SunEvent(
                 name=SCENE_NIGHT_RISING_NAME,
                 scene=get_scene_by_id(
                     scenes, self.config_entry.options.get(SCENE_NIGHT_RISING_ID)
                 ),
-                time=10800,  # 03:00
+                start_time=self.datetime_to_seconds_since_midnight(
+                    self.solar_events["midnight"]
+                ),
             ),
             SunEvent(
                 name=SCENE_DAWN_NAME,
                 scene=get_scene_by_id(
                     scenes, self.config_entry.options.get(SCENE_DAWN_ID)
                 ),
-                time=25200,  # 07:00
+                start_time=self.datetime_to_seconds_since_midnight(
+                    self.solar_events["dawn"]
+                ),
             ),
             SunEvent(
                 name=SCENE_DAY_RISING_NAME,
                 scene=get_scene_by_id(
                     scenes, self.config_entry.options.get(SCENE_DAY_RISING_ID)
                 ),
-                time=27000,  # 07:30
+                start_time=self.datetime_to_seconds_since_midnight(
+                    self.solar_events["sunrise"]
+                ),
             ),
             SunEvent(
                 name=SCENE_DAY_SETTING_NAME,
                 scene=get_scene_by_id(
                     scenes, self.config_entry.options.get(SCENE_DAY_SETTING_ID)
                 ),
-                time=48600,  # 13:30
+                start_time=self.datetime_to_seconds_since_midnight(
+                    self.solar_events["sunset"]
+                ),
             ),
             SunEvent(
                 name=SCENE_DUSK_NAME,
                 scene=get_scene_by_id(
                     scenes, self.config_entry.options.get(SCENE_DUSK_ID)
                 ),
-                time=65700,  # 18:15
+                start_time=self.datetime_to_seconds_since_midnight(
+                    self.solar_events["dusk"]
+                ),
             ),
             SunEvent(
                 name=SCENE_NIGHT_SETTING_NAME,
                 scene=get_scene_by_id(
                     scenes, self.config_entry.options.get(SCENE_NIGHT_SETTING_ID)
                 ),
-                time=68400,  # 19:00
+                start_time=86400,  # 00:00
             ),
         ]
 
-        current_sun_event = get_sun_event(offset=0, sun_events=sun_events)
-        next_sun_event = get_sun_event(offset=1, sun_events=sun_events)
+        for sun_event in sun_events:
+            _LOGGER.debug("%s: %s", sun_event.name, sun_event.start_time)
 
-        scene_transition_progress_percent = get_scene_transition_progress_percent(
+        _LOGGER.debug("Time since midnight: %s", self.seconds_since_midnight())
+        _LOGGER.debug(
+            "Time now: %s", datetime.now(tz=pytz.timezone(self.hass.config.time_zone))
+        )
+
+        current_sun_event = self.get_sun_event(offset=0, sun_events=sun_events)
+        next_sun_event = self.get_sun_event(offset=1, sun_events=sun_events)
+
+        scene_transition_progress_percent = self.get_scene_transition_progress_percent(
             current_sun_event, next_sun_event
         )
 
-        _LOGGER.info(
+        _LOGGER.debug(
             "Current sun event: %s, next: %s, transition progress: %s, seconds since midnight: %s",
             current_sun_event.name,
             next_sun_event.name,
             scene_transition_progress_percent,
-            seconds_since_midnight(),
+            self.seconds_since_midnight(),
         )
 
         # Calculate current light states
@@ -238,86 +283,113 @@ class ExtrapolationScene(Scene):
             scene_transition_progress_percent,
         )
 
-        await apply_entity_states(new_entity_states, self.hass)
+        await self.apply_entity_states(new_entity_states, self.hass)
 
+    def datetime_to_seconds_since_midnight(self, datetime):
+        now = datetime.now(tz=pytz.timezone(self.hass.config.time_zone))
+        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return (datetime - midnight).seconds
 
-async def apply_entity_states(entities, hass: HomeAssistant):
-    """Applies the entities states"""
-    for entity in entities:
-        service_type = SERVICE_TURN_ON
-        if "state" in entity:
-            if entity["state"] == "off":
-                service_type = SERVICE_TURN_OFF
-            else:
-                service_type = SERVICE_TURN_ON
+    def get_scene_transition_progress_percent(
+        self, current_sun_event, next_sun_event
+    ) -> int:
+        """Get a percentage value for how far into the transitioning between the from and to scene
+        we currently are."""
+        # Account for passing midnight
+        seconds_between_current_and_next_sun_events = None
+        seconds_till_next_sun_event = None
 
-            del entity["state"]
+        # If midnight is between the current and next sun events, do some special handling
+        if current_sun_event.start_time > next_sun_event.start_time:
+            # 86400 = 24 hours
+            # Takes the time left of the day + the time to the first sun_event the next day to
+            # calculate how many seconds it is between them.
+            seconds_between_current_and_next_sun_events = (
+                86400 - current_sun_event.start_time + next_sun_event.start_time
+            )
+        else:
+            seconds_between_current_and_next_sun_events = (
+                next_sun_event.start_time - current_sun_event.start_time
+            )
 
-            # TODO: Find a better way
-            # entity.pop("state")
+        if self.seconds_since_midnight() > next_sun_event.start_time:
+            seconds_till_next_sun_event = (
+                86400 - self.seconds_since_midnight() + next_sun_event.start_time
+            )
+        else:
+            seconds_till_next_sun_event = (
+                next_sun_event.start_time - self.seconds_since_midnight()
+            )
 
-        _LOGGER.info("%s: 'service_data': %s", service_type, entity)
-
-        await hass.services.async_call(
-            domain=LIGHT_DOMAIN, service=service_type, service_data=entity
+        return (
+            100
+            / seconds_between_current_and_next_sun_events
+            * (
+                seconds_between_current_and_next_sun_events
+                - seconds_till_next_sun_event
+            )
         )
 
+    def seconds_since_midnight(self) -> float:
+        """Returns the number of seconds since midnight"""
+        now = datetime.now(tz=pytz.timezone(self.hass.config.time_zone))
+        return (
+            now - now.replace(hour=0, minute=0, second=0, microsecond=0)
+        ).total_seconds()
 
-class SunEvent:
-    """Creates a sun event"""
+    def get_sun_event(self, sun_events, offset=0) -> SunEvent:
+        """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead"""
+        current_time = self.seconds_since_midnight()
 
-    def __init__(self, name, time, scene):
-        self.name = name
-        self.time = time
-        self.scene = scene
-
-
-def get_sun_event(sun_events, offset=0) -> SunEvent:
-    """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead"""
-    current_time = seconds_since_midnight()
-
-    # Find the event closest, but still in the future
-    closest_match_index = None
-    for index, sun_event in enumerate(sun_events):
-        if sun_event.time <= current_time:
-            if closest_match_index is None:
-                closest_match_index = index
-            elif sun_event.time > sun_events[closest_match_index].time:
-                closest_match_index = index
-
-    # If we couldn't find a match for today, then we return the (next) day's first event
-    if closest_match_index is None:
-        # Find the days first event
+        # Find the event closest, but still in the future
+        closest_match_index = None
         for index, sun_event in enumerate(sun_events):
-            if closest_match_index is None:
-                closest_match_index = index
-            elif sun_event.time < sun_events[closest_match_index].time:
-                closest_match_index = index
+            if sun_event.start_time <= current_time:
+                if closest_match_index is None:
+                    closest_match_index = index
+                elif sun_event.start_time > sun_events[closest_match_index].start_time:
+                    closest_match_index = index
 
-    offset_index = closest_match_index + offset
+        # If we couldn't find a match for today, then we return the (next) day's first event
+        if closest_match_index is None:
+            # Find the days first event
+            for index, sun_event in enumerate(sun_events):
+                if closest_match_index is None:
+                    closest_match_index = index
+                elif sun_event.start_time < sun_events[closest_match_index].start_time:
+                    closest_match_index = index
 
-    # The % strips away any overshooting of the list length
-    return sun_events[offset_index % len(sun_events)]
+        offset_index = closest_match_index + offset
 
+        # The % strips away any overshooting of the list length
+        return sun_events[offset_index % len(sun_events)]
 
-def seconds_since_midnight() -> int:
-    """Returns the number of seconds since midnight"""
-    now = datetime.now()
-    return 27000
-    return (
-        now - now.replace(hour=0, minute=0, second=0, microsecond=0)
-    ).total_seconds()
+    async def apply_entity_states(self, entities, hass: HomeAssistant):
+        """Applies the entities states"""
+        for entity in entities:
+            service_type = SERVICE_TURN_ON
+            if "state" in entity:
+                if entity["state"] == "off":
+                    service_type = SERVICE_TURN_OFF
+                else:
+                    service_type = SERVICE_TURN_ON
+
+                del entity["state"]
+
+                # TODO: Find a better way
+                # entity.pop("state")
+
+            _LOGGER.debug("%s: 'service_data': %s", service_type, entity)
+
+            await hass.services.async_call(
+                domain=LIGHT_DOMAIN, service=service_type, service_data=entity
+            )
 
 
 class MissingConfiguration(HomeAssistantError):
     """Error to indicate there is missing configuration."""
 
 
-# Note: I wanted to match the ID, but problem is: the entity_id isn't available in scenes.yaml!? The only way to get it would be to
-# look up scene entities, where I'd probably get both scene.id and scene.entity_id, then match the scene.id to the scene.id from
-# the scenes.yaml file, AND THEN finally match ids and saturate the scenes.yaml data with entitiy ids. Which is too much work
-# and probably compute as well for me to bother right now...
-# All these IDs are very inconsistent and confusing: entity_id, unique_id and id? Really?
 def get_scene_by_id(scenes, id):
     """Searches through the supplied array after the supplied name. Then returns that."""
     if id is None:
@@ -331,40 +403,6 @@ def get_scene_by_id(scenes, id):
 
     raise MissingConfiguration(
         "Hey - you have to configure the extension first! A scene field is missing a value (or have an incorrect one set)"
-    )
-
-
-def get_scene_transition_progress_percent(current_sun_event, next_sun_event) -> int:
-    """Get a percentage value for how far into the transitioning between the from and to scene
-    we currently are."""
-    # Account for passing midnight
-    seconds_between_current_and_next_sun_events = None
-    seconds_till_next_sun_event = None
-
-    # If midnight is between the current and next sun events, do some special handling
-    if current_sun_event.time > next_sun_event.time:
-        # 86400 = 24 hours
-        # Takes the time left of the day + the time to the first sun_event the next day to
-        # calculate how many seconds it is between them.
-        seconds_between_current_and_next_sun_events = (
-            86400 - current_sun_event.time + next_sun_event.time
-        )
-    else:
-        seconds_between_current_and_next_sun_events = (
-            next_sun_event.time - current_sun_event.time
-        )
-
-    if seconds_since_midnight() > next_sun_event.time:
-        seconds_till_next_sun_event = (
-            86400 - seconds_since_midnight() + next_sun_event.time
-        )
-    else:
-        seconds_till_next_sun_event = next_sun_event.time - seconds_since_midnight()
-
-    return (
-        100
-        / seconds_between_current_and_next_sun_events
-        * (seconds_between_current_and_next_sun_events - seconds_till_next_sun_event)
     )
 
 
@@ -384,7 +422,7 @@ def get_extrapolated_entity_states(
     """Takes in a from and to scene and returns an a list of new entity states.
     The new states is the extrapolated state between the two scenes."""
 
-    _LOGGER.warning(
+    _LOGGER.debug(
         "from_scene: %s, to_scene: %s, scene_transition_progress_percent: %s",
         from_scene,
         to_scene,
@@ -401,7 +439,7 @@ def get_extrapolated_entity_states(
         # Match the current entity to the same entity in the to_scene
         for potentially_matching_to_entity_id in to_scene["entities"]:
             if from_entity_id == potentially_matching_to_entity_id:
-                # _LOGGER.info("Found " + from_entity_name + " in both the from and to scenes")
+                # _LOGGER.debug("Found " + from_entity_name + " in both the from and to scenes")
                 to_entity_id = potentially_matching_to_entity_id
                 break
             else:
@@ -423,8 +461,8 @@ def get_extrapolated_entity_states(
         # elif scene_transition_progress_percent >= 50:
         #     final_entity = to_entity
 
-        _LOGGER.warn("from_entity: %s", from_entity)
-        _LOGGER.error("to_entity: %s", to_entity)
+        _LOGGER.debug("from_entity: %s", from_entity)
+        _LOGGER.debug("to_entity: %s", to_entity)
 
         # Handle entities with brightness support
         if ATTR_BRIGHTNESS in from_entity:
@@ -499,12 +537,12 @@ def get_extrapolated_entity_states(
                 ),
             ]
 
-            # _LOGGER.info("From rgb: " + ", ".join(str(x) for x in rgb_from) + ", " + str(brightness_from) + ". To rgb: " + ", ".join(str(x) for x in rgb_to) + ", " + str(brightness_to))
-            _LOGGER.info("From:  %s", rgb_from + [from_entity[ATTR_BRIGHTNESS]])
-            _LOGGER.info(
+            # _LOGGER.debug("From rgb: " + ", ".join(str(x) for x in rgb_from) + ", " + str(brightness_from) + ". To rgb: " + ", ".join(str(x) for x in rgb_to) + ", " + str(brightness_to))
+            _LOGGER.debug("From:  %s", rgb_from + [from_entity[ATTR_BRIGHTNESS]])
+            _LOGGER.debug(
                 "Final: %s", rgb_extrapolated + [final_entity[ATTR_BRIGHTNESS]]
             )
-            _LOGGER.info("To:    %s", rgb_to + [to_entity[ATTR_BRIGHTNESS]])
+            _LOGGER.debug("To:    %s", rgb_to + [to_entity[ATTR_BRIGHTNESS]])
             final_entity[ATTR_RGB_COLOR] = rgb_extrapolated
 
         # Handle entities in HS mode
@@ -531,12 +569,14 @@ def get_extrapolated_entity_states(
                 ),
             ]
 
-            _LOGGER.info("From:  %s", hs_from + [from_entity[ATTR_BRIGHTNESS]])
-            _LOGGER.info("Final: %s", hs_extrapolated + [final_entity[ATTR_BRIGHTNESS]])
-            _LOGGER.info("To:    %s", hs_to + [to_entity[ATTR_BRIGHTNESS]])
+            _LOGGER.debug("From:  %s", hs_from + [from_entity[ATTR_BRIGHTNESS]])
+            _LOGGER.debug(
+                "Final: %s", hs_extrapolated + [final_entity[ATTR_BRIGHTNESS]]
+            )
+            _LOGGER.debug("To:    %s", hs_to + [to_entity[ATTR_BRIGHTNESS]])
             final_entity[ATTR_HS_COLOR] = hs_extrapolated
 
-        _LOGGER.warn("final_entity: %s", final_entity)
+        _LOGGER.debug("final_entity: %s", final_entity)
 
         entities_with_extrapolated_state.append(final_entity)
 
@@ -544,7 +584,8 @@ def get_extrapolated_entity_states(
 
 
 def extrapolate_value(from_value, to_value, scene_transition_progress_percent):
-    return (
+    # TODO: Should this abs be here? I just quick fixed an error with negative hs values
+    return abs(
         from_value
         - abs(from_value - to_value) * scene_transition_progress_percent / 100
     )
