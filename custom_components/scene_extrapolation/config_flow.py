@@ -233,6 +233,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         try:
             native_scenes = await get_native_scenes()
             native_scene_names = []
+            _LOGGER.error(native_scenes)
 
             for native_scene in native_scenes:
                 native_scene_names.append(native_scene["name"])
@@ -584,22 +585,27 @@ async def get_native_scenes(hass=None) -> list:
 
     # If we get the hass object supplied, we are also able to search for entity_ids and saturate the scenes with them.
     if hass:
-        scenes = saturate_with_entity_ids(scenes, hass)
+        scenes = saturate_data(scenes, hass)
 
     return scenes
 
 
-def saturate_with_entity_ids(scenes, hass):
+def saturate_data(scenes, hass: HomeAssistant):
     """Let's do stupid since Home Assistant is stupid... Meaning, we'll go get the scenes.yaml's scene's entity_ids manually, since they're not there for some reason. Only scene.id resides in scenes.yaml."""
     saturated_scenes = []
     ha_scenes = hass.states.async_all("scene")
+    entity_registry_instance = entity_registry.async_get(hass)
 
     for scene in scenes:
         # Loop through ha_scenes and match the ID in order to find the corresponding scene from the registry (which contains the entity_id we want)
         ha_scene = next(
             filter(lambda ha_scene: ha_scene.attributes["id"] == scene["id"], ha_scenes)
         )
+
+        # Let's do even more stupid and get the entity for the THIRD time (!) in order to saturate the data with the area ID, which isn't available in neither the scenes.yaml file OR in states
+        ha_entity = entity_registry_instance.async_get(ha_scene.entity_id)
         scene["entity_id"] = ha_scene.entity_id
+        scene["area_id"] = ha_entity.area_id
         saturated_scenes.append(scene)
 
     return saturated_scenes
