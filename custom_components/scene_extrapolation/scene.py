@@ -271,9 +271,11 @@ class ExtrapolationScene(Scene):
         )
 
         _LOGGER.debug(
-            "Current sun event: %s, next: %s, transition progress: %s, seconds since midnight: %s",
+            "Current sun event: %s (%s), next: %s (%s), transition progress: %s, seconds since midnight: %s",
             current_sun_event.name,
+            current_sun_event.scene["name"],
             next_sun_event.name,
+            next_sun_event.scene["name"],
             scene_transition_progress_percent,
             self.seconds_since_midnight(),
         )
@@ -412,9 +414,34 @@ def extrapolate_number(
     from_number, to_number, scene_transition_progress_percent
 ) -> int:
     """Takes the current transition percent plus a from and to number and returns what the new value should be"""
-    difference = from_number - to_number
-    transition_value = difference * scene_transition_progress_percent / 100
-    return round(from_number + transition_value)
+    difference = to_number - from_number
+    current_transition_difference = difference * scene_transition_progress_percent / 100
+    final_transition_value = round(from_number + current_transition_difference)
+
+    # If the extrapolated value is higher than both from and to_number, then something's wrong
+    # TODO: Remove this if the error doesn't pop up in the near future. Was just a wrong -/+ value...
+    if final_transition_value > from_number and final_transition_value > to_number:
+        _LOGGER.warning(
+            "Math is hard... From number: %s, to_number %s, extrapolated: %s, transition_percent: %s",
+            from_number,
+            to_number,
+            final_transition_value,
+            scene_transition_progress_percent,
+        )
+        raise HomeAssistantError("Extrapolation math error... Developer goes: Ugh...")
+
+    # Same, but if both are lower
+    if final_transition_value < from_number and final_transition_value < to_number:
+        _LOGGER.warning(
+            "Math is hard... From number: %s, to_number %s, extrapolated: %s, transition_percent: %s",
+            from_number,
+            to_number,
+            final_transition_value,
+            scene_transition_progress_percent,
+        )
+        raise HomeAssistantError("Extrapolation math error 2... Developer goes: Ugh...")
+
+    return final_transition_value
 
 
 # TODO: Check entity type and only extrapolate the supported ones
