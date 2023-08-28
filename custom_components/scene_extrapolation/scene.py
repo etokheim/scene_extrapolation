@@ -192,9 +192,14 @@ class ExtrapolationScene(Scene):
 
     async def async_activate(self):
         """Activate the scene."""
+        start_time = time.time()
 
         # Read and parse the scenes.yaml file
         scenes = await get_native_scenes(self.hass)
+
+        _LOGGER.debug(
+            "Time getting native scenes: %sms", (time.time() - start_time) * 1000
+        )
 
         # TODO: If the nightlights boolean is on, turn on the nightlights instead
 
@@ -255,6 +260,8 @@ class ExtrapolationScene(Scene):
             ),
         ]
 
+        start_time_sun_events = time.time()
+
         for sun_event in sun_events:
             _LOGGER.debug("%s: %s", sun_event.name, sun_event.start_time)
 
@@ -280,6 +287,13 @@ class ExtrapolationScene(Scene):
             self.seconds_since_midnight(),
         )
 
+        _LOGGER.debug(
+            "Time getting sun events (precalculated): %sms",
+            (time.time() - start_time_sun_events) * 1000,
+        )
+
+        start_time_extrapolation = time.time()
+
         # Calculate current light states
         new_entity_states = get_extrapolated_entity_states(
             current_sun_event.scene,
@@ -287,7 +301,21 @@ class ExtrapolationScene(Scene):
             scene_transition_progress_percent,
         )
 
+        _LOGGER.debug(
+            "Time extrapolating: %sms",
+            (time.time() - start_time_extrapolation) * 1000,
+        )
+
+        start_time_apply_states = time.time()
+
         await self.apply_entity_states(new_entity_states, self.hass)
+
+        _LOGGER.debug(
+            "Time applying states: %sms", (time.time() - start_time_apply_states) * 1000
+        )
+        _LOGGER.debug(
+            "Time total applying scene: %sms", (time.time() - start_time) * 1000
+        )
 
     def datetime_to_seconds_since_midnight(self, datetime):
         now = datetime.now(tz=pytz.timezone(self.hass.config.time_zone))
