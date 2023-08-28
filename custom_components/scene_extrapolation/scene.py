@@ -190,7 +190,7 @@ class ExtrapolationScene(Scene):
         """Return the unique ID of this scene."""
         return self._attr_unique_id
 
-    async def async_activate(self):
+    async def async_activate(self, transition=0):
         """Activate the scene."""
         start_time = time.time()
 
@@ -308,7 +308,7 @@ class ExtrapolationScene(Scene):
 
         start_time_apply_states = time.time()
 
-        await self.apply_entity_states(new_entity_states, self.hass)
+        await self.apply_entity_states(entities=new_entity_states, hass=self.hass, transition=transition)
 
         _LOGGER.debug(
             "Time applying states: %sms", (time.time() - start_time_apply_states) * 1000
@@ -396,7 +396,7 @@ class ExtrapolationScene(Scene):
         # The % strips away any overshooting of the list length
         return sun_events[offset_index % len(sun_events)]
 
-    async def apply_entity_states(self, entities, hass: HomeAssistant):
+    async def apply_entity_states(self, entities, hass: HomeAssistant, transition=0):
         """Applies the entities states"""
         for entity in entities:
             service_type = SERVICE_TURN_ON
@@ -410,6 +410,8 @@ class ExtrapolationScene(Scene):
 
                 # TODO: Find a better way
                 # entity.pop("state")
+
+            entity[ATTR_TRANSITION] = transition
 
             _LOGGER.debug("%s: 'service_data': %s", service_type, entity)
 
