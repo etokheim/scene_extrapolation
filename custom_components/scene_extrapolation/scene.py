@@ -275,7 +275,7 @@ class ExtrapolationScene(Scene):
         next_sun_event = self.get_sun_event(offset=1, sun_events=sun_events)
 
         scene_transition_progress_percent = self.get_scene_transition_progress_percent(
-            current_sun_event, next_sun_event
+            current_sun_event, next_sun_event, transition_time=transition
         )
 
         _LOGGER.debug(
