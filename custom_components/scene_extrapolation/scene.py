@@ -295,7 +295,7 @@ class ExtrapolationScene(Scene):
 
         start_time_extrapolation = time.time()
 
-        # Calculate current light states
+        # Calculate new light states
         new_entity_states = get_extrapolated_entity_states(
             current_sun_event.scene,
             next_sun_event.scene,
@@ -309,7 +309,9 @@ class ExtrapolationScene(Scene):
 
         start_time_apply_states = time.time()
 
-        await self.apply_entity_states(entities=new_entity_states, hass=self.hass, transition=transition)
+        await self.apply_entity_states(
+            entities=new_entity_states, hass=self.hass, transition=transition
+        )
 
         _LOGGER.debug(
             "Time applying states: %sms", (time.time() - start_time_apply_states) * 1000
@@ -359,7 +361,8 @@ class ExtrapolationScene(Scene):
             / seconds_between_current_and_next_sun_events
             * (
                 seconds_between_current_and_next_sun_events
-                - seconds_till_next_sun_event + transition_time
+                - seconds_till_next_sun_event
+                + transition_time
             )
         )
 
@@ -475,45 +478,50 @@ def extrapolate_number(
     return final_transition_value
 
 
-# TODO: Check entity type and only extrapolate the supported ones
+def get_entity_from_list(entity_id, entities):
+    """Finds the entity matching the supplied entity_id and returns it"""
+    _LOGGER.debug("entity_id: %s", entity_id)
+    _LOGGER.debug("entities: %s", entities)
+    # Match the current entity to the same entity in the to_scene
+    for potentially_matching_to_entity_id in entities:
+        if entity_id == potentially_matching_to_entity_id:
+            # _LOGGER.debug("Found " + from_entity_name + " in both the from and to scenes")
+            _LOGGER.debug("Found a match!: %s", potentially_matching_to_entity_id)
+            return potentially_matching_to_entity_id
+
+    return False
+
+
 def get_extrapolated_entity_states(
     from_scene, to_scene, scene_transition_progress_percent
 ) -> list:
     """Takes in a from and to scene and returns an a list of new entity states.
     The new states is the extrapolated state between the two scenes."""
 
+    _LOGGER.debug("from_scene: %s", from_scene)
+
+    _LOGGER.debug("to_scene: %s", to_scene)
+
     _LOGGER.debug(
-        "from_scene: %s, to_scene: %s, scene_transition_progress_percent: %s",
-        from_scene,
-        to_scene,
-        scene_transition_progress_percent,
+        "scene_transition_progress_percent: %s", scene_transition_progress_percent
     )
 
     entities_with_extrapolated_state = []
 
     for from_entity_id in from_scene["entities"]:
         from_entity = from_scene["entities"][from_entity_id]
-        to_entity_id = None
+        to_entity_id = get_entity_from_list(from_entity_id, to_scene["entities"])
         final_entity = {ATTR_ENTITY_ID: from_entity_id}
 
-        # Match the current entity to the same entity in the to_scene
-        for potentially_matching_to_entity_id in to_scene["entities"]:
-            if from_entity_id == potentially_matching_to_entity_id:
-                # _LOGGER.debug("Found " + from_entity_name + " in both the from and to scenes")
-                to_entity_id = potentially_matching_to_entity_id
-                break
-            else:
-                # TODO: turn into .debug at some point
-                _LOGGER.debug(
-                    "Couldn't find "
-                    + from_entity_id
-                    + " in the scene we are extrapolating to. Assuming it should be turned off."
-                )
-                to_entity_id = False
-
+        # Assign to_entity
         if to_entity_id is not False:
             to_entity = to_scene["entities"][to_entity_id]
         else:
+            _LOGGER.debug(
+                "Couldn't find "
+                + from_entity_id
+                + " in the scene we are extrapolating to. Assuming it should be turned off."
+            )
             to_entity = (
                 {}
             )  # Let's not do all the checking for wether to_entity is defined
@@ -622,7 +630,9 @@ def get_extrapolated_entity_states(
             _LOGGER.debug(
                 "From color_temp:  %s / %s",
                 from_color_temp,
-                from_entity[ATTR_BRIGHTNESS],
+                from_entity[ATTR_BRIGHTNESS]
+                if ATTR_BRIGHTNESS in from_entity
+                else None,
             )
             _LOGGER.debug(
                 "Final color_temp: %s / %s",
@@ -630,7 +640,9 @@ def get_extrapolated_entity_states(
                 final_entity[ATTR_BRIGHTNESS],
             )
             _LOGGER.debug(
-                "To color_temp:    %s / %s", to_color_temp, to_entity[ATTR_BRIGHTNESS]
+                "To color_temp:    %s / %s",
+                to_color_temp,
+                to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
             )
 
             final_entity[ATTR_COLOR_TEMP] = final_color_temp
@@ -664,7 +676,9 @@ def get_extrapolated_entity_states(
             _LOGGER.debug(
                 "From:  %s / %s",
                 from_color_temp_kelvin,
-                from_entity[ATTR_BRIGHTNESS],
+                from_entity[ATTR_BRIGHTNESS]
+                if ATTR_BRIGHTNESS in from_entity
+                else None,
             )
             _LOGGER.debug(
                 "Final: %s / %s",
@@ -674,7 +688,7 @@ def get_extrapolated_entity_states(
             _LOGGER.debug(
                 "To:    %s / %s",
                 to_color_temp_kelvin,
-                to_entity[ATTR_BRIGHTNESS],
+                to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
             )
 
             final_entity[ATTR_COLOR_TEMP_KELVIN] = final_color_temp_kelvin
@@ -711,11 +725,21 @@ def get_extrapolated_entity_states(
                 ),
             ]
 
-            _LOGGER.debug("From:  %s / %s", from_rgb, from_entity[ATTR_BRIGHTNESS])
+            _LOGGER.debug(
+                "From:  %s / %s",
+                from_rgb,
+                from_entity[ATTR_BRIGHTNESS]
+                if ATTR_BRIGHTNESS in from_entity
+                else None,
+            )
             _LOGGER.debug(
                 "Final: %s / %s", rgb_extrapolated, final_entity[ATTR_BRIGHTNESS]
             )
-            _LOGGER.debug("To:    %s / %s", to_rgb, to_entity[ATTR_BRIGHTNESS])
+            _LOGGER.debug(
+                "To:    %s / %s",
+                to_rgb,
+                to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
+            )
 
             final_entity[ATTR_RGB_COLOR] = rgb_extrapolated
 
@@ -752,9 +776,19 @@ def get_extrapolated_entity_states(
                 ),
             ]
 
-            _LOGGER.debug("From HS:  %s / %s", from_hs, from_entity[ATTR_BRIGHTNESS])
+            _LOGGER.debug(
+                "From HS:  %s / %s",
+                from_hs,
+                from_entity[ATTR_BRIGHTNESS]
+                if ATTR_BRIGHTNESS in from_entity
+                else None,
+            )
             _LOGGER.debug("Final HS: %s / %s", final_hs, final_entity[ATTR_BRIGHTNESS])
-            _LOGGER.debug("To HS:    %s / %s", to_hs, to_entity[ATTR_BRIGHTNESS])
+            _LOGGER.debug(
+                "To HS:    %s / %s",
+                to_hs,
+                to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
+            )
 
             final_entity[ATTR_HS_COLOR] = final_hs
 
