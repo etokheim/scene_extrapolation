@@ -154,12 +154,13 @@ class ExtrapolationScene(Scene):
             date=datetime.now(tz=pytz.timezone(time_zone)),
         )
 
-        time_at_10deg = time_at_elevation(
-            city.observer,
-            elevation=10,
-            direction=SunDirection.RISING,
-            date=datetime.now(tz=pytz.timezone(time_zone)),
-        )
+        # Crashes when the sun doesn't reach 10 degrees
+        # time_at_10deg = time_at_elevation(
+        #     city.observer,
+        #     elevation=10,
+        #     direction=SunDirection.RISING,
+        #     date=datetime.now(tz=pytz.timezone(time_zone)),
+        # )
 
         hass.async_add_executor_job(self.update_registry)
 
@@ -323,7 +324,7 @@ class ExtrapolationScene(Scene):
         return (datetime - midnight).seconds
 
     def get_scene_transition_progress_percent(
-        self, current_sun_event, next_sun_event
+        self, current_sun_event, next_sun_event, transition_time
     ) -> int:
         """Get a percentage value for how far into the transitioning between the from and to scene
         we currently are."""
@@ -358,7 +359,7 @@ class ExtrapolationScene(Scene):
             / seconds_between_current_and_next_sun_events
             * (
                 seconds_between_current_and_next_sun_events
-                - seconds_till_next_sun_event
+                - seconds_till_next_sun_event + transition_time
             )
         )
 
