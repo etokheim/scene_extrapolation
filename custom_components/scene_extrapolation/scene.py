@@ -69,6 +69,7 @@ from homeassistant.const import (
 
 from .const import (
     DOMAIN,
+    SCENE_DAWN_MINIMUM_TIME_OF_DAY,
     SCENE_NAME,
     SCENE_NIGHT_RISING_NAME,
     SCENE_NIGHT_RISING_ID,
@@ -248,9 +249,12 @@ class ExtrapolationScene(Scene):
                 scene=get_scene_by_uuid(
                     scenes, self.config_entry.options.get(SCENE_DUSK_ID)
                 ),
-                start_time=self.datetime_to_seconds_since_midnight(
-                    self.solar_events["dusk"]
-                ),
+                start_time=max(
+                    self.datetime_to_seconds_since_midnight(
+                        self.solar_events["dusk"]
+                    ),
+                    self.config_entry.options.get(SCENE_DAWN_MINIMUM_TIME_OF_DAY)
+                )
             ),
             SunEvent(
                 name=SCENE_NIGHT_SETTING_NAME,
