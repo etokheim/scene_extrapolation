@@ -1,5 +1,6 @@
 """Config flow for Scene Extrapolation integration."""
 from __future__ import annotations
+from datetime import datetime, timedelta
 
 import logging
 import os
@@ -53,6 +54,7 @@ from .const import (
     SCENE_DAY_SETTING_ID,
     SCENE_DUSK_NAME,
     SCENE_DUSK_ID,
+    SCENE_DAWN_MINIMUM_TIME_OF_DAY,
     SCENE_NIGHT_SETTING_NAME,
     SCENE_NIGHT_SETTING_ID,
     AREA_NAME,
@@ -132,7 +134,21 @@ async def validate_input(
         nightlights_boolean = boolean[boolean_name_index]
         data_to_store[NIGHTLIGHTS_BOOLEAN_ID] = nightlights_boolean.entity_id
 
+    if SCENE_DAWN_MINIMUM_TIME_OF_DAY in user_input:
+        # Convert the 24 hour time string to seconds
+        time_object = datetime.strptime(
+            user_input[SCENE_DAWN_MINIMUM_TIME_OF_DAY], "%H:%M:%S"
+        )
+        seconds = timedelta(
+            hours=time_object.hour,
+            minutes=time_object.minute,
+            seconds=time_object.second,
+        ).total_seconds()
+
+        data_to_store[SCENE_DAWN_MINIMUM_TIME_OF_DAY] = seconds
+
     # Return info that you want to store in the config entry.
+    _LOGGER.info("supplied data: %s", user_input)
     _LOGGER.info("data_to_store: %s", data_to_store)
     return data_to_store
 
@@ -321,6 +337,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
+                    vol.Optional(
+                        SCENE_DAWN_MINIMUM_TIME_OF_DAY, default="22:00:00"
+                    ): selector.TimeSelector(selector.TimeSelectorConfig()),
                     vol.Required(
                         SCENE_NIGHT_SETTING_NAME,
                         default=get_scene_name_by_entity_id(

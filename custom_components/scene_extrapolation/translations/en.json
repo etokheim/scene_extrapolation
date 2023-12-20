@@ -36,6 +36,7 @@
           "scene_day_rising_name": "Day rising scene",
           "scene_day_setting_name": "Day setting scene",
           "scene_dusk_name": "Dusk scene",
+          "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene",
           "scene_night_setting_name": "Night setting scene",
           "scene_nightlights_name": "Nightlights scene",
           "nightlights_boolean_name": "Turn on nightlights scene instead when this in on",
