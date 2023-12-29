@@ -518,6 +518,8 @@ async def extrapolate_entities(
         else:
             final_color_mode = from_entity[COLOR_MODE]
 
+        _LOGGER.debug("final_color_mode: %s", final_color_mode)
+
         if ATTR_BRIGHTNESS in from_entity or ATTR_BRIGHTNESS in to_entity:
             final_entity[ATTR_BRIGHTNESS] = extrapolate_brightness(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
@@ -571,6 +573,15 @@ def extrapolate_number(
     from_number, to_number, scene_transition_progress_percent
 ) -> int:
     """Takes the current transition percent plus a from and to number and returns what the new value should be"""
+    # Make sure the input is as it should be
+    # TODO: This should only be temporary - figure out why values sometimes are bad
+    if not isinstance(from_number, numbers.Number):
+        _LOGGER.error("Trying to extrapolate a value that's not a number! %s", from_number)
+        from_number = to_number
+    elif not isinstance(to_number, numbers.Number):
+        _LOGGER.error("Trying to extrapolate a value that's not a number! %s", to_number)
+        to_number = from_number
+
     difference = to_number - from_number
     current_transition_difference = difference * scene_transition_progress_percent / 100
     final_transition_value = round(from_number + current_transition_difference)
