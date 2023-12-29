@@ -497,15 +497,20 @@ async def extrapolate_entities(
         _LOGGER.debug("from_entity: %s", from_entity)
         _LOGGER.debug("to_entity: %s", to_entity)
 
-        # Find the color mode we need to extrapolate
         # First, let's make sure there's always a color mode to extrapolate. If from_entity or to_entity is missing a
         # color mode, we'll set it to the other's color mode
         if not ATTR_COLOR_MODE in from_entity:
-            # Raise an exception if none of the entities have a color mode
+            # Raise an exception if none of the entities have a color mode (or is an on/off entity)
             if not ATTR_COLOR_MODE in to_entity:
-                raise HomeAssistantError(
-                    "Both the from and to entities are missing a color mode. I didn't think this could happen, but if it can, please report it and I'll add some handing."
-                )
+                # Ie. some of the IKEA Wall Plugs doesn't always return a color_mode, so let's just hack it in
+                if ATTR_STATE in to_entity or ATTR_STATE in from_entity:
+                    to_entity[ATTR_STATE] = COLOR_MODE_ONOFF
+                    from_entity[ATTR_STATE] = COLOR_MODE_ONOFF
+
+                else:
+                    raise HomeAssistantError(
+                        "Both the from and to entities are missing a color mode (while not an on/off entity). I didn't think this could happen, but if it can, please report it and I'll add some handing."
+                    )
 
             from_entity[COLOR_MODE] = to_entity[COLOR_MODE]
 
@@ -576,10 +581,14 @@ def extrapolate_number(
     # Make sure the input is as it should be
     # TODO: This should only be temporary - figure out why values sometimes are bad
     if not isinstance(from_number, numbers.Number):
-        _LOGGER.error("Trying to extrapolate a value that's not a number! %s", from_number)
+        _LOGGER.error(
+            "Trying to extrapolate a value that's not a number! %s", from_number
+        )
         from_number = to_number
     elif not isinstance(to_number, numbers.Number):
-        _LOGGER.error("Trying to extrapolate a value that's not a number! %s", to_number)
+        _LOGGER.error(
+            "Trying to extrapolate a value that's not a number! %s", to_number
+        )
         to_number = from_number
 
     difference = to_number - from_number
