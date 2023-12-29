@@ -3,6 +3,7 @@ Create a scene entity which when activated calculates the appropriate lighting b
 """
 import logging
 from datetime import datetime
+import numbers
 import time
 from astral.sun import sun, time_at_elevation, midnight
 from astral import LocationInfo, SunDirection
@@ -204,7 +205,8 @@ class ExtrapolationScene(Scene):
 
         # TODO: If the nightlights boolean is on, turn on the nightlights instead
 
-        # TODO: Automatically get the times for the next solar events
+        scene_dawn_minimum_time_of_day = self.config_entry.options.get(SCENE_DAWN_MINIMUM_TIME_OF_DAY)
+        assert isinstance(scene_dawn_minimum_time_of_day, numbers.Number), "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
 
         sun_events = [
             SunEvent(
@@ -252,7 +254,7 @@ class ExtrapolationScene(Scene):
                     self.datetime_to_seconds_since_midnight(
                         self.solar_events["dusk"]
                     ),
-                    self.config_entry.options.get(SCENE_DAWN_MINIMUM_TIME_OF_DAY)
+                    scene_dawn_minimum_time_of_day
                 )
             ),
             SunEvent(
@@ -260,7 +262,7 @@ class ExtrapolationScene(Scene):
                 scene=get_scene_by_uuid(
                     scenes, self.config_entry.options.get(SCENE_NIGHT_SETTING_ID)
                 ),
-                start_time=86400,  # 00:00
+                start_time=86400,  # 00:00 - TODO: Find a better way to do this, rather than hard coding the time
             ),
         ]
 
