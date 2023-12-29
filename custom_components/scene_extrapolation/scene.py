@@ -87,7 +87,6 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-
 # pylint: disable=unused-argument
 async def async_setup_entry(
     hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: bool
@@ -436,7 +435,7 @@ def get_scene_by_uuid(scenes, uuid):
     """Searches through the supplied array after the supplied scene uuid. Then returns that."""
     if uuid is None:
         raise HomeAssistantError(
-            "Developer goes: Ehhh... Something's wrong. I'm searching for an non-existant uuid..."
+            "Developer goes: Ehhh... Something's wrong. I'm searching for an non-existant uuid... You've probably deleted one of the configured scenes. Please reconfigure the integration."
         )
 
     for scene in scenes:
@@ -533,6 +532,28 @@ def get_extrapolated_entity_states(
         _LOGGER.debug("from_entity: %s", from_entity)
         _LOGGER.debug("to_entity: %s", to_entity)
 
+        # Find the color mode we need to extrapolate
+        # First, let's make sure there's always a color mode to extrapolate. If from_entity or to_entity is missing a
+        # color mode, we'll set it to the other's color mode
+        if not ATTR_COLOR_MODE in from_entity:
+            # Raise an exception if none of the entities have a color mode
+            if not ATTR_COLOR_MODE in to_entity:
+                raise HomeAssistantError(
+                    "Both the from and to entities are missing a color mode. I didn't think this could happen, but if it can, please report it and I'll add some handing."
+                )
+
+            from_entity[COLOR_MODE] = to_entity[COLOR_MODE]
+
+        elif not ATTR_COLOR_MODE in to_entity:
+            to_entity[COLOR_MODE] = from_entity[COLOR_MODE]
+
+        # Set the color mode we're actually going to extrapolate
+        if scene_transition_progress_percent >= 50:
+            final_entity[COLOR_MODE] = to_entity[COLOR_MODE]
+        else:
+            final_entity[COLOR_MODE] = from_entity[COLOR_MODE]
+
+
         # Handle entities with brightness support
         if ATTR_BRIGHTNESS in from_entity or ATTR_BRIGHTNESS in to_entity:
             # There isn't always a brightness attribute in the to_entity (ie. if it's turned off or the like)
@@ -552,249 +573,20 @@ def get_extrapolated_entity_states(
 
             final_entity[ATTR_BRIGHTNESS] = final_brightness
 
-        # TODO: There must be a cleaner way to do this?
-        # Quick fix to make sure there is a color mode on the from/to entities, so we don't have to keep checking for one
-        if not ATTR_COLOR_MODE in from_entity:
-            from_entity[COLOR_MODE] = ""
+        if (from_entity[COLOR_MODE] == COLOR_MODE_ONOFF):
+            final_entity[ATTR_STATE] = extrapolate_onoff(from_entity, to_entity, final_entity, scene_transition_progress_percent)
 
-        if not ATTR_COLOR_MODE in to_entity:
-            to_entity[COLOR_MODE] = ""
+        elif (from_entity[COLOR_MODE] == ATTR_COLOR_TEMP):
+            final_entity[ATTR_COLOR_TEMP] = extrapolate_color_temp(from_entity, to_entity, final_entity, scene_transition_progress_percent)
 
-        # TODO: Is there a better way to do this?
-        # Force the same color mode between from and to extrapolation.
-        # We use from entity's color mode if the transition is less than half finished, else use the to_entity's color mode.
-        if scene_transition_progress_percent >= 50:
-            to_entity[COLOR_MODE] = from_entity[COLOR_MODE]
-        else:
-            from_entity[COLOR_MODE] = to_entity[COLOR_MODE]
+        elif (final_entity[COLOR_MODE] == ATTR_COLOR_TEMP_KELVIN):
+            final_entity[ATTR_COLOR_TEMP_KELVIN] = extrapolate_temp_kelvin(from_entity, to_entity, final_entity, scene_transition_progress_percent)
 
-        if (
-            from_entity[COLOR_MODE] == COLOR_MODE_ONOFF
-            or to_entity[COLOR_MODE] == COLOR_MODE_ONOFF
-        ):
-            from_state = (
-                from_entity[ATTR_STATE]
-                if ATTR_STATE in from_entity
-                else to_entity[ATTR_STATE]
-            )
+        elif (final_entity[COLOR_MODE] == ATTR_RGB_COLOR):
+            final_entity[ATTR_RGB_COLOR] = extrapolate_rgb(from_entity, to_entity, final_entity, scene_transition_progress_percent)
 
-            to_state = (
-                to_entity[ATTR_STATE]
-                if ATTR_STATE in to_entity
-                else from_entity[ATTR_STATE]
-            )
-
-            if (
-                scene_transition_progress_percent >= 50
-                and from_state == STATE_ON
-                and to_state
-            ):
-                final_state = STATE_OFF
-            elif (
-                scene_transition_progress_percent >= 50
-                and from_state == STATE_OFF
-                and to_state
-            ):
-                final_state = STATE_ON
-            else:
-                final_state = from_state
-
-            final_entity[ATTR_STATE] = final_state
-
-            _LOGGER.debug("From state:  %s", from_state)
-            _LOGGER.debug("Final state: %s", final_state)
-            _LOGGER.debug("To state:    %s", to_state)
-
-        if (
-            from_entity[COLOR_MODE] == ATTR_COLOR_TEMP
-            or to_entity[COLOR_MODE] == ATTR_COLOR_TEMP
-        ):
-            from_color_temp = (
-                from_entity[ATTR_COLOR_TEMP]
-                if ATTR_COLOR_TEMP in from_entity
-                else to_entity[
-                    ATTR_COLOR_TEMP
-                ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
-            )
-
-            to_color_temp = (
-                to_entity[ATTR_COLOR_TEMP]
-                if ATTR_COLOR_TEMP in to_entity
-                else from_entity[
-                    ATTR_COLOR_TEMP
-                ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
-            )
-
-            final_color_temp = extrapolate_number(
-                from_color_temp,
-                to_color_temp,
-                scene_transition_progress_percent,
-            )
-
-            _LOGGER.debug(
-                "From color_temp:  %s / %s",
-                from_color_temp,
-                from_entity[ATTR_BRIGHTNESS]
-                if ATTR_BRIGHTNESS in from_entity
-                else None,
-            )
-            _LOGGER.debug(
-                "Final color_temp: %s / %s",
-                final_color_temp,
-                final_entity[ATTR_BRIGHTNESS],
-            )
-            _LOGGER.debug(
-                "To color_temp:    %s / %s",
-                to_color_temp,
-                to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
-            )
-
-            final_entity[ATTR_COLOR_TEMP] = final_color_temp
-
-        if (
-            from_entity[COLOR_MODE] == ATTR_COLOR_TEMP_KELVIN
-            or to_entity[COLOR_MODE] == ATTR_COLOR_TEMP_KELVIN
-        ):
-            from_color_temp_kelvin = (
-                from_entity[ATTR_COLOR_TEMP_KELVIN]
-                if ATTR_COLOR_TEMP_KELVIN in from_entity
-                else to_entity[
-                    ATTR_COLOR_TEMP_KELVIN
-                ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
-            )
-
-            to_color_temp_kelvin = (
-                to_entity[ATTR_COLOR_TEMP_KELVIN]
-                if ATTR_COLOR_TEMP_KELVIN in to_entity
-                else from_entity[
-                    ATTR_COLOR_TEMP_KELVIN
-                ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
-            )
-
-            final_color_temp_kelvin = extrapolate_number(
-                from_color_temp_kelvin,
-                to_color_temp_kelvin,
-                scene_transition_progress_percent,
-            )
-
-            _LOGGER.debug(
-                "From:  %s / %s",
-                from_color_temp_kelvin,
-                from_entity[ATTR_BRIGHTNESS]
-                if ATTR_BRIGHTNESS in from_entity
-                else None,
-            )
-            _LOGGER.debug(
-                "Final: %s / %s",
-                final_color_temp_kelvin,
-                final_entity[ATTR_BRIGHTNESS],
-            )
-            _LOGGER.debug(
-                "To:    %s / %s",
-                to_color_temp_kelvin,
-                to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
-            )
-
-            final_entity[ATTR_COLOR_TEMP_KELVIN] = final_color_temp_kelvin
-
-        if (
-            from_entity[COLOR_MODE] == ATTR_RGB_COLOR
-            or to_entity[COLOR_MODE] == ATTR_RGB_COLOR
-        ):
-            from_rgb = (
-                from_entity[ATTR_RGB_COLOR]
-                if ATTR_RGB_COLOR in from_entity
-                else to_entity[
-                    ATTR_RGB_COLOR
-                ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
-            )
-
-            to_rgb = (
-                to_entity[ATTR_RGB_COLOR]
-                if ATTR_RGB_COLOR in to_entity
-                else from_entity[
-                    ATTR_RGB_COLOR
-                ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
-            )
-
-            rgb_extrapolated = [
-                extrapolate_value(
-                    from_rgb[0], to_rgb[0], scene_transition_progress_percent
-                ),
-                extrapolate_value(
-                    from_rgb[1], to_rgb[1], scene_transition_progress_percent
-                ),
-                extrapolate_value(
-                    from_rgb[2], to_rgb[2], scene_transition_progress_percent
-                ),
-            ]
-
-            _LOGGER.debug(
-                "From:  %s / %s",
-                from_rgb,
-                from_entity[ATTR_BRIGHTNESS]
-                if ATTR_BRIGHTNESS in from_entity
-                else None,
-            )
-            _LOGGER.debug(
-                "Final: %s / %s", rgb_extrapolated, final_entity[ATTR_BRIGHTNESS]
-            )
-            _LOGGER.debug(
-                "To:    %s / %s",
-                to_rgb,
-                to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
-            )
-
-            final_entity[ATTR_RGB_COLOR] = rgb_extrapolated
-
-        if (
-            from_entity[COLOR_MODE] == COLOR_MODE_HS
-            or to_entity[COLOR_MODE] == COLOR_MODE_HS
-        ):
-            from_hs = (
-                from_entity[ATTR_HS_COLOR]
-                if ATTR_HS_COLOR in from_entity
-                else to_entity[
-                    ATTR_HS_COLOR
-                ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
-            )
-
-            to_hs = (
-                to_entity[ATTR_HS_COLOR]
-                if ATTR_HS_COLOR in to_entity
-                else from_entity[
-                    ATTR_HS_COLOR
-                ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
-            )
-
-            # Calculate what the current color should be
-            # The if statement checks whether the result tried to divide by zero, which throws an
-            # error, if so, we know that the from and to values are the same, and we can fall back
-            # to the from value
-            final_hs = [
-                extrapolate_value(
-                    from_hs[0], to_hs[0], scene_transition_progress_percent
-                ),
-                extrapolate_value(
-                    from_hs[1], to_hs[1], scene_transition_progress_percent
-                ),
-            ]
-
-            _LOGGER.debug(
-                "From HS:  %s / %s",
-                from_hs,
-                from_entity[ATTR_BRIGHTNESS]
-                if ATTR_BRIGHTNESS in from_entity
-                else None,
-            )
-            _LOGGER.debug("Final HS: %s / %s", final_hs, final_entity[ATTR_BRIGHTNESS])
-            _LOGGER.debug(
-                "To HS:    %s / %s",
-                to_hs,
-                to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
-            )
-
-            final_entity[ATTR_HS_COLOR] = final_hs
+        elif (final_entity[COLOR_MODE] == COLOR_MODE_HS):
+            final_entity[ATTR_HS_COLOR] = extrapolate_hs(from_entity, to_entity, final_entity, scene_transition_progress_percent)
 
         _LOGGER.debug("final_entity: %s", final_entity)
 
@@ -809,3 +601,217 @@ def extrapolate_value(from_value, to_value, scene_transition_progress_percent):
         from_value
         - abs(from_value - to_value) * scene_transition_progress_percent / 100
     )
+
+def extrapolate_onoff(from_entity, to_entity, final_entity, scene_transition_progress_percent ):
+    from_state = (
+        from_entity[ATTR_STATE]
+        if ATTR_STATE in from_entity
+        else to_entity[ATTR_STATE]
+    )
+
+    to_state = (
+        to_entity[ATTR_STATE]
+        if ATTR_STATE in to_entity
+        else from_entity[ATTR_STATE]
+    )
+
+    if (
+        scene_transition_progress_percent >= 50
+        and from_state == STATE_ON
+        and to_state
+    ):
+        final_state = STATE_OFF
+    elif (
+        scene_transition_progress_percent >= 50
+        and from_state == STATE_OFF
+        and to_state
+    ):
+        final_state = STATE_ON
+    else:
+        final_state = from_state
+
+    _LOGGER.debug("From state:  %s", from_state)
+    _LOGGER.debug("Final state: %s", final_state)
+    _LOGGER.debug("To state:    %s", to_state)
+
+    return final_state
+
+def extrapolate_color_temp(from_entity, to_entity, final_entity, scene_transition_progress_percent):
+    from_color_temp = (
+        from_entity[ATTR_COLOR_TEMP]
+        if ATTR_COLOR_TEMP in from_entity
+        else to_entity[
+            ATTR_COLOR_TEMP
+        ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
+    )
+
+    to_color_temp = (
+        to_entity[ATTR_COLOR_TEMP]
+        if ATTR_COLOR_TEMP in to_entity
+        else from_entity[
+            ATTR_COLOR_TEMP
+        ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
+    )
+
+    final_color_temp = extrapolate_number(
+        from_color_temp,
+        to_color_temp,
+        scene_transition_progress_percent,
+    )
+
+    _LOGGER.debug(
+        "From color_temp:  %s / %s",
+        from_color_temp,
+        from_entity[ATTR_BRIGHTNESS]
+        if ATTR_BRIGHTNESS in from_entity
+        else None,
+    )
+    _LOGGER.debug(
+        "Final color_temp: %s / %s",
+        final_color_temp,
+        final_entity[ATTR_BRIGHTNESS],
+    )
+    _LOGGER.debug(
+        "To color_temp:    %s / %s",
+        to_color_temp,
+        to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
+    )
+
+    return final_color_temp
+
+def extrapolate_temp_kelvin(from_entity, to_entity, final_entity, scene_transition_progress_percent):
+    from_color_temp_kelvin = (
+        from_entity[ATTR_COLOR_TEMP_KELVIN]
+        if ATTR_COLOR_TEMP_KELVIN in from_entity
+        else to_entity[
+            ATTR_COLOR_TEMP_KELVIN
+        ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
+    )
+
+    to_color_temp_kelvin = (
+        to_entity[ATTR_COLOR_TEMP_KELVIN]
+        if ATTR_COLOR_TEMP_KELVIN in to_entity
+        else from_entity[
+            ATTR_COLOR_TEMP_KELVIN
+        ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
+    )
+
+    final_color_temp_kelvin = extrapolate_number(
+        from_color_temp_kelvin,
+        to_color_temp_kelvin,
+        scene_transition_progress_percent,
+    )
+
+    _LOGGER.debug(
+        "From:  %s / %s",
+        from_color_temp_kelvin,
+        from_entity[ATTR_BRIGHTNESS]
+        if ATTR_BRIGHTNESS in from_entity
+        else None,
+    )
+    _LOGGER.debug(
+        "Final: %s / %s",
+        final_color_temp_kelvin,
+        final_entity[ATTR_BRIGHTNESS],
+    )
+    _LOGGER.debug(
+        "To:    %s / %s",
+        to_color_temp_kelvin,
+        to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
+    )
+
+    return final_color_temp_kelvin
+
+def extrapolate_rgb(from_entity, to_entity, final_entity, scene_transition_progress_percent):
+    from_rgb = (
+        from_entity[ATTR_RGB_COLOR]
+        if ATTR_RGB_COLOR in from_entity
+        else to_entity[
+            ATTR_RGB_COLOR
+        ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
+    )
+
+    to_rgb = (
+        to_entity[ATTR_RGB_COLOR]
+        if ATTR_RGB_COLOR in to_entity
+        else from_entity[
+            ATTR_RGB_COLOR
+        ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
+    )
+
+    rgb_extrapolated = [
+        extrapolate_value(
+            from_rgb[0], to_rgb[0], scene_transition_progress_percent
+        ),
+        extrapolate_value(
+            from_rgb[1], to_rgb[1], scene_transition_progress_percent
+        ),
+        extrapolate_value(
+            from_rgb[2], to_rgb[2], scene_transition_progress_percent
+        ),
+    ]
+
+    _LOGGER.debug(
+        "From:  %s / %s",
+        from_rgb,
+        from_entity[ATTR_BRIGHTNESS]
+        if ATTR_BRIGHTNESS in from_entity
+        else None,
+    )
+    _LOGGER.debug(
+        "Final: %s / %s", rgb_extrapolated, final_entity[ATTR_BRIGHTNESS]
+    )
+    _LOGGER.debug(
+        "To:    %s / %s",
+        to_rgb,
+        to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
+    )
+
+    return rgb_extrapolated
+
+
+def extrapolate_hs(from_entity, to_entity, final_entity, scene_transition_progress_percent):
+    from_hs = (
+        from_entity[ATTR_HS_COLOR]
+        if ATTR_HS_COLOR in from_entity
+        else to_entity[
+            ATTR_HS_COLOR
+        ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
+    )
+
+    to_hs = (
+        to_entity[ATTR_HS_COLOR]
+        if ATTR_HS_COLOR in to_entity
+        else from_entity[
+            ATTR_HS_COLOR
+        ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
+    )
+
+    # Calculate what the current color should be
+    # The if statement checks whether the result tried to divide by zero, which throws an
+    # error, if so, we know that the from and to values are the same, and we can fall back
+    # to the from value
+    final_hs = [
+        extrapolate_value(
+            from_hs[0], to_hs[0], scene_transition_progress_percent
+        ),
+        extrapolate_value(
+            from_hs[1], to_hs[1], scene_transition_progress_percent
+        ),
+    ]
+
+    _LOGGER.debug(
+        "From HS:  %s / %s",
+        from_hs,
+        from_entity[ATTR_BRIGHTNESS]
+        if ATTR_BRIGHTNESS in from_entity
+        else None,
+    )
+    _LOGGER.debug("Final HS: %s / %s", final_hs, final_entity[ATTR_BRIGHTNESS])
+    _LOGGER.debug(
+        "To HS:    %s / %s",
+        to_hs,
+        to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
+        )
+
+    return final_hs
