@@ -376,29 +376,35 @@ class ExtrapolationScene(Scene):
     def get_sun_event(self, sun_events, offset=0) -> SunEvent:
         """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead"""
         current_time = self.seconds_since_midnight()
+        sorted_sun_events = sorted(sun_events, key=lambda x: x.start_time)
+
+        for sun_event in sorted_sun_events:
+            _LOGGER.warn("%s starts %s", sun_event.name, sun_event.start_time)
 
         # Find the event closest, but still in the future
         closest_match_index = None
-        for index, sun_event in enumerate(sun_events):
-            if sun_event.start_time <= current_time:
-                if closest_match_index is None:
-                    closest_match_index = index
-                elif sun_event.start_time > sun_events[closest_match_index].start_time:
-                    closest_match_index = index
+        for index, sun_event in enumerate(sorted_sun_events):
+            # Find the next sun_event index
+            if sun_event.start_time >= current_time:
+                closest_match_index = index - 1  # -1 to get current sun_event index
+                break
 
-        # If we couldn't find a match for today, then we return the (next) day's first event
+        _LOGGER.warn("closest_match_index: %s", closest_match_index)
+
+        # If we couldn't find a match for today, then we either return the (next) day's first event
+        # or the current day's last event (depending on whether the next day's first event is in the past.
+        # ie. if the time is 300 past midnight, but the day's first event is 2300 seconds past midnight, we
+        # need to return the previous day's event)
         if closest_match_index is None:
-            # Find the days first event
-            for index, sun_event in enumerate(sun_events):
-                if closest_match_index is None:
-                    closest_match_index = index
-                elif sun_event.start_time < sun_events[closest_match_index].start_time:
-                    closest_match_index = index
+            if sorted_sun_events[0].start_time > current_time:
+                closest_match_index = -1
+            else:
+                closest_match_index = 0
 
         offset_index = closest_match_index + offset
 
         # The % strips away any overshooting of the list length
-        return sun_events[offset_index % len(sun_events)]
+        return sorted_sun_events[offset_index % len(sorted_sun_events)]
 
 
 async def apply_entity_state(entity, hass: HomeAssistant, transition=0):
