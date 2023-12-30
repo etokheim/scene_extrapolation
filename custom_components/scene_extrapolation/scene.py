@@ -709,6 +709,31 @@ def extrapolate_color_temp(
         ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
     )
 
+    if from_color_temp is None:
+        _LOGGER.warning(
+            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information.",
+        )
+
+        _LOGGER.debug(
+            "We only support extrapolating between color modes that already have a value in the scenes.yaml file. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating to. (Extrapolating from: %s, to: %s)",
+            from_entity[ATTR_COLOR_MODE],
+            to_entity[COLOR_MODE],
+        )
+
+        from_color_temp = to_color_temp
+    elif to_color_temp is None:
+        _LOGGER.warning(
+            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information.",
+        )
+
+        _LOGGER.debug(
+            "We only support extrapolating between color modes that already have a value in the scenes.yaml file. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating from. (Extrapolating from: %s, to: %s)",
+            from_entity[ATTR_COLOR_MODE],
+            to_entity[COLOR_MODE],
+        )
+
+        to_color_temp = from_color_temp
+
     final_color_temp = extrapolate_number(
         from_color_temp,
         to_color_temp,
