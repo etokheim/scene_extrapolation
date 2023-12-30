@@ -588,8 +588,8 @@ async def extrapolate_entities(
             if not ATTR_COLOR_MODE in to_entity:
                 # Ie. some of the IKEA Wall Plugs doesn't always return a color_mode, so let's just hack it in
                 if ATTR_STATE in to_entity or ATTR_STATE in from_entity:
-                    to_entity[ATTR_STATE] = COLOR_MODE_ONOFF
-                    from_entity[ATTR_STATE] = COLOR_MODE_ONOFF
+                    to_entity[COLOR_MODE] = COLOR_MODE_ONOFF
+                    from_entity[COLOR_MODE] = COLOR_MODE_ONOFF
 
                 else:
                     raise HomeAssistantError(
