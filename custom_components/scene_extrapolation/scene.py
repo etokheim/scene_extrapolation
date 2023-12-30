@@ -197,6 +197,12 @@ class ExtrapolationScene(Scene):
         """Activate the scene."""
         start_time = time.time()
 
+        if transition == 6553:
+            _LOGGER.warning(
+                "Home Assistant doesn't support transition times longer than 6553 (109 minutes). Anything above this value seems to be disregarded. The integration received a transition time of: %s",
+                transition,
+            )
+
         # Read and parse the scenes.yaml file
         scenes = await get_native_scenes(self.hass)
 
@@ -274,16 +280,26 @@ class ExtrapolationScene(Scene):
         for sun_event in sun_events:
             _LOGGER.debug("%s: %s", sun_event.name, sun_event.start_time)
 
-        _LOGGER.debug("Time since midnight: %s", self.seconds_since_midnight())
+        _LOGGER.debug(
+            "Time since midnight: %s", self.seconds_since_midnight(transition)
+        )
         _LOGGER.debug(
             "Time now: %s", datetime.now(tz=pytz.timezone(self.hass.config.time_zone))
         )
 
-        current_sun_event = self.get_sun_event(offset=0, sun_events=sun_events)
-        next_sun_event = self.get_sun_event(offset=1, sun_events=sun_events)
+        current_sun_event = self.get_sun_event(
+            offset=0,
+            sun_events=sun_events,
+            seconds_since_midnight=self.seconds_since_midnight(transition),
+        )
+        next_sun_event = self.get_sun_event(
+            offset=1,
+            sun_events=sun_events,
+            seconds_since_midnight=self.seconds_since_midnight(transition),
+        )
 
         scene_transition_progress_percent = self.get_scene_transition_progress_percent(
-            current_sun_event, next_sun_event, transition_time=transition
+            current_sun_event, next_sun_event, transition
         )
 
         _LOGGER.debug(
@@ -293,7 +309,7 @@ class ExtrapolationScene(Scene):
             next_sun_event.name,
             next_sun_event.scene["name"],
             scene_transition_progress_percent,
-            self.seconds_since_midnight(),
+            self.seconds_since_midnight(transition),
         )
 
         _LOGGER.debug(
@@ -347,13 +363,15 @@ class ExtrapolationScene(Scene):
                 next_sun_event.start_time - current_sun_event.start_time
             )
 
-        if self.seconds_since_midnight() > next_sun_event.start_time:
+        if self.seconds_since_midnight(transition_time) > next_sun_event.start_time:
             seconds_till_next_sun_event = (
-                86400 - self.seconds_since_midnight() + next_sun_event.start_time
+                86400
+                - self.seconds_since_midnight(transition_time)
+                + next_sun_event.start_time
             )
         else:
             seconds_till_next_sun_event = (
-                next_sun_event.start_time - self.seconds_since_midnight()
+                next_sun_event.start_time - self.seconds_since_midnight(transition_time)
             )
 
         return (
@@ -362,41 +380,44 @@ class ExtrapolationScene(Scene):
             * (
                 seconds_between_current_and_next_sun_events
                 - seconds_till_next_sun_event
-                + transition_time
             )
         )
 
-    def seconds_since_midnight(self) -> float:
-        """Returns the number of seconds since midnight"""
+    def seconds_since_midnight(self, transition_time) -> float:
+        """Returns the number of seconds since midnight, adjusted for transition time"""
         now = datetime.now(tz=pytz.timezone(self.hass.config.time_zone))
-        return (
+        seconds_since_midnight = (
             now - now.replace(hour=0, minute=0, second=0, microsecond=0)
         ).total_seconds()
 
-    def get_sun_event(self, sun_events, offset=0) -> SunEvent:
-        """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead"""
-        current_time = self.seconds_since_midnight()
-        sorted_sun_events = sorted(sun_events, key=lambda x: x.start_time)
+        # Current time + the transition time - as we should calculate the lights as they should be when
+        # the transition is finished.
+        # 86400 is 24 hours in seconds. % so that if the time overshoots 24 hours, the surplus is
+        # shaved off.
+        seconds_since_midnight_adjusted_for_transition = (
+            seconds_since_midnight + transition_time
+        ) % 86400
 
-        for sun_event in sorted_sun_events:
-            _LOGGER.warn("%s starts %s", sun_event.name, sun_event.start_time)
+        return seconds_since_midnight_adjusted_for_transition
+
+    def get_sun_event(self, sun_events, seconds_since_midnight, offset=0) -> SunEvent:
+        """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead"""
+        sorted_sun_events = sorted(sun_events, key=lambda x: x.start_time)
 
         # Find the event closest, but still in the future
         closest_match_index = None
         for index, sun_event in enumerate(sorted_sun_events):
             # Find the next sun_event index
-            if sun_event.start_time >= current_time:
+            if sun_event.start_time >= seconds_since_midnight:
                 closest_match_index = index - 1  # -1 to get current sun_event index
                 break
-
-        _LOGGER.warn("closest_match_index: %s", closest_match_index)
 
         # If we couldn't find a match for today, then we either return the (next) day's first event
         # or the current day's last event (depending on whether the next day's first event is in the past.
         # ie. if the time is 300 past midnight, but the day's first event is 2300 seconds past midnight, we
         # need to return the previous day's event)
         if closest_match_index is None:
-            if sorted_sun_events[0].start_time > current_time:
+            if sorted_sun_events[0].start_time > seconds_since_midnight:
                 closest_match_index = -1
             else:
                 closest_match_index = 0
@@ -460,12 +481,14 @@ def get_entity_from_list(entity_id, entities):
     """Finds the entity matching the supplied entity_id and returns it"""
     _LOGGER.debug("entity_id: %s", entity_id)
     _LOGGER.debug("entities: %s", entities)
-    # Match the current entity to the same entity in the to_scene
+
     for potentially_matching_to_entity_id in entities:
         if entity_id == potentially_matching_to_entity_id:
-            # _LOGGER.debug("Found " + from_entity_name + " in both the from and to scenes")
             _LOGGER.debug("Found a match!: %s", potentially_matching_to_entity_id)
             return potentially_matching_to_entity_id
+
+    _LOGGER.debug("No match for %s in supplied entities", entity_id)
+    return False
 
 
 async def extrapolate_entities(
