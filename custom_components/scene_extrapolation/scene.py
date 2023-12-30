@@ -145,27 +145,13 @@ class ExtrapolationScene(Scene):
             or None
         )
 
-        latitude = self.hass.config.latitude
-        longitude = self.hass.config.longitude
-        time_zone = self.hass.config.time_zone
-
-        city = LocationInfo(timezone=time_zone, latitude=latitude, longitude=longitude)
-        self.solar_events = sun(
-            city.observer, date=datetime.now(tz=pytz.timezone(time_zone))
+        # Used for calculating solar events when activating the scene
+        self.latitude = self.hass.config.latitude
+        self.longitude = self.hass.config.longitude
+        self.time_zone = self.hass.config.time_zone
+        self.city = LocationInfo(
+            timezone=self.time_zone, latitude=self.latitude, longitude=self.longitude
         )
-
-        self.solar_events["midnight"] = midnight(
-            city.observer,
-            date=datetime.now(tz=pytz.timezone(time_zone)),
-        )
-
-        # Crashes when the sun doesn't reach 10 degrees
-        # time_at_10deg = time_at_elevation(
-        #     city.observer,
-        #     elevation=10,
-        #     direction=SunDirection.RISING,
-        #     date=datetime.now(tz=pytz.timezone(time_zone)),
-        # )
 
         hass.async_add_executor_job(self.update_registry)
 
@@ -198,7 +184,7 @@ class ExtrapolationScene(Scene):
 
     async def async_activate(self, transition=0):
         """Activate the scene."""
-        start_time = time.time()
+        start_time = time.time()  # Used for performance monitoring
 
         if transition == 6553:
             _LOGGER.warning(
@@ -206,6 +192,9 @@ class ExtrapolationScene(Scene):
                 transition,
             )
 
+        ##############################################
+        #             Handle nightlights             #
+        ##############################################
         nightlights_boolean_id = self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
         nightlights_boolean = (
             True
@@ -239,6 +228,9 @@ class ExtrapolationScene(Scene):
 
             return
 
+        ##############################################
+        #                Load scenes                 #
+        ##############################################
         # Read and parse the scenes.yaml file
         scenes = await get_native_scenes(self.hass)
 
@@ -246,15 +238,44 @@ class ExtrapolationScene(Scene):
             "Time getting native scenes: %sms", (time.time() - start_time) * 1000
         )
 
-        # TODO: If the nightlights boolean is on, turn on the nightlights instead
+        ##############################################
+        #          Calculate solar events            #
+        ##############################################
+        start_time_calculate_solar_events = time.time()
+
+        # TODO: Consider renaming the variable, as it's easy to mistake for the sun_events variable
+        solar_events = sun(
+            self.city.observer, date=datetime.now(tz=pytz.timezone(self.time_zone))
+        )
+
+        # midnight event isn't part of the default events and is therefor appended:
+        solar_events["midnight"] = midnight(
+            self.city.observer,
+            date=datetime.now(tz=pytz.timezone(self.time_zone)),
+        )
+
+        _LOGGER.debug(
+            "Time calculating solar events: %sms",
+            (time.time() - start_time_calculate_solar_events) * 1000,
+        )
+
+        # Crashes when the sun doesn't reach 10 degrees
+        # time_at_10deg = time_at_elevation(
+        #     city.observer,
+        #     elevation=10,
+        #     direction=SunDirection.RISING,
+        #     date=datetime.now(tz=pytz.timezone(time_zone)),
+        # )
 
         scene_dawn_minimum_time_of_day = self.config_entry.options.get(
             SCENE_DAWN_MINIMUM_TIME_OF_DAY
         )
+
         assert isinstance(
             scene_dawn_minimum_time_of_day, numbers.Number
         ), "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
 
+        # TODO: Consider adding noon as an event
         sun_events = [
             SunEvent(
                 name=SCENE_NIGHT_RISING_NAME,
@@ -262,7 +283,7 @@ class ExtrapolationScene(Scene):
                     scenes, self.config_entry.options.get(SCENE_NIGHT_RISING_ID)
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
-                    self.solar_events["midnight"]
+                    solar_events["midnight"]
                 ),
             ),
             SunEvent(
@@ -271,7 +292,7 @@ class ExtrapolationScene(Scene):
                     scenes, self.config_entry.options.get(SCENE_DAWN_ID)
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
-                    self.solar_events["dawn"]
+                    solar_events["dawn"]
                 ),
             ),
             SunEvent(
@@ -280,7 +301,7 @@ class ExtrapolationScene(Scene):
                     scenes, self.config_entry.options.get(SCENE_DAY_RISING_ID)
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
-                    self.solar_events["sunrise"]
+                    solar_events["sunrise"]
                 ),
             ),
             SunEvent(
@@ -289,7 +310,7 @@ class ExtrapolationScene(Scene):
                     scenes, self.config_entry.options.get(SCENE_DAY_SETTING_ID)
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
-                    self.solar_events["sunset"]
+                    solar_events["sunset"]
                 ),
             ),
             SunEvent(
@@ -298,7 +319,7 @@ class ExtrapolationScene(Scene):
                     scenes, self.config_entry.options.get(SCENE_DUSK_ID)
                 ),
                 start_time=max(
-                    self.datetime_to_seconds_since_midnight(self.solar_events["dusk"]),
+                    self.datetime_to_seconds_since_midnight(solar_events["dusk"]),
                     scene_dawn_minimum_time_of_day,
                 ),
             ),
@@ -328,6 +349,7 @@ class ExtrapolationScene(Scene):
             sun_events=sun_events,
             seconds_since_midnight=self.seconds_since_midnight(transition),
         )
+
         next_sun_event = self.get_sun_event(
             offset=1,
             sun_events=sun_events,
@@ -353,6 +375,9 @@ class ExtrapolationScene(Scene):
             (time.time() - start_time_sun_events) * 1000,
         )
 
+        ##############################################
+        #           Extrapolate entities             #
+        ##############################################
         start_time_extrapolation = time.time()
 
         await extrapolate_entities(
