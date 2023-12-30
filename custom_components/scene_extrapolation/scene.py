@@ -477,20 +477,6 @@ def get_scene_by_uuid(scenes, uuid):
     )
 
 
-def get_entity_from_list(entity_id, entities):
-    """Finds the entity matching the supplied entity_id and returns it"""
-    _LOGGER.debug("entity_id: %s", entity_id)
-    _LOGGER.debug("entities: %s", entities)
-
-    for potentially_matching_to_entity_id in entities:
-        if entity_id == potentially_matching_to_entity_id:
-            _LOGGER.debug("Found a match!: %s", potentially_matching_to_entity_id)
-            return potentially_matching_to_entity_id
-
-    _LOGGER.debug("No match for %s in supplied entities", entity_id)
-    return False
-
-
 async def extrapolate_entities(
     from_scene, to_scene, scene_transition_progress_percent, transition, hass
 ) -> list:
@@ -503,25 +489,33 @@ async def extrapolate_entities(
         "scene_transition_progress_percent: %s", scene_transition_progress_percent
     )
 
-    # TODO: If an entity is missing from from_scene, but is in to_scene, it will not be handeled
-    # Solve by adding any entities from to_scene that are missing from from_scene to from_scene
+    # Add any entities that are present in to_scene, but is missing from from_scene to the from_scene list.
+    # This is needed as we are only checking from_scene["entities"] for entities to extrapolate
+    for to_entity_id in to_scene["entities"]:
+        if not to_entity_id in from_scene["entities"]:
+            _LOGGER.debug(
+                "Couldn't find "
+                + to_entity_id
+                + " in the scene we are extrapolating from. Assuming it should be turned off."
+            )
+            from_entity = {}
+
+            from_scene["entities"][to_entity_id] = {}
+
     for from_entity_id in from_scene["entities"]:
-        from_entity = from_scene["entities"][from_entity_id]
-        to_entity_id = get_entity_from_list(from_entity_id, to_scene["entities"])
         final_entity = {ATTR_ENTITY_ID: from_entity_id}
+        from_entity = from_scene["entities"][from_entity_id]
 
         # Assign to_entity
-        if to_entity_id is not False:
-            to_entity = to_scene["entities"][to_entity_id]
+        if from_entity_id in to_scene["entities"]:
+            to_entity = to_scene["entities"][from_entity_id]
         else:
             _LOGGER.debug(
                 "Couldn't find "
                 + from_entity_id
                 + " in the scene we are extrapolating to. Assuming it should be turned off."
             )
-            to_entity = (
-                {}
-            )  # Let's not do all the checking for wether to_entity is defined
+            to_entity = {}
 
         _LOGGER.debug("from_entity: %s", from_entity)
         _LOGGER.debug("to_entity: %s", to_entity)
