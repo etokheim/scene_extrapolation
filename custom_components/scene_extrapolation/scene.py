@@ -12,6 +12,7 @@ import pytz
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.components.scene import Scene
+from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceEntryType
@@ -70,7 +71,9 @@ from homeassistant.const import (
 
 from .const import (
     DOMAIN,
+    NIGHTLIGHTS_SCENE_ID,
     SCENE_DAWN_MINIMUM_TIME_OF_DAY,
+    NIGHTLIGHTS_BOOLEAN_ID,
     SCENE_NAME,
     SCENE_NIGHT_RISING_NAME,
     SCENE_NIGHT_RISING_ID,
@@ -202,6 +205,39 @@ class ExtrapolationScene(Scene):
                 "Home Assistant doesn't support transition times longer than 6553 (109 minutes). Anything above this value seems to be disregarded. The integration received a transition time of: %s",
                 transition,
             )
+
+        nightlights_boolean_id = self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
+        nightlights_boolean = (
+            True
+            if self.hass.states.get(nightlights_boolean_id).state == "on"
+            else False
+        )
+
+        # Turn on night lights instead if the nightlights_boolean is on
+        if nightlights_boolean:
+            _LOGGER.debug(
+                "nightlights_boolean is on. Turning on nightlights instead of default behavior."
+            )
+
+            nightlights_scene_id = self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID)
+
+            try:
+                await self.hass.services.async_call(
+                    domain=SCENE_DOMAIN,
+                    service=SERVICE_TURN_ON,
+                    service_data={ATTR_ENTITY_ID: nightlights_scene_id},
+                )
+
+                _LOGGER.debug(
+                    "Service call (%s.%s) has been sent successfully to turn on nightlights scene",
+                    SCENE_DOMAIN,
+                    SERVICE_TURN_ON,
+                )
+
+            except Exception as error:
+                _LOGGER.error("Service call to turn on scene failed: %s", error)
+
+            return
 
         # Read and parse the scenes.yaml file
         scenes = await get_native_scenes(self.hass)
@@ -456,7 +492,7 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition=0):
             service_type,
         )
     except Exception as error:
-        _LOGGER.error("Failed to send service call: %s", error)
+        _LOGGER.error("Service call to turn on light failed: %s", error)
 
     return True
 
