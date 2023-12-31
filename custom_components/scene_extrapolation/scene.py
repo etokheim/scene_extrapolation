@@ -586,7 +586,7 @@ async def extrapolate_entities(
             from_entity["state"] == STATE_UNAVAILABLE
             or to_entity["state"] == STATE_UNAVAILABLE
         ):
-            _LOGGER.debug("%s is unavailable and therefor skipped" + from_entity_id)
+            _LOGGER.debug("%s is unavailable and therefor skipped", from_entity_id)
             continue
 
         # First, let's make sure there's always a color mode to extrapolate. If from_entity or to_entity is missing a
