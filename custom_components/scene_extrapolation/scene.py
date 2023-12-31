@@ -743,14 +743,11 @@ def extrapolate_onoff(
         to_entity[ATTR_STATE] if ATTR_STATE in to_entity else from_entity[ATTR_STATE]
     )
 
-    if scene_transition_progress_percent >= 50 and from_state == STATE_ON and to_state:
-        final_state = STATE_OFF
-    elif (
-        scene_transition_progress_percent >= 50 and from_state == STATE_OFF and to_state
-    ):
-        final_state = STATE_ON
-    else:
+    if scene_transition_progress_percent <= 50:
         final_state = from_state
+
+    elif scene_transition_progress_percent >= 50:
+        final_state = to_state
 
     _LOGGER.debug("From state:  %s", from_state)
     _LOGGER.debug("Final state: %s", final_state)
