@@ -64,6 +64,7 @@ from homeassistant.const import (
     SERVICE_TURN_ON,
     STATE_ON,
     STATE_OFF,
+    STATE_UNAVAILABLE,
     SUN_EVENT_SUNRISE,
     SUN_EVENT_SUNSET,
     CONF_UNIQUE_ID,
@@ -580,6 +581,13 @@ async def extrapolate_entities(
 
         _LOGGER.debug("from_entity: %s", from_entity)
         _LOGGER.debug("to_entity: %s", to_entity)
+
+        if (
+            from_entity["state"] == STATE_UNAVAILABLE
+            or to_entity["state"] == STATE_UNAVAILABLE
+        ):
+            _LOGGER.debug("%s is unavailable and therefor skipped" + from_entity_id)
+            continue
 
         # First, let's make sure there's always a color mode to extrapolate. If from_entity or to_entity is missing a
         # color mode, we'll set it to the other's color mode
