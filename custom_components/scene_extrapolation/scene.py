@@ -1,6 +1,7 @@
 """
 Create a scene entity which when activated calculates the appropriate lighting by extrapolating between user configured scenes.
 """
+
 import logging
 from datetime import datetime
 import numbers
@@ -64,6 +65,20 @@ from homeassistant.const import (
     SERVICE_TURN_ON,
     STATE_ON,
     STATE_OFF,
+    STATE_UNKNOWN,
+    STATE_OPEN,
+    STATE_CLOSED,
+    STATE_PLAYING,
+    STATE_PAUSED,
+    STATE_STANDBY,
+    STATE_ALARM_DISARMED,
+    STATE_ALARM_ARMED_HOME,
+    STATE_ALARM_ARMED_AWAY,
+    STATE_ALARM_ARMED_NIGHT,
+    STATE_ALARM_ARMED_VACATION,
+    STATE_ALARM_ARMED_CUSTOM_BYPASS,
+    STATE_LOCKED,
+    STATE_UNLOCKED,
     STATE_UNAVAILABLE,
     SUN_EVENT_SUNRISE,
     SUN_EVENT_SUNSET,
@@ -539,6 +554,7 @@ def get_scene_by_uuid(scenes, uuid):
     )
 
 
+# TODO: Support extrapolating effects (colorloop, fire etc)
 async def extrapolate_entities(
     from_scene, to_scene, scene_transition_progress_percent, transition, hass
 ) -> list:
@@ -582,30 +598,29 @@ async def extrapolate_entities(
         _LOGGER.debug("from_entity: %s", from_entity)
         _LOGGER.debug("to_entity: %s", to_entity)
 
-        if (
-            from_entity["state"] == STATE_UNAVAILABLE
-            or to_entity["state"] == STATE_UNAVAILABLE
+        # Log a warning if the device is unavailable
+        if ("state" in from_entity and from_entity["state"] == STATE_UNAVAILABLE) or (
+            "state" in to_entity and to_entity["state"] == STATE_UNAVAILABLE
         ):
-            _LOGGER.debug("%s is unavailable and therefor skipped", from_entity_id)
+            _LOGGER.warning("%s is unavailable and therefor skipped", from_entity_id)
             continue
 
-        # First, let's make sure there's always a color mode to extrapolate. If from_entity or to_entity is missing a
-        # color mode, we'll set it to the other's color mode
+        # Handle state
+        if "state" in from_entity or "state" in to_entity:
+            final_entity[ATTR_STATE] = extrapolate_state(
+                from_entity,
+                to_entity,
+                final_entity,
+                scene_transition_progress_percent,
+            )
+
+            # TODO: Figure out the entity's domain. The following function only works for Light.domain... (I guess)
+            await apply_entity_state(final_entity, hass, transition)
+
+        # Let's make sure that if one of from/to_entities has a color mode, the other one has got one too.
+        # If from_entity or to_entity is missing a color mode, we'll set it to the other's color mode
         if not ATTR_COLOR_MODE in from_entity:
-            # Raise an exception if none of the entities have a color mode (or is an on/off entity)
-            if not ATTR_COLOR_MODE in to_entity:
-                # Ie. some of the IKEA Wall Plugs doesn't always return a color_mode, so let's just hack it in
-                if ATTR_STATE in to_entity or ATTR_STATE in from_entity:
-                    to_entity[COLOR_MODE] = COLOR_MODE_ONOFF
-                    from_entity[COLOR_MODE] = COLOR_MODE_ONOFF
-
-                else:
-                    raise HomeAssistantError(
-                        "Both the from and to entities are missing a color mode (while not an on/off entity). I didn't think this could happen, but if it can, please report it and I'll add some handing."
-                    )
-
             from_entity[COLOR_MODE] = to_entity[COLOR_MODE]
-
         elif not ATTR_COLOR_MODE in to_entity:
             to_entity[COLOR_MODE] = from_entity[COLOR_MODE]
 
@@ -623,13 +638,7 @@ async def extrapolate_entities(
             )
             await apply_entity_state(final_entity, hass, transition)
 
-        if final_color_mode == COLOR_MODE_ONOFF:
-            final_entity[ATTR_STATE] = extrapolate_onoff(
-                from_entity, to_entity, final_entity, scene_transition_progress_percent
-            )
-            await apply_entity_state(final_entity, hass, transition)
-
-        elif final_color_mode == ATTR_COLOR_TEMP:
+        if final_color_mode == ATTR_COLOR_TEMP:
             final_entity[ATTR_COLOR_TEMP] = extrapolate_color_temp(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
@@ -732,9 +741,10 @@ def extrapolate_brightness(
     return final_brightness
 
 
-def extrapolate_onoff(
+def extrapolate_state(
     from_entity, to_entity, final_entity, scene_transition_progress_percent
 ):
+    """Extrapolates a state that can't be animated. Ie. a switch that instantaniously turns from the off state to on."""
     from_state = (
         from_entity[ATTR_STATE] if ATTR_STATE in from_entity else to_entity[ATTR_STATE]
     )
