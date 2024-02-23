@@ -67,11 +67,15 @@ from homeassistant.const import (
     SERVICE_TURN_ON,
     SERVICE_LOCK,
     SERVICE_UNLOCK,
+    SERVICE_OPEN,
+    SERVICE_CLOSE,
     STATE_ON,
     STATE_OFF,
     STATE_UNKNOWN,
     STATE_OPEN,
+    STATE_OPENING,
     STATE_CLOSED,
+    STATE_CLOSING,
     STATE_PLAYING,
     STATE_PAUSED,
     STATE_STANDBY,
@@ -82,7 +86,9 @@ from homeassistant.const import (
     STATE_ALARM_ARMED_VACATION,
     STATE_ALARM_ARMED_CUSTOM_BYPASS,
     STATE_LOCKED,
+    STATE_LOCKING,
     STATE_UNLOCKED,
+    STATE_UNLOCKING,
     STATE_UNAVAILABLE,
     STATE_PROBLEM,
     STATE_JAMMED,
@@ -514,6 +520,7 @@ class ExtrapolationScene(Scene):
 async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
     """Applies the entities states"""
     domain = entity[ATTR_ENTITY_ID].split(".")[0]
+    state = entity["state"]
 
     if not "state" in entity:
         _LOGGER.error(
@@ -523,10 +530,10 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
 
         return
     elif (
-        entity["state"] == STATE_UNAVAILABLE
-        or entity["state"] == STATE_UNKNOWN
-        or entity["state"] == STATE_PROBLEM
-        or entity["state"] == STATE_JAMMED
+        state == STATE_UNAVAILABLE
+        or state == STATE_UNKNOWN
+        or state == STATE_PROBLEM
+        or state == STATE_JAMMED
     ):
         _LOGGER.error("Entity state is %s", entity["state"])
         return
@@ -542,15 +549,20 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
     # Set the service type
     entity_applied = entity.copy()
     service_type = None
-    if entity["state"] == "on":
+    if state == "on":
         service_type = SERVICE_TURN_ON
-    elif entity["state"] == "off":
+    elif state == "off":
         service_type = SERVICE_TURN_OFF
 
-    elif entity["state"] == STATE_LOCKED:
+    elif state == STATE_LOCKED or state == STATE_LOCKING:
         service_type = SERVICE_LOCK
-    elif entity["state"] == STATE_UNLOCKED:
+    elif state == STATE_UNLOCKED or state == STATE_UNLOCKING:
         service_type = SERVICE_UNLOCK
+
+    elif state == STATE_OPEN or state == STATE_OPENING:
+        service_type = SERVICE_OPEN
+    elif state == STATE_CLOSED or state == STATE_CLOSING:
+        service_type = SERVICE_CLOSE
 
     del entity_applied["state"]
 
