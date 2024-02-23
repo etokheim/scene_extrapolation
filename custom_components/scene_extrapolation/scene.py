@@ -15,10 +15,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.components.scene import Scene
 from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+from homeassistant.components.fan import DOMAIN as FAN_DOMAIN
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import DeviceInfo
 import homeassistant.helpers.entity_registry as entity_registry
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 # TODO: Move this function to __init__ maybe? At least somewhere more fitting for reuse
 from .config_flow import get_native_scenes
@@ -63,6 +65,8 @@ from homeassistant.const import (
     EVENT_STATE_CHANGED,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
+    SERVICE_LOCK,
+    SERVICE_UNLOCK,
     STATE_ON,
     STATE_OFF,
     STATE_UNKNOWN,
@@ -505,32 +509,52 @@ class ExtrapolationScene(Scene):
         return sorted_sun_events[offset_index % len(sorted_sun_events)]
 
 
-async def apply_entity_state(entity, hass: HomeAssistant, transition=0):
+async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
     """Applies the entities states"""
-    service_type = SERVICE_TURN_ON
-    if "state" in entity:
-        if entity["state"] == "off":
-            service_type = SERVICE_TURN_OFF
-        else:
-            service_type = SERVICE_TURN_ON
+    domain = entity[ATTR_ENTITY_ID].split(".")[0]
 
-        del entity["state"]
+    if not "state" in entity:
+        _LOGGER.error(
+            "The entity provided is missing a state property. Can't apply entity state (skipping). Entity: %s",
+            entity,
+        )
 
-        # TODO: Find a better way
-        # entity.pop("state")
+        return
 
-    entity[ATTR_TRANSITION] = transition
+    if domain == LIGHT_DOMAIN:
+        entity[ATTR_TRANSITION] = transition_time
 
-    _LOGGER.debug("%s.%s: %s", LIGHT_DOMAIN, service_type, entity)
+    if domain == FAN_DOMAIN:
+        _LOGGER.warning(
+            "Extrapolation of fans only support turning them on/off. Direction, speed etc will be ignored until it's implemented. Please open an issue or PR if this is something you want."
+        )
+
+    # Set the service type
+    entity_applied = entity.copy()
+    service_type = None
+    if entity["state"] == "on":
+        service_type = SERVICE_TURN_ON
+    elif entity["state"] == "off":
+        service_type = SERVICE_TURN_OFF
+
+    elif entity["state"] == STATE_LOCKED:
+        service_type = SERVICE_LOCK
+    elif entity["state"] == STATE_UNLOCKED:
+        service_type = SERVICE_UNLOCK
+
+    del entity_applied["state"]
+
+    # TODO: Find a better way
+    # entity.pop("state")
+
+    _LOGGER.debug("%s.%s: %s", domain, service_type, entity_applied)
 
     try:
         await hass.services.async_call(
-            domain=LIGHT_DOMAIN, service=service_type, service_data=entity
+            domain=domain, service=service_type, service_data=entity_applied
         )
         _LOGGER.debug(
-            "Service call (%s.%s) has been sent successfully",
-            LIGHT_DOMAIN,
-            service_type,
+            "Service call (%s.%s) has been sent successfully", domain, service_type
         )
     except Exception as error:
         _LOGGER.error("Service call to turn on light failed: %s", error)
@@ -556,7 +580,11 @@ def get_scene_by_uuid(scenes, uuid):
 
 # TODO: Support extrapolating effects (colorloop, fire etc)
 async def extrapolate_entities(
-    from_scene, to_scene, scene_transition_progress_percent, transition, hass
+    from_scene,
+    to_scene,
+    scene_transition_progress_percent,
+    transition_time,
+    hass: HomeAssistant,
 ) -> list:
     """Takes in a from and to scene and returns a list of new entity states.
     The new states is the extrapolated state between the two scenes."""
@@ -576,9 +604,9 @@ async def extrapolate_entities(
                 + to_entity_id
                 + " in the scene we are extrapolating from. Assuming it should be turned off."
             )
-            from_entity = {}
+            from_entity = {"state": STATE_OFF}
 
-            from_scene["entities"][to_entity_id] = {}
+            from_scene["entities"][to_entity_id] = from_entity
 
     for from_entity_id in from_scene["entities"]:
         final_entity = {ATTR_ENTITY_ID: from_entity_id}
@@ -593,7 +621,7 @@ async def extrapolate_entities(
                 + from_entity_id
                 + " in the scene we are extrapolating to. Assuming it should be turned off."
             )
-            to_entity = {}
+            to_entity = {"state": STATE_OFF}
 
         _LOGGER.debug("from_entity: %s", from_entity)
         _LOGGER.debug("to_entity: %s", to_entity)
@@ -606,7 +634,7 @@ async def extrapolate_entities(
             continue
 
         # Handle state
-        if "state" in from_entity or "state" in to_entity:
+        if "state" in from_entity and "state" in to_entity:
             final_entity[ATTR_STATE] = extrapolate_state(
                 from_entity,
                 to_entity,
@@ -614,21 +642,28 @@ async def extrapolate_entities(
                 scene_transition_progress_percent,
             )
 
-            # TODO: Figure out the entity's domain. The following function only works for Light.domain... (I guess)
-            await apply_entity_state(final_entity, hass, transition)
+            await apply_entity_state(final_entity, hass, transition_time)
+        else:
+            _LOGGER.error(
+                "From or to entity does not have a state and is therefor skipped. from_entity: %s, to_entity: %s",
+                from_entity,
+                to_entity,
+            )
 
         # Let's make sure that if one of from/to_entities has a color mode, the other one has got one too.
         # If from_entity or to_entity is missing a color mode, we'll set it to the other's color mode
-        if not ATTR_COLOR_MODE in from_entity:
+        if not ATTR_COLOR_MODE in from_entity and ATTR_COLOR_MODE in to_entity:
             from_entity[COLOR_MODE] = to_entity[COLOR_MODE]
-        elif not ATTR_COLOR_MODE in to_entity:
+        elif not ATTR_COLOR_MODE in to_entity and ATTR_COLOR_MODE in from_entity:
             to_entity[COLOR_MODE] = from_entity[COLOR_MODE]
 
         # Set the color mode we're actually going to extrapolate
-        if scene_transition_progress_percent >= 50:
-            final_color_mode = to_entity[COLOR_MODE]
-        else:
-            final_color_mode = from_entity[COLOR_MODE]
+        final_color_mode = None
+        if ATTR_COLOR_MODE in from_entity:
+            if scene_transition_progress_percent >= 50:
+                final_color_mode = to_entity[COLOR_MODE]
+            else:
+                final_color_mode = from_entity[COLOR_MODE]
 
         _LOGGER.debug("final_color_mode: %s", final_color_mode)
 
@@ -636,31 +671,31 @@ async def extrapolate_entities(
             final_entity[ATTR_BRIGHTNESS] = extrapolate_brightness(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition)
+            await apply_entity_state(final_entity, hass, transition_time)
 
         if final_color_mode == ATTR_COLOR_TEMP:
             final_entity[ATTR_COLOR_TEMP] = extrapolate_color_temp(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition)
+            await apply_entity_state(final_entity, hass, transition_time)
 
         elif final_color_mode == ATTR_COLOR_TEMP_KELVIN:
             final_entity[ATTR_COLOR_TEMP_KELVIN] = extrapolate_temp_kelvin(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition)
+            await apply_entity_state(final_entity, hass, transition_time)
 
         elif final_color_mode == ATTR_RGB_COLOR:
             final_entity[ATTR_RGB_COLOR] = extrapolate_rgb(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition)
+            await apply_entity_state(final_entity, hass, transition_time)
 
         elif final_color_mode == COLOR_MODE_HS:
             final_entity[ATTR_HS_COLOR] = extrapolate_hs(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition)
+            await apply_entity_state(final_entity, hass, transition_time)
 
         _LOGGER.debug("final_entity: %s", final_entity)
 
