@@ -11,3 +11,5 @@ This isn't just about lighting; it's about mastering the art of atmosphere. The 
 But the magic doesn’t stop there. Elevate your experience further by syncing the scenes with precision. An automation, synchronized to trigger the scene every 5 minutes, seamlessly aligns with the ebb and flow of the day – a choreography of light mirroring the natural transitions outside your window.
 
 Step into a world where your environment becomes an extension of your imagination. Scene Extrapolation isn't just a plugin; it's the key to unlocking a realm of possibilities, a canvas where you paint with light, and the sun becomes your collaborator in this dazzling masterpiece of ambiance. Experience lighting control like never before – it's not just about scenes; it's about creating a spectacle every time you walk into a room.
+
+TODO: Create an illustration with two scenes (ie. day and evening) and a gradient between indicating the automatic extrapolation effect.
