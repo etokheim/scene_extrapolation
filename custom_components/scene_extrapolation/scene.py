@@ -84,6 +84,8 @@ from homeassistant.const import (
     STATE_LOCKED,
     STATE_UNLOCKED,
     STATE_UNAVAILABLE,
+    STATE_PROBLEM,
+    STATE_JAMMED,
     SUN_EVENT_SUNRISE,
     SUN_EVENT_SUNSET,
     CONF_UNIQUE_ID,
@@ -519,6 +521,14 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
             entity,
         )
 
+        return
+    elif (
+        entity["state"] == STATE_UNAVAILABLE
+        or entity["state"] == STATE_UNKNOWN
+        or entity["state"] == STATE_PROBLEM
+        or entity["state"] == STATE_JAMMED
+    ):
+        _LOGGER.error("Entity state is %s", entity["state"])
         return
 
     if domain == LIGHT_DOMAIN:
