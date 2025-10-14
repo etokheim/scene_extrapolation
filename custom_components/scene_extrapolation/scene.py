@@ -26,12 +26,12 @@ from homeassistant.components.light import (
     DOMAIN as LIGHT_DOMAIN,
     ColorMode,
 )
+from homeassistant.components.lock import LockState
 from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN, Scene
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry
-from homeassistant.components.lock import LockState
 
 # TODO: Move this function to __init__ maybe? At least somewhere more fitting for reuse
 from .config_flow import get_native_scenes
@@ -141,6 +141,9 @@ class ExtrapolationScene(Scene):
             timezone=self.time_zone, latitude=self.latitude, longitude=self.longitude
         )
 
+        # Initialize brightness modifier attribute
+        self._brightness_modifier = 0
+
         # Schedule registry update on the event loop to avoid thread-safety issues
         hass.async_create_task(self.async_update_registry())
 
@@ -171,8 +174,17 @@ class ExtrapolationScene(Scene):
         """Return the unique ID of this scene."""
         return self._attr_unique_id
 
-    async def async_activate(self, transition=0):
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        return {
+            "brightness_modifier": self._brightness_modifier,
+        }
+
+    async def async_activate(self, transition=0, brightness_modifier=0):
         """Activate the scene."""
+        # Store the brightness modifier as an attribute
+        self._brightness_modifier = brightness_modifier
         start_time = time.time()  # Used for performance monitoring
 
         if transition == 6553:
@@ -371,6 +383,7 @@ class ExtrapolationScene(Scene):
             scene_transition_progress_percent,
             transition,
             self.hass,
+            brightness_modifier,
         )
 
         _LOGGER.debug(
@@ -573,6 +586,7 @@ async def extrapolate_entities(
     scene_transition_progress_percent,
     transition_time,
     hass: HomeAssistant,
+    brightness_modifier=0,
 ) -> list:
     """Takes in a from and to scene and returns a list of new entity states.
     The new states is the extrapolated state between the two scenes.
@@ -659,7 +673,11 @@ async def extrapolate_entities(
         # Collect all changes first, then apply once
         if ATTR_BRIGHTNESS in from_entity or ATTR_BRIGHTNESS in to_entity:
             final_entity[ATTR_BRIGHTNESS] = extrapolate_brightness(
-                from_entity, to_entity, final_entity, scene_transition_progress_percent
+                from_entity,
+                to_entity,
+                final_entity,
+                scene_transition_progress_percent,
+                brightness_modifier,
             )
 
         if final_color_mode == ColorMode.COLOR_TEMP:
@@ -757,7 +775,11 @@ def extrapolate_number(
 
 
 def extrapolate_brightness(
-    from_entity, to_entity, final_entity, scene_transition_progress_percent
+    from_entity,
+    to_entity,
+    final_entity,
+    scene_transition_progress_percent,
+    brightness_modifier=0,
 ):
     """Extrapolate brightness."""
     # There isn't always a brightness attribute in the to_entity (ie. if it's turned off or the like)
@@ -772,6 +794,13 @@ def extrapolate_brightness(
         to_brightness,
         scene_transition_progress_percent,
     )
+
+    # Apply brightness modifier (-100 to +100)
+    if brightness_modifier != 0:
+        modifier_factor = 1 + (brightness_modifier / 100.0)
+        final_brightness = int(final_brightness * modifier_factor)
+        # Clamp to valid brightness range (0-255)
+        final_brightness = max(0, min(255, final_brightness))
 
     return final_brightness
 

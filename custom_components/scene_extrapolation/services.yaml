@@ -1,0 +1,36 @@
+turn_on:
+  name: Turn on extrapolation scene
+  description: Activate one or more extrapolation scenes with optional brightness modification and transition time
+  fields:
+    entity_id:
+      name: Scene entities
+      description: Select one or more scenes to activate (supports area/entity filtering)
+      required: true
+      selector:
+        entity:
+          domain: scene
+          multiple: true
+    brightness_modifier:
+      name: Brightness modifier
+      description: Brightness modifier from -100 to +100 percent
+      required: false
+      default: 0
+      selector:
+        number:
+          min: -100
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    transition:
+      name: Transition time
+      description: Transition time from 0 to 6553 seconds
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 6553
+          step: 1
+          unit_of_measurement: "s"
+          mode: slider
