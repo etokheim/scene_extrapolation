@@ -21,6 +21,7 @@ from homeassistant.components.light import (
     ATTR_HS_COLOR,
     ATTR_RGB_COLOR,
     ATTR_RGBW_COLOR,
+    ATTR_RGBWW_COLOR,
     ATTR_TRANSITION,
     DOMAIN as LIGHT_DOMAIN,
     ColorMode,
@@ -691,6 +692,12 @@ async def extrapolate_entities(
             )
             await apply_entity_state(final_entity, hass, transition_time)
 
+        elif final_color_mode == ColorMode.RGBWW:
+            final_entity[ATTR_RGBWW_COLOR] = extrapolate_rgbww(
+                from_entity, to_entity, final_entity, scene_transition_progress_percent
+            )
+            await apply_entity_state(final_entity, hass, transition_time)
+
         _LOGGER.debug("final_entity: %s", final_entity)
 
     return True
@@ -1035,3 +1042,54 @@ def extrapolate_rgbw(
     )
 
     return rgbw_extrapolated
+
+
+def extrapolate_rgbww(
+    from_entity, to_entity, final_entity, scene_transition_progress_percent
+):
+    """Extrapolate RGBWW."""
+    from_rgbww = (
+        from_entity[ATTR_RGBWW_COLOR]
+        if ATTR_RGBWW_COLOR in from_entity
+        else to_entity[ATTR_RGBWW_COLOR]
+    )
+
+    to_rgbww = (
+        to_entity[ATTR_RGBWW_COLOR]
+        if ATTR_RGBWW_COLOR in to_entity
+        else from_entity[ATTR_RGBWW_COLOR]
+    )
+
+    rgbww_extrapolated = [
+        extrapolate_value(
+            from_rgbww[0], to_rgbww[0], scene_transition_progress_percent
+        ),
+        extrapolate_value(
+            from_rgbww[1], to_rgbww[1], scene_transition_progress_percent
+        ),
+        extrapolate_value(
+            from_rgbww[2], to_rgbww[2], scene_transition_progress_percent
+        ),
+        extrapolate_value(
+            from_rgbww[3], to_rgbww[3], scene_transition_progress_percent
+        ),
+        extrapolate_value(
+            from_rgbww[4], to_rgbww[4], scene_transition_progress_percent
+        ),
+    ]
+
+    _LOGGER.debug(
+        "From RGBWW:  %s / %s",
+        from_rgbww,
+        from_entity.get(ATTR_BRIGHTNESS, None),
+    )
+    _LOGGER.debug(
+        "Final RGBWW: %s / %s", rgbww_extrapolated, final_entity[ATTR_BRIGHTNESS]
+    )
+    _LOGGER.debug(
+        "To RGBWW:    %s / %s",
+        to_rgbww,
+        to_entity.get(ATTR_BRIGHTNESS, None),
+    )
+
+    return rgbww_extrapolated
