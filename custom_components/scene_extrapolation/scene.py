@@ -540,9 +540,20 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
         service_type = SERVICE_UNLOCK
 
     elif state == STATE_OPEN or state == STATE_OPENING:
-        service_type = SERVICE_OPEN
+        # Use domain-specific services for open/close where applicable
+        if domain == "cover":
+            service_type = "open_cover"
+        elif domain == "valve":
+            service_type = "open_valve"
+        else:
+            service_type = SERVICE_TURN_ON
     elif state == STATE_CLOSED or state == STATE_CLOSING:
-        service_type = SERVICE_CLOSE
+        if domain == "cover":
+            service_type = "close_cover"
+        elif domain == "valve":
+            service_type = "close_valve"
+        else:
+            service_type = SERVICE_TURN_OFF
 
     del entity_applied["state"]
 
