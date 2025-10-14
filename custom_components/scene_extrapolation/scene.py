@@ -27,30 +27,18 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from .config_flow import get_native_scenes
 
 from homeassistant.components.light import (
-    ATTR_COLOR_MODE,
     ATTR_BRIGHTNESS,
-    ATTR_BRIGHTNESS_PCT,
-    ATTR_BRIGHTNESS_STEP,
-    ATTR_BRIGHTNESS_STEP_PCT,
-    ATTR_COLOR_NAME,
-    ATTR_COLOR_TEMP,
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_HS_COLOR,
-    ATTR_KELVIN,
     ATTR_RGB_COLOR,
-    ATTR_SUPPORTED_COLOR_MODES,
     ATTR_TRANSITION,
-    ATTR_XY_COLOR,
-    COLOR_MODE_BRIGHTNESS,
-    COLOR_MODE_COLOR_TEMP,
-    COLOR_MODE_HS,
-    COLOR_MODE_RGB,
-    COLOR_MODE_RGBW,
-    COLOR_MODE_XY,
-    COLOR_MODE_ONOFF,
+    ATTR_COLOR_MODE,
+    _DEPRECATED_ATTR_COLOR_TEMP as DEPRECATED_ATTR_COLOR_TEMP,
 )
+from homeassistant.components.light.const import ColorMode
 
-COLOR_MODE = "color_mode"
+# Use deprecated mired attribute name for compatibility with scenes data
+ATTR_COLOR_TEMP = DEPRECATED_ATTR_COLOR_TEMP.value
 
 from homeassistant.const import (
     ATTR_AREA_ID,
@@ -80,23 +68,14 @@ from homeassistant.const import (
     STATE_PLAYING,
     STATE_PAUSED,
     STATE_STANDBY,
-    STATE_ALARM_DISARMED,
-    STATE_ALARM_ARMED_HOME,
-    STATE_ALARM_ARMED_AWAY,
-    STATE_ALARM_ARMED_NIGHT,
-    STATE_ALARM_ARMED_VACATION,
-    STATE_ALARM_ARMED_CUSTOM_BYPASS,
-    STATE_LOCKED,
-    STATE_LOCKING,
-    STATE_UNLOCKED,
-    STATE_UNLOCKING,
     STATE_UNAVAILABLE,
     STATE_PROBLEM,
-    STATE_JAMMED,
     SUN_EVENT_SUNRISE,
     SUN_EVENT_SUNSET,
     CONF_UNIQUE_ID,
 )
+
+from homeassistant.components.lock.const import LockState
 
 from .const import (
     DOMAIN,
@@ -300,9 +279,9 @@ class ExtrapolationScene(Scene):
             SCENE_DAWN_MINIMUM_TIME_OF_DAY
         )
 
-        assert isinstance(
-            scene_dawn_minimum_time_of_day, numbers.Number
-        ), "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
+        assert isinstance(scene_dawn_minimum_time_of_day, numbers.Number), (
+            "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
+        )
 
         # TODO: Consider adding noon as an event
         sun_events = [
@@ -534,7 +513,7 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
         state == STATE_UNAVAILABLE
         or state == STATE_UNKNOWN
         or state == STATE_PROBLEM
-        or state == STATE_JAMMED
+        or state == LockState.JAMMED
     ):
         _LOGGER.error("Entity state is %s", entity["state"])
         return
@@ -555,9 +534,9 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
     elif state == "off":
         service_type = SERVICE_TURN_OFF
 
-    elif state == STATE_LOCKED or state == STATE_LOCKING:
+    elif state == LockState.LOCKED or state == LockState.LOCKING:
         service_type = SERVICE_LOCK
-    elif state == STATE_UNLOCKED or state == STATE_UNLOCKING:
+    elif state == LockState.UNLOCKED or state == LockState.UNLOCKING:
         service_type = SERVICE_UNLOCK
 
     elif state == STATE_OPEN or state == STATE_OPENING:
@@ -675,18 +654,18 @@ async def extrapolate_entities(
 
         # Let's make sure that if one of from/to_entities has a color mode, the other one has got one too.
         # If from_entity or to_entity is missing a color mode, we'll set it to the other's color mode
-        if not ATTR_COLOR_MODE in from_entity and ATTR_COLOR_MODE in to_entity:
-            from_entity[COLOR_MODE] = to_entity[COLOR_MODE]
-        elif not ATTR_COLOR_MODE in to_entity and ATTR_COLOR_MODE in from_entity:
-            to_entity[COLOR_MODE] = from_entity[COLOR_MODE]
+        if ATTR_COLOR_MODE not in from_entity and ATTR_COLOR_MODE in to_entity:
+            from_entity[ATTR_COLOR_MODE] = to_entity[ATTR_COLOR_MODE]
+        elif ATTR_COLOR_MODE not in to_entity and ATTR_COLOR_MODE in from_entity:
+            to_entity[ATTR_COLOR_MODE] = from_entity[ATTR_COLOR_MODE]
 
         # Set the color mode we're actually going to extrapolate
         final_color_mode = None
-        if ATTR_COLOR_MODE in from_entity:
+        if ATTR_COLOR_MODE in from_entity or ATTR_COLOR_MODE in to_entity:
             if scene_transition_progress_percent >= 50:
-                final_color_mode = to_entity[COLOR_MODE]
+                final_color_mode = to_entity.get(ATTR_COLOR_MODE)
             else:
-                final_color_mode = from_entity[COLOR_MODE]
+                final_color_mode = from_entity.get(ATTR_COLOR_MODE)
 
         _LOGGER.debug("final_color_mode: %s", final_color_mode)
 
@@ -696,7 +675,7 @@ async def extrapolate_entities(
             )
             await apply_entity_state(final_entity, hass, transition_time)
 
-        if final_color_mode == ATTR_COLOR_TEMP:
+        if final_color_mode == ColorMode.COLOR_TEMP:
             final_entity[ATTR_COLOR_TEMP] = extrapolate_color_temp(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
@@ -714,7 +693,7 @@ async def extrapolate_entities(
             )
             await apply_entity_state(final_entity, hass, transition_time)
 
-        elif final_color_mode == COLOR_MODE_HS:
+        elif final_color_mode == ColorMode.HS:
             final_entity[ATTR_HS_COLOR] = extrapolate_hs(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
@@ -851,7 +830,7 @@ def extrapolate_color_temp(
         _LOGGER.debug(
             "We only support extrapolating between color modes that already have a value in the scenes.yaml file. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating to. (Extrapolating from: %s, to: %s)",
             from_entity[ATTR_COLOR_MODE],
-            to_entity[COLOR_MODE],
+            to_entity[ATTR_COLOR_MODE],
         )
 
         from_color_temp = to_color_temp
@@ -863,7 +842,7 @@ def extrapolate_color_temp(
         _LOGGER.debug(
             "We only support extrapolating between color modes that already have a value in the scenes.yaml file. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating from. (Extrapolating from: %s, to: %s)",
             from_entity[ATTR_COLOR_MODE],
-            to_entity[COLOR_MODE],
+            to_entity[ATTR_COLOR_MODE],
         )
 
         to_color_temp = from_color_temp
