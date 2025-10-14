@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 import numbers
 import time
+import asyncio
 from astral.sun import sun, time_at_elevation, midnight
 from astral import LocationInfo, SunDirection
 import pytz
@@ -181,12 +182,12 @@ class ExtrapolationScene(Scene):
             timezone=self.time_zone, latitude=self.latitude, longitude=self.longitude
         )
 
-        hass.async_add_executor_job(self.update_registry)
+        # Schedule registry update on the event loop to avoid thread-safety issues
+        hass.async_create_task(self.async_update_registry())
 
-    def update_registry(self):
-        # TODO: Find the proper way to do this hack (couldn't figure out how to add the scene to an area immediately)
-        # Wait for the scene to be registered in the registry before we can update it
-        time.sleep(0.1)
+    async def async_update_registry(self):
+        # Wait a tick for the scene to be registered before updating
+        await asyncio.sleep(0)
 
         entity_registry_instance = entity_registry.async_get(self.hass)
 
