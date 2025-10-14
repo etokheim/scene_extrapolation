@@ -656,47 +656,44 @@ async def extrapolate_entities(
 
         _LOGGER.debug("final_color_mode: %s", final_color_mode)
 
+        # Collect all changes first, then apply once
         if ATTR_BRIGHTNESS in from_entity or ATTR_BRIGHTNESS in to_entity:
             final_entity[ATTR_BRIGHTNESS] = extrapolate_brightness(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition_time)
 
         if final_color_mode == ColorMode.COLOR_TEMP:
             final_entity[ATTR_COLOR_TEMP] = extrapolate_color_temp(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition_time)
 
         elif final_color_mode == ATTR_COLOR_TEMP_KELVIN:
             final_entity[ATTR_COLOR_TEMP_KELVIN] = extrapolate_temp_kelvin(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition_time)
 
         elif final_color_mode == ATTR_RGB_COLOR:
             final_entity[ATTR_RGB_COLOR] = extrapolate_rgb(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition_time)
 
         elif final_color_mode == ColorMode.HS:
             final_entity[ATTR_HS_COLOR] = extrapolate_hs(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition_time)
 
         elif final_color_mode == ColorMode.RGBW:
             final_entity[ATTR_RGBW_COLOR] = extrapolate_rgbw(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition_time)
 
         elif final_color_mode == ColorMode.RGBWW:
             final_entity[ATTR_RGBWW_COLOR] = extrapolate_rgbww(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
-            await apply_entity_state(final_entity, hass, transition_time)
+
+        # Apply all changes at once
+        await apply_entity_state(final_entity, hass, transition_time)
 
         _LOGGER.debug("final_entity: %s", final_entity)
 
