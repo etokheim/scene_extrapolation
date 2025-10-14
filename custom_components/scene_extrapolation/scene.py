@@ -1,100 +1,77 @@
 """
 Create a scene entity which when activated calculates the appropriate lighting by extrapolating between user configured scenes.
-"""
+"""  # noqa: D200, D212
 
-import logging
+import asyncio
 from datetime import datetime
+import logging
 import numbers
 import time
-import asyncio
-from astral.sun import sun, time_at_elevation, midnight
-from astral import LocationInfo, SunDirection
-import pytz
+from zoneinfo import ZoneInfo
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.components.scene import Scene
-from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN
-from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+from astral import LocationInfo
+from astral.sun import midnight, sun  # TODO: Play with time_at_elevation
+
 from homeassistant.components.fan import DOMAIN as FAN_DOMAIN
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.device_registry import DeviceEntryType
-from homeassistant.helpers.entity import DeviceInfo
-import homeassistant.helpers.entity_registry as entity_registry
-from homeassistant.helpers.dispatcher import async_dispatcher_send
-
-# TODO: Move this function to __init__ maybe? At least somewhere more fitting for reuse
-from .config_flow import get_native_scenes
-
 from homeassistant.components.light import (
+    _DEPRECATED_ATTR_COLOR_TEMP as DEPRECATED_ATTR_COLOR_TEMP,
     ATTR_BRIGHTNESS,
+    ATTR_COLOR_MODE,
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_HS_COLOR,
     ATTR_RGB_COLOR,
     ATTR_TRANSITION,
-    ATTR_COLOR_MODE,
-    _DEPRECATED_ATTR_COLOR_TEMP as DEPRECATED_ATTR_COLOR_TEMP,
+    DOMAIN as LIGHT_DOMAIN,
+    ColorMode,
 )
-from homeassistant.components.light.const import ColorMode
+from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN, Scene
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry
+from homeassistant.components.lock import LockState
+
+# TODO: Move this function to __init__ maybe? At least somewhere more fitting for reuse
+from .config_flow import get_native_scenes
 
 # Use deprecated mired attribute name for compatibility with scenes data
 ATTR_COLOR_TEMP = DEPRECATED_ATTR_COLOR_TEMP.value
 
-from homeassistant.const import (
+from homeassistant.const import (  # noqa: E402
     ATTR_AREA_ID,
-    ATTR_DOMAIN,
     ATTR_ENTITY_ID,
-    ATTR_SERVICE,
-    ATTR_SERVICE_DATA,
-    ATTR_SUPPORTED_FEATURES,
     ATTR_STATE,
-    CONF_NAME,
-    EVENT_CALL_SERVICE,
-    EVENT_HOMEASSISTANT_STARTED,
-    EVENT_STATE_CHANGED,
+    CONF_UNIQUE_ID,
+    SERVICE_LOCK,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
-    SERVICE_LOCK,
     SERVICE_UNLOCK,
-    SERVICE_OPEN,
-    SERVICE_CLOSE,
-    STATE_ON,
-    STATE_OFF,
-    STATE_UNKNOWN,
-    STATE_OPEN,
-    STATE_OPENING,
     STATE_CLOSED,
     STATE_CLOSING,
-    STATE_PLAYING,
-    STATE_PAUSED,
-    STATE_STANDBY,
-    STATE_UNAVAILABLE,
+    STATE_OFF,
+    STATE_OPEN,
+    STATE_OPENING,
     STATE_PROBLEM,
-    SUN_EVENT_SUNRISE,
-    SUN_EVENT_SUNSET,
-    CONF_UNIQUE_ID,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
 )
 
-from homeassistant.components.lock.const import LockState
-
 from .const import (
-    DOMAIN,
-    NIGHTLIGHTS_SCENE_ID,
-    SCENE_DAWN_MINIMUM_TIME_OF_DAY,
     NIGHTLIGHTS_BOOLEAN_ID,
-    SCENE_NAME,
-    SCENE_NIGHT_RISING_NAME,
-    SCENE_NIGHT_RISING_ID,
-    SCENE_DAWN_NAME,
+    NIGHTLIGHTS_SCENE_ID,
     SCENE_DAWN_ID,
-    SCENE_DAY_RISING_NAME,
+    SCENE_DAWN_MINIMUM_TIME_OF_DAY,
+    SCENE_DAWN_NAME,
     SCENE_DAY_RISING_ID,
-    SCENE_DAY_SETTING_NAME,
+    SCENE_DAY_RISING_NAME,
     SCENE_DAY_SETTING_ID,
-    SCENE_DUSK_NAME,
+    SCENE_DAY_SETTING_NAME,
     SCENE_DUSK_ID,
-    SCENE_NIGHT_SETTING_NAME,
+    SCENE_DUSK_NAME,
+    SCENE_NIGHT_RISING_ID,
+    SCENE_NIGHT_RISING_NAME,
     SCENE_NIGHT_SETTING_ID,
+    SCENE_NIGHT_SETTING_NAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -119,9 +96,10 @@ async def async_setup_entry(
 
 
 class SunEvent:
-    """Creates a sun event"""
+    """Creates a sun event."""
 
     def __init__(self, name, start_time, scene) -> None:
+        """Initialize a SunEvent."""
         self.name = name
         self.start_time = start_time
         self.scene = scene
@@ -165,6 +143,7 @@ class ExtrapolationScene(Scene):
         hass.async_create_task(self.async_update_registry())
 
     async def async_update_registry(self):
+        """Update the registry."""
         # Wait a tick for the scene to be registered before updating
         await asyncio.sleep(0)
 
@@ -204,16 +183,12 @@ class ExtrapolationScene(Scene):
         #             Handle nightlights             #
         ##############################################
         nightlights_boolean_id = self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
-        nightlights_boolean = (
-            True
-            if self.hass.states.get(nightlights_boolean_id).state == "on"
-            else False
-        )
+        nightlights_boolean = self.hass.states.get(nightlights_boolean_id).state == "on"
 
         # Turn on night lights instead if the nightlights_boolean is on
         if nightlights_boolean:
             _LOGGER.debug(
-                "nightlights_boolean is on. Turning on nightlights instead of default behavior."
+                "nightlights_boolean is on. Turning on nightlights instead of default behavior"
             )
 
             nightlights_scene_id = self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID)
@@ -253,13 +228,13 @@ class ExtrapolationScene(Scene):
 
         # TODO: Consider renaming the variable, as it's easy to mistake for the sun_events variable
         solar_events = sun(
-            self.city.observer, date=datetime.now(tz=pytz.timezone(self.time_zone))
+            self.city.observer, date=datetime.now(tz=ZoneInfo(self.time_zone))
         )
 
         # midnight event isn't part of the default events and is therefor appended:
         solar_events["midnight"] = midnight(
             self.city.observer,
-            date=datetime.now(tz=pytz.timezone(self.time_zone)),
+            date=datetime.now(tz=ZoneInfo(self.time_zone)),
         )
 
         _LOGGER.debug(
@@ -349,7 +324,7 @@ class ExtrapolationScene(Scene):
             "Time since midnight: %s", self.seconds_since_midnight(transition)
         )
         _LOGGER.debug(
-            "Time now: %s", datetime.now(tz=pytz.timezone(self.hass.config.time_zone))
+            "Time now: %s", datetime.now(tz=ZoneInfo(self.hass.config.time_zone))
         )
 
         current_sun_event = self.get_sun_event(
@@ -406,7 +381,8 @@ class ExtrapolationScene(Scene):
         )
 
     def datetime_to_seconds_since_midnight(self, datetime):
-        now = datetime.now(tz=pytz.timezone(self.hass.config.time_zone))
+        """Convert a datetime object to seconds since midnight."""
+        now = datetime.now(tz=ZoneInfo(self.hass.config.time_zone))
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
         return (datetime - midnight).seconds
 
@@ -414,7 +390,9 @@ class ExtrapolationScene(Scene):
         self, current_sun_event, next_sun_event, transition_time
     ) -> int:
         """Get a percentage value for how far into the transitioning between the from and to scene
-        we currently are."""
+        we currently are.
+        """
+
         # Account for passing midnight
         seconds_between_current_and_next_sun_events = None
         seconds_till_next_sun_event = None
@@ -453,8 +431,8 @@ class ExtrapolationScene(Scene):
         )
 
     def seconds_since_midnight(self, transition_time) -> float:
-        """Returns the number of seconds since midnight, adjusted for transition time"""
-        now = datetime.now(tz=pytz.timezone(self.hass.config.time_zone))
+        """Returns the number of seconds since midnight, adjusted for transition time."""
+        now = datetime.now(tz=ZoneInfo(self.hass.config.time_zone))
         seconds_since_midnight = (
             now - now.replace(hour=0, minute=0, second=0, microsecond=0)
         ).total_seconds()
@@ -467,10 +445,10 @@ class ExtrapolationScene(Scene):
             seconds_since_midnight + transition_time
         ) % 86400
 
-        return seconds_since_midnight_adjusted_for_transition
+        return seconds_since_midnight_adjusted_for_transition  # noqa: RET504
 
     def get_sun_event(self, sun_events, seconds_since_midnight, offset=0) -> SunEvent:
-        """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead"""
+        """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead."""
         sorted_sun_events = sorted(sun_events, key=lambda x: x.start_time)
 
         # Find the event closest, but still in the future
@@ -498,32 +476,27 @@ class ExtrapolationScene(Scene):
 
 
 async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
-    """Applies the entities states"""
+    """Applies the entities states."""
     domain = entity[ATTR_ENTITY_ID].split(".")[0]
     state = entity["state"]
 
-    if not "state" in entity:
+    if "state" not in entity:
         _LOGGER.error(
             "The entity provided is missing a state property. Can't apply entity state (skipping). Entity: %s",
             entity,
         )
 
-        return
-    elif (
-        state == STATE_UNAVAILABLE
-        or state == STATE_UNKNOWN
-        or state == STATE_PROBLEM
-        or state == LockState.JAMMED
-    ):
+        return None
+    elif state in (STATE_UNAVAILABLE, STATE_UNKNOWN, STATE_PROBLEM, LockState.JAMMED):
         _LOGGER.error("Entity state is %s", entity["state"])
-        return
+        return None
 
     if domain == LIGHT_DOMAIN:
         entity[ATTR_TRANSITION] = transition_time
 
     if domain == FAN_DOMAIN:
         _LOGGER.warning(
-            "Extrapolation of fans only support turning them on/off. Direction, speed etc will be ignored until it's implemented. Please open an issue or PR if this is something you want."
+            "Extrapolation of fans only support turning them on/off. Direction, speed etc will be ignored until it's implemented. Please open an issue or PR if this is something you want"
         )
 
     # Set the service type
@@ -534,12 +507,12 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
     elif state == "off":
         service_type = SERVICE_TURN_OFF
 
-    elif state == LockState.LOCKED or state == LockState.LOCKING:
+    elif state in (LockState.LOCKED, LockState.LOCKING):
         service_type = SERVICE_LOCK
-    elif state == LockState.UNLOCKED or state == LockState.UNLOCKING:
+    elif state in (LockState.UNLOCKED, LockState.UNLOCKING):
         service_type = SERVICE_UNLOCK
 
-    elif state == STATE_OPEN or state == STATE_OPENING:
+    elif state in (STATE_OPEN, STATE_OPENING):
         # Use domain-specific services for open/close where applicable
         if domain == "cover":
             service_type = "open_cover"
@@ -547,7 +520,7 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
             service_type = "open_valve"
         else:
             service_type = SERVICE_TURN_ON
-    elif state == STATE_CLOSED or state == STATE_CLOSING:
+    elif state in (STATE_CLOSED, STATE_CLOSING):
         if domain == "cover":
             service_type = "close_cover"
         elif domain == "valve":
@@ -569,7 +542,7 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
         _LOGGER.debug(
             "Service call (%s.%s) has been sent successfully", domain, service_type
         )
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001
         _LOGGER.error("Service call to turn on light failed: %s", error)
 
     return True
@@ -600,7 +573,8 @@ async def extrapolate_entities(
     hass: HomeAssistant,
 ) -> list:
     """Takes in a from and to scene and returns a list of new entity states.
-    The new states is the extrapolated state between the two scenes."""
+    The new states is the extrapolated state between the two scenes.
+    """
 
     _LOGGER.debug("from_scene: %s", from_scene)
     _LOGGER.debug("to_scene: %s", to_scene)
@@ -611,7 +585,7 @@ async def extrapolate_entities(
     # Add any entities that are present in to_scene, but is missing from from_scene to the from_scene list.
     # This is needed as we are only checking from_scene["entities"] for entities to extrapolate
     for to_entity_id in to_scene["entities"]:
-        if not to_entity_id in from_scene["entities"]:
+        if to_entity_id not in from_scene["entities"]:
             _LOGGER.debug(
                 "Couldn't find "
                 + to_entity_id
@@ -716,6 +690,7 @@ async def extrapolate_entities(
 
 
 def extrapolate_value(from_value, to_value, scene_transition_progress_percent):
+    """Extrapolate a value."""
     # TODO: Should this abs be here? I just quick fixed an error with negative hs values
     return abs(
         from_value
@@ -726,7 +701,7 @@ def extrapolate_value(from_value, to_value, scene_transition_progress_percent):
 def extrapolate_number(
     from_number, to_number, scene_transition_progress_percent
 ) -> int:
-    """Takes the current transition percent plus a from and to number and returns what the new value should be"""
+    """Takes the current transition percent plus a from and to number and returns what the new value should be."""
     # Make sure the input is as it should be
     # TODO: This should only be temporary - figure out why values sometimes are bad
     if not isinstance(from_number, numbers.Number):
@@ -773,6 +748,7 @@ def extrapolate_number(
 def extrapolate_brightness(
     from_entity, to_entity, final_entity, scene_transition_progress_percent
 ):
+    """Extrapolate brightness."""
     # There isn't always a brightness attribute in the to_entity (ie. if it's turned off or the like)
     from_brightness = (
         from_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in from_entity else 0
@@ -817,6 +793,7 @@ def extrapolate_state(
 def extrapolate_color_temp(
     from_entity, to_entity, final_entity, scene_transition_progress_percent
 ):
+    """Extrapolate color temperature."""
     from_color_temp = (
         from_entity[ATTR_COLOR_TEMP]
         if ATTR_COLOR_TEMP in from_entity
@@ -835,7 +812,7 @@ def extrapolate_color_temp(
 
     if from_color_temp is None:
         _LOGGER.warning(
-            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information.",
+            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information",
         )
 
         _LOGGER.debug(
@@ -847,7 +824,7 @@ def extrapolate_color_temp(
         from_color_temp = to_color_temp
     elif to_color_temp is None:
         _LOGGER.warning(
-            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information.",
+            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information",
         )
 
         _LOGGER.debug(
@@ -867,7 +844,7 @@ def extrapolate_color_temp(
     _LOGGER.debug(
         "From color_temp:  %s / %s",
         from_color_temp,
-        from_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in from_entity else None,
+        from_entity.get(ATTR_BRIGHTNESS, None),
     )
     _LOGGER.debug(
         "Final color_temp: %s / %s",
@@ -877,7 +854,7 @@ def extrapolate_color_temp(
     _LOGGER.debug(
         "To color_temp:    %s / %s",
         to_color_temp,
-        to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
+        to_entity.get(ATTR_BRIGHTNESS, None),
     )
 
     return final_color_temp
@@ -886,6 +863,7 @@ def extrapolate_color_temp(
 def extrapolate_temp_kelvin(
     from_entity, to_entity, final_entity, scene_transition_progress_percent
 ):
+    """Extrapolate color temperature Kelvin."""
     from_color_temp_kelvin = (
         from_entity[ATTR_COLOR_TEMP_KELVIN]
         if ATTR_COLOR_TEMP_KELVIN in from_entity
@@ -911,7 +889,7 @@ def extrapolate_temp_kelvin(
     _LOGGER.debug(
         "From:  %s / %s",
         from_color_temp_kelvin,
-        from_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in from_entity else None,
+        from_entity.get(ATTR_BRIGHTNESS, None),
     )
     _LOGGER.debug(
         "Final: %s / %s",
@@ -921,7 +899,7 @@ def extrapolate_temp_kelvin(
     _LOGGER.debug(
         "To:    %s / %s",
         to_color_temp_kelvin,
-        to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
+        to_entity.get(ATTR_BRIGHTNESS, None),
     )
 
     return final_color_temp_kelvin
@@ -930,6 +908,7 @@ def extrapolate_temp_kelvin(
 def extrapolate_rgb(
     from_entity, to_entity, final_entity, scene_transition_progress_percent
 ):
+    """Extrapolate RGB."""
     from_rgb = (
         from_entity[ATTR_RGB_COLOR]
         if ATTR_RGB_COLOR in from_entity
@@ -970,6 +949,7 @@ def extrapolate_rgb(
 def extrapolate_hs(
     from_entity, to_entity, final_entity, scene_transition_progress_percent
 ):
+    """Extrapolate HS."""
     from_hs = (
         from_entity[ATTR_HS_COLOR]
         if ATTR_HS_COLOR in from_entity
@@ -998,13 +978,13 @@ def extrapolate_hs(
     _LOGGER.debug(
         "From HS:  %s / %s",
         from_hs,
-        from_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in from_entity else None,
+        from_entity.get(ATTR_BRIGHTNESS, None),
     )
     _LOGGER.debug("Final HS: %s / %s", final_hs, final_entity[ATTR_BRIGHTNESS])
     _LOGGER.debug(
         "To HS:    %s / %s",
         to_hs,
-        to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
+        to_entity.get(ATTR_BRIGHTNESS, None),
     )
 
     return final_hs
