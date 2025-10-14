@@ -20,6 +20,7 @@ from homeassistant.components.light import (
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_HS_COLOR,
     ATTR_RGB_COLOR,
+    ATTR_RGBW_COLOR,
     ATTR_TRANSITION,
     DOMAIN as LIGHT_DOMAIN,
     ColorMode,
@@ -684,6 +685,12 @@ async def extrapolate_entities(
             )
             await apply_entity_state(final_entity, hass, transition_time)
 
+        elif final_color_mode == ColorMode.RGBW:
+            final_entity[ATTR_RGBW_COLOR] = extrapolate_rgbw(
+                from_entity, to_entity, final_entity, scene_transition_progress_percent
+            )
+            await apply_entity_state(final_entity, hass, transition_time)
+
         _LOGGER.debug("final_entity: %s", final_entity)
 
     return True
@@ -988,3 +995,43 @@ def extrapolate_hs(
     )
 
     return final_hs
+
+
+def extrapolate_rgbw(
+    from_entity, to_entity, final_entity, scene_transition_progress_percent
+):
+    """Extrapolate RGBW."""
+    from_rgbw = (
+        from_entity[ATTR_RGBW_COLOR]
+        if ATTR_RGBW_COLOR in from_entity
+        else to_entity[ATTR_RGBW_COLOR]
+    )
+
+    to_rgbw = (
+        to_entity[ATTR_RGBW_COLOR]
+        if ATTR_RGBW_COLOR in to_entity
+        else from_entity[ATTR_RGBW_COLOR]
+    )
+
+    rgbw_extrapolated = [
+        extrapolate_value(from_rgbw[0], to_rgbw[0], scene_transition_progress_percent),
+        extrapolate_value(from_rgbw[1], to_rgbw[1], scene_transition_progress_percent),
+        extrapolate_value(from_rgbw[2], to_rgbw[2], scene_transition_progress_percent),
+        extrapolate_value(from_rgbw[3], to_rgbw[3], scene_transition_progress_percent),
+    ]
+
+    _LOGGER.debug(
+        "From RGBW:  %s / %s",
+        from_rgbw,
+        from_entity.get(ATTR_BRIGHTNESS, None),
+    )
+    _LOGGER.debug(
+        "Final RGBW: %s / %s", rgbw_extrapolated, final_entity[ATTR_BRIGHTNESS]
+    )
+    _LOGGER.debug(
+        "To RGBW:    %s / %s",
+        to_rgbw,
+        to_entity.get(ATTR_BRIGHTNESS, None),
+    )
+
+    return rgbw_extrapolated
