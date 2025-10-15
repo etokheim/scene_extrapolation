@@ -185,6 +185,9 @@ class ExtrapolationScene(Scene):
         """Activate the scene."""
         # Store the brightness modifier as an attribute
         self._brightness_modifier = brightness_modifier
+
+        # Trigger a state update to make the attribute visible immediately
+        self.async_write_ha_state()
         start_time = time.time()  # Used for performance monitoring
 
         if transition == 6553:
