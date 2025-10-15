@@ -1,4 +1,5 @@
 """Config flow for Scene Extrapolation integration."""
+
 from __future__ import annotations
 from datetime import datetime, timedelta
 
@@ -120,10 +121,11 @@ async def validate_input(
             current_user_supplied_scene_name = user_supplied_scene_names[index]
             current_user_supplied_scene_id_key = user_supplied_scene_id_keys[index]
 
-            scene_name = user_input[current_user_supplied_scene_name]
-            data_to_store[current_user_supplied_scene_id_key] = get_scene_by_name(
-                hass, scene_name
-            )["entity_id"]
+            # Entity selector returns entity ID directly, no conversion needed
+            if current_user_supplied_scene_name in user_input:
+                data_to_store[current_user_supplied_scene_id_key] = user_input[
+                    current_user_supplied_scene_name
+                ]
 
     if NIGHTLIGHTS_BOOLEAN_NAME in user_input:
         # TODO: Just use get_boolean_id_by_name?
@@ -247,21 +249,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         errors = {}
 
         try:
-            native_scenes = await get_native_scenes(hass=self.hass)
-
-            # If the user has input an area ID, we want to sort the scenes related to that ID to the top of the dropdowns - for conveniences sake
-            area_id = self.config_entry.data.get("area_id")
-            if area_id:
-                native_scenes = sort_by_area_id(native_scenes, area_id)
-
-            native_scene_names = []
-
-            for native_scene in native_scenes:
-                native_scene_names.append(native_scene["name"])
-
-            all_scenes, all_scene_names = await get_scenes_and_scene_names(
-                self.hass
-            )  # All scenes, not just those in scenes.yaml
             booleans, boolean_names = await get_input_booleans_and_boolean_names(
                 self.hass
             )
@@ -276,65 +263,47 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     # ): config_validation.multi_select(scene_names),
                     vol.Required(
                         SCENE_NIGHT_RISING_NAME,
-                        default=get_scene_name_by_entity_id(
-                            self.hass,
-                            self.config_entry.options.get(SCENE_NIGHT_RISING_ID),
-                        ),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=native_scene_names,
+                        default=self.config_entry.options.get(SCENE_NIGHT_RISING_ID),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="scene",
                             multiple=False,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
                     vol.Required(
                         SCENE_DAWN_NAME,
-                        default=get_scene_name_by_entity_id(
-                            self.hass, self.config_entry.options.get(SCENE_DAWN_ID)
-                        ),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=native_scene_names,
+                        default=self.config_entry.options.get(SCENE_DAWN_ID),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="scene",
                             multiple=False,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
                     vol.Required(
                         SCENE_DAY_RISING_NAME,
-                        default=get_scene_name_by_entity_id(
-                            self.hass,
-                            self.config_entry.options.get(SCENE_DAY_RISING_ID),
-                        ),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=native_scene_names,
+                        default=self.config_entry.options.get(SCENE_DAY_RISING_ID),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="scene",
                             multiple=False,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
                     vol.Required(
                         SCENE_DAY_SETTING_NAME,
-                        default=get_scene_name_by_entity_id(
-                            self.hass,
-                            self.config_entry.options.get(SCENE_DAY_SETTING_ID),
-                        ),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=native_scene_names,
+                        default=self.config_entry.options.get(SCENE_DAY_SETTING_ID),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="scene",
                             multiple=False,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
                     vol.Required(
                         SCENE_DUSK_NAME,
-                        default=get_scene_name_by_entity_id(
-                            self.hass, self.config_entry.options.get(SCENE_DUSK_ID)
-                        ),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=native_scene_names,
+                        default=self.config_entry.options.get(SCENE_DUSK_ID),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="scene",
                             multiple=False,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
                     vol.Optional(
@@ -342,15 +311,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ): selector.TimeSelector(selector.TimeSelectorConfig()),
                     vol.Required(
                         SCENE_NIGHT_SETTING_NAME,
-                        default=get_scene_name_by_entity_id(
-                            self.hass,
-                            self.config_entry.options.get(SCENE_NIGHT_SETTING_ID),
-                        ),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=native_scene_names,
+                        default=self.config_entry.options.get(SCENE_NIGHT_SETTING_ID),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="scene",
                             multiple=False,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
                     vol.Optional(
@@ -368,15 +333,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ),
                     vol.Optional(
                         NIGHTLIGHTS_SCENE_NAME,
-                        default=get_scene_name_by_entity_id(
-                            self.hass,
-                            self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID),
-                        ),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=all_scene_names,
+                        default=self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain="scene",
                             multiple=False,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
                     # vol.Required(
