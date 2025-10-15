@@ -13,6 +13,7 @@ from astral import LocationInfo
 from astral.sun import midnight, sun  # TODO: Play with time_at_elevation
 
 from homeassistant.components.fan import DOMAIN as FAN_DOMAIN
+from homeassistant.components.homeassistant.scene import HomeAssistantScene
 from homeassistant.components.light import (
     _DEPRECATED_ATTR_COLOR_TEMP as DEPRECATED_ATTR_COLOR_TEMP,
     ATTR_BRIGHTNESS,
@@ -34,7 +35,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry
 
 # TODO: Move this function to __init__ maybe? At least somewhere more fitting for reuse
-from .config_flow import get_native_scenes
 
 # Use deprecated mired attribute name for compatibility with scenes data
 ATTR_COLOR_TEMP = DEPRECATED_ATTR_COLOR_TEMP.value
@@ -144,6 +144,8 @@ class ExtrapolationScene(Scene):
         # Initialize brightness modifier attribute
         self._brightness_modifier = 0
 
+        # No caching needed - we'll access in-memory scene entities directly
+
         # Schedule registry update on the event loop to avoid thread-safety issues
         hass.async_create_task(self.async_update_registry())
 
@@ -158,6 +160,47 @@ class ExtrapolationScene(Scene):
             self.entity_id,
             area_id=self._area_id,  # TODO: Only set this once - as the user can't change the config, but can edit the scene's area directly. Always setting this overwrites any changes.
         )
+
+    async def async_get_in_memory_scenes(self):
+        """Get scenes from in-memory scene entities instead of reading YAML."""
+        # Get the scene component from hass.data
+        scene_component = self.hass.data.get("scene")
+        if not scene_component:
+            _LOGGER.error("Scene component not found")
+            return []
+
+        # Extract scene configurations from loaded scene entities
+        scenes = []
+        for entity in scene_component.entities:
+            # Check if this is a HomeAssistantScene with scene_config
+            if isinstance(entity, HomeAssistantScene) and hasattr(
+                entity, "scene_config"
+            ):
+                scene_config = entity.scene_config
+                # Convert scene_config.states to the format expected by the rest of the code
+                entities_dict = {}
+                for entity_id, state in scene_config.states.items():
+                    entities_dict[entity_id] = {
+                        "state": state.state,
+                        **state.attributes,
+                    }
+
+                scene_data = {
+                    "id": scene_config.id,
+                    "name": scene_config.name,
+                    "icon": scene_config.icon,
+                    "entity_id": entity.entity_id,
+                    "entities": entities_dict,
+                }
+                scenes.append(scene_data)
+                _LOGGER.debug(
+                    "Found scene entity: %s with %d entities",
+                    entity.entity_id,
+                    len(scene_config.states),
+                )
+
+        _LOGGER.debug("Loaded %d scenes from in-memory entities", len(scenes))
+        return scenes
 
     @property
     def name(self):
@@ -186,9 +229,10 @@ class ExtrapolationScene(Scene):
         # Store the brightness modifier as an attribute
         self._brightness_modifier = brightness_modifier
 
+        start_time = time.time()  # Used for performance monitoring
+
         # Trigger a state update to make the attribute visible immediately
         self.async_write_ha_state()
-        start_time = time.time()  # Used for performance monitoring
 
         if transition == 6553:
             _LOGGER.warning(
@@ -231,8 +275,8 @@ class ExtrapolationScene(Scene):
         ##############################################
         #                Load scenes                 #
         ##############################################
-        # Read and parse the scenes.yaml file
-        scenes = await get_native_scenes(self.hass)
+        # Get scenes from in-memory scene entities (no file I/O)
+        scenes = await self.async_get_in_memory_scenes()
 
         _LOGGER.debug(
             "Time getting native scenes: %sms", (time.time() - start_time) * 1000
