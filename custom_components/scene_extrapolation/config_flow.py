@@ -153,7 +153,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Get the area ID to filter scenes by area
             area_id = None
             if hasattr(self, "basic_config") and AREA_NAME in self.basic_config:
-                area_id = get_area_id_by_name(self.hass, self.basic_config[AREA_NAME])
+                # The area selector returns the area ID directly, not the name
+                area_id = self.basic_config[AREA_NAME]
 
             # Create scenes configuration schema
             scenes_flow_schema = await create_scenes_config_schema(self.hass, area_id)
@@ -175,7 +176,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Store area_id temporarily for setting on the scene entity after creation
             area_id = None
             if AREA_NAME in self.basic_config:
-                area_id = get_area_id_by_name(self.hass, self.basic_config[AREA_NAME])
+                # The area selector returns the area ID directly
+                area_id = self.basic_config[AREA_NAME]
 
             # Create the config entry
             result = self.async_create_entry(
