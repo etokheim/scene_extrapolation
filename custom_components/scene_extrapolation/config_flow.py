@@ -381,14 +381,14 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
     """Create the scenes configuration schema for both config and options flows."""
     booleans, boolean_names = await get_input_booleans_and_boolean_names(hass)
 
-    # Get scene entities for the area if area is configured
+    # Get native Home Assistant scene entities for the area if area is configured
     scene_entity_ids = None
     if area_id:
         entity_reg = entity_registry.async_get(hass)
         scene_entity_ids = [
             entity.entity_id
             for entity in entity_registry.async_entries_for_area(entity_reg, area_id)
-            if entity.domain == "scene"
+            if entity.domain == "scene" and entity.platform == "homeassistant"
         ]
 
     # Helper function to create scene selector with area filtering
@@ -399,6 +399,16 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
         }
         if scene_entity_ids:
             config["include_entities"] = scene_entity_ids
+        else:
+            # If no area filtering, still filter for native Home Assistant scenes only
+            entity_reg = entity_registry.async_get(hass)
+            native_scene_entities = [
+                entity.entity_id
+                for entity in entity_reg.entities.values()
+                if entity.domain == "scene" and entity.platform == "homeassistant"
+            ]
+            if native_scene_entities:
+                config["include_entities"] = native_scene_entities
         return selector.EntitySelector(selector.EntitySelectorConfig(**config))
 
     # Use current values if provided (for options flow), otherwise use defaults
