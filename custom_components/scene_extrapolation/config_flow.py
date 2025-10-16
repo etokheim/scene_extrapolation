@@ -224,25 +224,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step - basic configuration."""
-        # Get current values from config entry
-        current_scene_name = self.config_entry.data.get(
-            SCENE_NAME, "Extrapolation Scene"
-        )
-        current_area_id = self.config_entry.data.get("area_id")
-
-        config_flow_schema = await create_basic_config_schema(
-            self.hass, current_scene_name, current_area_id
-        )
-
-        if user_input is None:
-            return self.async_show_form(
-                step_id="init",
-                data_schema=config_flow_schema,
-            )
-
-        # Store the basic configuration and move to scene configuration
-        self.basic_config = user_input
+        """Handle the initial step - skip basic configuration and go directly to scenes."""
+        # Skip basic configuration and go directly to scenes configuration
         return await self.async_step_scenes()
 
     async def async_step_scenes(
@@ -251,13 +234,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         """Handle the scene configuration step."""
         errors = {}
         try:
-            # Get the area ID to filter scenes by area
-            area_id = None
-            if hasattr(self, "basic_config") and AREA_NAME in self.basic_config:
-                area_id = get_area_id_by_name(self.hass, self.basic_config[AREA_NAME])
-            else:
-                # Fall back to existing area_id from config entry
-                area_id = self.config_entry.data.get("area_id")
+            # Use existing area_id from config entry (no basic config in options flow)
+            area_id = self.config_entry.data.get("area_id")
 
             # Get current values from config entry for pre-population
             current_values = {
@@ -292,9 +270,19 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     data_schema=scenes_flow_schema,
                 )
 
+            # For options flow, create basic config from existing config entry data
+            basic_config = {
+                SCENE_NAME: self.config_entry.data.get(
+                    SCENE_NAME, "Extrapolation Scene"
+                ),
+                AREA_NAME: get_area_name_by_id(
+                    self.hass, self.config_entry.data.get("area_id")
+                ),
+            }
+
             # Validate and combine basic config with scene config
             validated_input = await validate_combined_input(
-                self.hass, self.basic_config, user_input, self.config_entry
+                self.hass, basic_config, user_input, self.config_entry
             )
 
             return self.async_create_entry(
@@ -314,7 +302,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
 
 async def create_basic_config_schema(
-    hass, current_scene_name=None, current_area_id=None
+    hass, current_scene_name=None, current_area_name=None
 ):
     """Create the basic configuration schema for both config and options flows."""
     return vol.Schema(
@@ -324,7 +312,7 @@ async def create_basic_config_schema(
             ): str,
             vol.Optional(
                 AREA_NAME,
-                default=current_area_id,
+                default=current_area_name,
             ): selector.AreaSelector(
                 selector.AreaSelectorConfig(
                     multiple=False,
