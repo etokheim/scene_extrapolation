@@ -68,90 +68,60 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-async def validate_input(
+async def validate_combined_input(
     hass: HomeAssistant,
-    user_input: dict[str, Any],
+    basic_config: dict[str, Any],
+    scenes_config: dict[str, Any],
     config_entry: config_entries.ConfigEntry = None,
 ) -> dict[str, Any]:
-    """Validate the user input.
+    """Validate and combine basic config and scenes config for both flows."""
+    # Combine the inputs
+    combined_input = {**basic_config, **scenes_config}
 
-    Note: We use the same function for both the config flow and the options flow
+    # Extract basic info
+    scene_name = combined_input.get(SCENE_NAME, "Extrapolation Scene")
+    area_name = combined_input.get(AREA_NAME)
+    area_id = None
+    if area_name:
+        area_id = get_area_id_by_name(hass, area_name)
 
-    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
-    """
-
-    # _LOGGER.info("data: %s", config_entry.data)
-    # _LOGGER.info("user_input: %s", user_input)
     data_to_store = {
-        SCENE_NAME: user_input[SCENE_NAME]
-        if SCENE_NAME in user_input
-        else config_entry.data.get(SCENE_NAME),
-        # Too tired to explain this mess now. It seems to work though, so let's just not touch it! 😅
-        ATTR_AREA_ID: get_area_id_by_name(hass, user_input[AREA_NAME])
-        if AREA_NAME in user_input
-        else config_entry.data.get(ATTR_AREA_ID)
-        if config_entry is not None
-        else None,
+        SCENE_NAME: scene_name,
+        ATTR_AREA_ID: area_id,
     }
 
-    # If we are in the options flow (the integration has already been set up)
-    options_flow = True if config_entry else False
-    if options_flow:
-        # Find the ID of each supplied scene and store that instead of the name. (This way users can change the scene names without breaking the configuration).
-        user_supplied_scene_names = [
-            SCENE_NIGHT_RISING_NAME,
-            SCENE_DAWN_NAME,
-            SCENE_DAY_RISING_NAME,
-            SCENE_DAY_SETTING_NAME,
-            SCENE_DUSK_NAME,
-            SCENE_NIGHT_SETTING_NAME,
-            NIGHTLIGHTS_SCENE_NAME,
-        ]
-        user_supplied_scene_id_keys = [
-            SCENE_NIGHT_RISING_ID,
-            SCENE_DAWN_ID,
-            SCENE_DAY_RISING_ID,
-            SCENE_DAY_SETTING_ID,
-            SCENE_DUSK_ID,
-            SCENE_NIGHT_SETTING_ID,
-            NIGHTLIGHTS_SCENE_ID,
-        ]
+    # Handle scene configurations
+    scene_name_to_id_mapping = {
+        SCENE_NIGHT_RISING_NAME: SCENE_NIGHT_RISING_ID,
+        SCENE_DAWN_NAME: SCENE_DAWN_ID,
+        SCENE_DAY_RISING_NAME: SCENE_DAY_RISING_ID,
+        SCENE_DAY_SETTING_NAME: SCENE_DAY_SETTING_ID,
+        SCENE_DUSK_NAME: SCENE_DUSK_ID,
+        SCENE_NIGHT_SETTING_NAME: SCENE_NIGHT_SETTING_ID,
+        NIGHTLIGHTS_SCENE_NAME: NIGHTLIGHTS_SCENE_ID,
+    }
 
-        for index, item in enumerate(user_supplied_scene_names):
-            current_user_supplied_scene_name = user_supplied_scene_names[index]
-            current_user_supplied_scene_id_key = user_supplied_scene_id_keys[index]
+    for scene_name_key, scene_id_key in scene_name_to_id_mapping.items():
+        if scene_name_key in combined_input:
+            data_to_store[scene_id_key] = combined_input[scene_name_key]
 
-            # Entity selector returns entity ID directly, no conversion needed
-            if current_user_supplied_scene_name in user_input:
-                data_to_store[current_user_supplied_scene_id_key] = user_input[
-                    current_user_supplied_scene_name
-                ]
+    # Handle boolean configuration
+    if NIGHTLIGHTS_BOOLEAN_NAME in combined_input:
+        boolean_name = combined_input[NIGHTLIGHTS_BOOLEAN_NAME]
+        if boolean_name:
+            boolean_id = get_boolean_id_by_name(hass, boolean_name)
+            data_to_store[NIGHTLIGHTS_BOOLEAN_ID] = boolean_id
 
-    if NIGHTLIGHTS_BOOLEAN_NAME in user_input:
-        # TODO: Just use get_boolean_id_by_name?
-        nightlights_boolean = user_input[NIGHTLIGHTS_BOOLEAN_NAME]
+    # Handle time configuration
+    if SCENE_DAWN_MINIMUM_TIME_OF_DAY in combined_input:
+        time_str = combined_input[SCENE_DAWN_MINIMUM_TIME_OF_DAY]
+        if time_str:
+            time_parts = time_str.split(":")
+            seconds = (
+                int(time_parts[0]) * 3600 + int(time_parts[1]) * 60 + int(time_parts[2])
+            )
+            data_to_store[SCENE_DAWN_MINIMUM_TIME_OF_DAY] = seconds
 
-        boolean, boolean_names = await get_input_booleans_and_boolean_names(hass)
-        boolean_name_index = boolean_names.index(nightlights_boolean)
-        nightlights_boolean = boolean[boolean_name_index]
-        data_to_store[NIGHTLIGHTS_BOOLEAN_ID] = nightlights_boolean.entity_id
-
-    if SCENE_DAWN_MINIMUM_TIME_OF_DAY in user_input:
-        # Convert the 24 hour time string to seconds
-        time_object = datetime.strptime(
-            user_input[SCENE_DAWN_MINIMUM_TIME_OF_DAY], "%H:%M:%S"
-        )
-        seconds = timedelta(
-            hours=time_object.hour,
-            minutes=time_object.minute,
-            seconds=time_object.second,
-        ).total_seconds()
-
-        data_to_store[SCENE_DAWN_MINIMUM_TIME_OF_DAY] = seconds
-
-    # Return info that you want to store in the config entry.
-    _LOGGER.info("supplied data: %s", user_input)
-    _LOGGER.info("data_to_store: %s", data_to_store)
     return data_to_store
 
 
@@ -164,24 +134,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step - basic configuration."""
-
-        areas, area_names = await get_areas_and_area_names(self.hass)
-
-        # Basic configuration schema
-        config_flow_schema = vol.Schema(
-            {
-                vol.Optional("scene_name", default="Extrapolation Scene"): str,
-                vol.Optional(
-                    AREA_NAME,
-                ): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=area_names,
-                        multiple=False,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    ),
-                ),
-            }
-        )
+        config_flow_schema = await create_basic_config_schema(self.hass)
 
         if user_input is None:
             return self.async_show_form(
@@ -197,67 +150,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the scene configuration step."""
-
         errors = {}
-
         try:
-            booleans, boolean_names = await get_input_booleans_and_boolean_names(
-                self.hass
-            )
-
             # Get the area ID to filter scenes by area
             area_id = None
             if hasattr(self, "basic_config") and AREA_NAME in self.basic_config:
                 area_id = get_area_id_by_name(self.hass, self.basic_config[AREA_NAME])
 
-            # Get scene entities for the area if area is configured
-            scene_entity_ids = None
-            if area_id:
-                entity_reg = entity_registry.async_get(self.hass)
-
-                # Get all scene entities in the area
-                scene_entity_ids = [
-                    entity.entity_id
-                    for entity in entity_registry.async_entries_for_area(
-                        entity_reg, area_id
-                    )
-                    if entity.domain == "scene"
-                ]
-
-            # Helper function to create scene selector with area filtering
-            def create_scene_selector():
-                config = {
-                    "domain": "scene",
-                    "multiple": False,
-                }
-                if scene_entity_ids:
-                    config["include_entities"] = scene_entity_ids
-                return selector.EntitySelector(selector.EntitySelectorConfig(**config))
-
-            # Scene configuration schema
-            scenes_flow_schema = vol.Schema(
-                {
-                    vol.Required(SCENE_NIGHT_RISING_NAME): create_scene_selector(),
-                    vol.Required(SCENE_DAWN_NAME): create_scene_selector(),
-                    vol.Required(SCENE_DAY_RISING_NAME): create_scene_selector(),
-                    vol.Required(SCENE_DAY_SETTING_NAME): create_scene_selector(),
-                    vol.Required(SCENE_DUSK_NAME): create_scene_selector(),
-                    vol.Optional(
-                        SCENE_DAWN_MINIMUM_TIME_OF_DAY, default="22:00:00"
-                    ): selector.TimeSelector(selector.TimeSelectorConfig()),
-                    vol.Required(SCENE_NIGHT_SETTING_NAME): create_scene_selector(),
-                    vol.Optional(
-                        NIGHTLIGHTS_BOOLEAN_NAME,
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=boolean_names,
-                            multiple=False,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        ),
-                    ),
-                    vol.Optional(NIGHTLIGHTS_SCENE_NAME): create_scene_selector(),
-                }
-            )
+            # Create scenes configuration schema
+            scenes_flow_schema = await create_scenes_config_schema(self.hass, area_id)
 
             if user_input is None:
                 return self.async_show_form(
@@ -265,9 +166,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data_schema=scenes_flow_schema,
                 )
 
-            # Combine basic config with scene config
-            combined_input = {**self.basic_config, **user_input}
-            validated_input = await validate_input(self.hass, combined_input)
+            # Validate and combine basic config with scene config
+            validated_input = await validate_combined_input(
+                self.hass, self.basic_config, user_input
+            )
 
             # Append a unique ID for this scene before saving the data
             validated_input[CONF_UNIQUE_ID] = str(uuid.uuid4())
@@ -322,114 +224,198 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage the options."""
+        """Handle the initial step - basic configuration."""
+        # Get current values from config entry
+        current_scene_name = self.config_entry.data.get(
+            SCENE_NAME, "Extrapolation Scene"
+        )
+        current_area_id = self.config_entry.data.get("area_id")
+        current_area_name = None
+        if current_area_id:
+            current_area_name = get_area_name_by_id(self.hass, current_area_id)
 
-        errors = {}
+        config_flow_schema = await create_basic_config_schema(
+            self.hass, current_scene_name, current_area_name
+        )
 
-        try:
-            booleans, boolean_names = await get_input_booleans_and_boolean_names(
-                self.hass
+        if user_input is None:
+            return self.async_show_form(
+                step_id="init",
+                data_schema=config_flow_schema,
             )
 
+        # Store the basic configuration and move to scene configuration
+        self.basic_config = user_input
+        return await self.async_step_scenes()
+
+    async def async_step_scenes(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle the scene configuration step."""
+        errors = {}
+        try:
             # Get the area ID to filter scenes by area
-            area_id = self.config_entry.data.get("area_id")
+            area_id = None
+            if hasattr(self, "basic_config") and AREA_NAME in self.basic_config:
+                area_id = get_area_id_by_name(self.hass, self.basic_config[AREA_NAME])
+            else:
+                # Fall back to existing area_id from config entry
+                area_id = self.config_entry.data.get("area_id")
 
-            # Get scene entities for the area if area is configured
-            scene_entity_ids = None
-            if area_id:
-                entity_reg = entity_registry.async_get(self.hass)
+            # Get current values from config entry for pre-population
+            current_values = {
+                SCENE_NIGHT_RISING_ID: self.config_entry.options.get(
+                    SCENE_NIGHT_RISING_ID
+                ),
+                SCENE_DAWN_ID: self.config_entry.options.get(SCENE_DAWN_ID),
+                SCENE_DAY_RISING_ID: self.config_entry.options.get(SCENE_DAY_RISING_ID),
+                SCENE_DAY_SETTING_ID: self.config_entry.options.get(
+                    SCENE_DAY_SETTING_ID
+                ),
+                SCENE_DUSK_ID: self.config_entry.options.get(SCENE_DUSK_ID),
+                SCENE_NIGHT_SETTING_ID: self.config_entry.options.get(
+                    SCENE_NIGHT_SETTING_ID
+                ),
+                NIGHTLIGHTS_BOOLEAN_ID: self.config_entry.options.get(
+                    NIGHTLIGHTS_BOOLEAN_ID
+                ),
+                NIGHTLIGHTS_SCENE_ID: self.config_entry.options.get(
+                    NIGHTLIGHTS_SCENE_ID
+                ),
+            }
 
-                # Get all scene entities in the area
-                scene_entity_ids = [
-                    entity.entity_id
-                    for entity in entity_registry.async_entries_for_area(
-                        entity_reg, area_id
-                    )
-                    if entity.domain == "scene"
-                ]
-
-            # Helper function to create scene selector with area filtering
-            def create_scene_selector():
-                config = {
-                    "domain": "scene",
-                    "multiple": False,
-                }
-                if scene_entity_ids:
-                    config["include_entities"] = scene_entity_ids
-                return selector.EntitySelector(selector.EntitySelectorConfig(**config))
-
-            options_flow_schema = vol.Schema(
-                {
-                    vol.Required(
-                        SCENE_NIGHT_RISING_NAME,
-                        default=self.config_entry.options.get(SCENE_NIGHT_RISING_ID),
-                    ): create_scene_selector(),
-                    vol.Required(
-                        SCENE_DAWN_NAME,
-                        default=self.config_entry.options.get(SCENE_DAWN_ID),
-                    ): create_scene_selector(),
-                    vol.Required(
-                        SCENE_DAY_RISING_NAME,
-                        default=self.config_entry.options.get(SCENE_DAY_RISING_ID),
-                    ): create_scene_selector(),
-                    vol.Required(
-                        SCENE_DAY_SETTING_NAME,
-                        default=self.config_entry.options.get(SCENE_DAY_SETTING_ID),
-                    ): create_scene_selector(),
-                    vol.Required(
-                        SCENE_DUSK_NAME,
-                        default=self.config_entry.options.get(SCENE_DUSK_ID),
-                    ): create_scene_selector(),
-                    vol.Optional(
-                        SCENE_DAWN_MINIMUM_TIME_OF_DAY, default="22:00:00"
-                    ): selector.TimeSelector(selector.TimeSelectorConfig()),
-                    vol.Required(
-                        SCENE_NIGHT_SETTING_NAME,
-                        default=self.config_entry.options.get(SCENE_NIGHT_SETTING_ID),
-                    ): create_scene_selector(),
-                    vol.Optional(
-                        NIGHTLIGHTS_BOOLEAN_NAME,
-                        default=get_input_boolean_name_by_id(
-                            self.hass,
-                            self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID),
-                        ),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=boolean_names,
-                            multiple=False,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        ),
-                    ),
-                    vol.Optional(
-                        NIGHTLIGHTS_SCENE_NAME,
-                        default=self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID),
-                    ): create_scene_selector(),
-                }
+            # Create scenes configuration schema with current values
+            scenes_flow_schema = await create_scenes_config_schema(
+                self.hass, area_id, current_values
             )
 
             if user_input is None:
                 return self.async_show_form(
-                    step_id="init", data_schema=options_flow_schema
+                    step_id="scenes",
+                    data_schema=scenes_flow_schema,
                 )
 
-            validated_input = await validate_input(
-                self.hass, user_input, self.config_entry
+            # Validate and combine basic config with scene config
+            validated_input = await validate_combined_input(
+                self.hass, self.basic_config, user_input, self.config_entry
             )
+
+            return self.async_create_entry(
+                title=validated_input[SCENE_NAME], data=validated_input
+            )
+
         except CannotReadScenesFile:
             errors["base"] = "cant_read_scenes_file"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
-        else:
-            return self.async_create_entry(
-                title=validated_input[SCENE_NAME], data=validated_input
-            )
 
-        # (If we haven't returned already)
         # Show the form again, just with the errors
         return self.async_show_form(
-            step_id="init", data_schema=options_flow_schema, errors=errors
+            step_id="scenes", data_schema=scenes_flow_schema, errors=errors
         )
+
+
+async def create_basic_config_schema(
+    hass, current_scene_name=None, current_area_name=None
+):
+    """Create the basic configuration schema for both config and options flows."""
+    areas, area_names = await get_areas_and_area_names(hass)
+
+    return vol.Schema(
+        {
+            vol.Optional(
+                "scene_name", default=current_scene_name or "Extrapolation Scene"
+            ): str,
+            vol.Optional(
+                AREA_NAME,
+                default=current_area_name,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=area_names,
+                    multiple=False,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                ),
+            ),
+        }
+    )
+
+
+async def create_scenes_config_schema(hass, area_id, current_values=None):
+    """Create the scenes configuration schema for both config and options flows."""
+    booleans, boolean_names = await get_input_booleans_and_boolean_names(hass)
+
+    # Get scene entities for the area if area is configured
+    scene_entity_ids = None
+    if area_id:
+        entity_reg = entity_registry.async_get(hass)
+        scene_entity_ids = [
+            entity.entity_id
+            for entity in entity_registry.async_entries_for_area(entity_reg, area_id)
+            if entity.domain == "scene"
+        ]
+
+    # Helper function to create scene selector with area filtering
+    def create_scene_selector():
+        config = {
+            "domain": "scene",
+            "multiple": False,
+        }
+        if scene_entity_ids:
+            config["include_entities"] = scene_entity_ids
+        return selector.EntitySelector(selector.EntitySelectorConfig(**config))
+
+    # Use current values if provided (for options flow), otherwise use defaults
+    defaults = current_values or {}
+
+    return vol.Schema(
+        {
+            vol.Required(
+                SCENE_NIGHT_RISING_NAME,
+                default=defaults.get(SCENE_NIGHT_RISING_ID),
+            ): create_scene_selector(),
+            vol.Required(
+                SCENE_DAWN_NAME,
+                default=defaults.get(SCENE_DAWN_ID),
+            ): create_scene_selector(),
+            vol.Required(
+                SCENE_DAY_RISING_NAME,
+                default=defaults.get(SCENE_DAY_RISING_ID),
+            ): create_scene_selector(),
+            vol.Required(
+                SCENE_DAY_SETTING_NAME,
+                default=defaults.get(SCENE_DAY_SETTING_ID),
+            ): create_scene_selector(),
+            vol.Required(
+                SCENE_DUSK_NAME,
+                default=defaults.get(SCENE_DUSK_ID),
+            ): create_scene_selector(),
+            vol.Optional(
+                SCENE_DAWN_MINIMUM_TIME_OF_DAY, default="22:00:00"
+            ): selector.TimeSelector(selector.TimeSelectorConfig()),
+            vol.Required(
+                SCENE_NIGHT_SETTING_NAME,
+                default=defaults.get(SCENE_NIGHT_SETTING_ID),
+            ): create_scene_selector(),
+            vol.Optional(
+                NIGHTLIGHTS_BOOLEAN_NAME,
+                default=get_input_boolean_name_by_id(
+                    hass,
+                    defaults.get(NIGHTLIGHTS_BOOLEAN_ID),
+                ),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=boolean_names,
+                    multiple=False,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                ),
+            ),
+            vol.Optional(
+                NIGHTLIGHTS_SCENE_NAME,
+                default=defaults.get(NIGHTLIGHTS_SCENE_ID),
+            ): create_scene_selector(),
+        }
+    )
 
 
 async def get_input_booleans_and_boolean_names(hass) -> list:
@@ -466,6 +452,15 @@ def get_input_boolean_name_by_id(hass, id):
     """Supply a input_boolean ID to get its name"""
     input_boolean = get_input_boolean_by_id(hass, id)
     return input_boolean["attributes"]["friendly_name"] if input_boolean else None
+
+
+def get_boolean_id_by_name(hass, name):
+    """Supply a boolean name to get its ID"""
+    input_booleans = hass.states.async_all("input_boolean")
+    for input_boolean in input_booleans:
+        if input_boolean.name == name:
+            return input_boolean.entity_id
+    return None
 
 
 async def get_scenes_and_scene_names(hass) -> list:
@@ -554,6 +549,13 @@ def get_area_id_by_name(hass, name) -> dict:
     area = area_registry_instance.async_get_area_by_name(name)
 
     return area.id
+
+
+def get_area_name_by_id(hass, area_id):
+    """Supply an area ID to get its name"""
+    area_registry_instance = area_registry.async_get(hass)
+    area = area_registry_instance.async_get_area(area_id)
+    return area.name if area else None
 
 
 async def get_native_scenes(hass=None) -> list:
