@@ -163,11 +163,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step."""
+        """Handle the initial step - basic configuration."""
 
         areas, area_names = await get_areas_and_area_names(self.hass)
 
-        # User configuration data (when setting up the integration for the first time)
+        # Basic configuration schema
         config_flow_schema = vol.Schema(
             {
                 vol.Optional("scene_name", default="Extrapolation Scene"): str,
@@ -184,18 +184,93 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         if user_input is None:
-            return self.async_show_form(step_id="user", data_schema=config_flow_schema)
+            return self.async_show_form(
+                step_id="user",
+                data_schema=config_flow_schema,
+                description_placeholders={"step": "basic"},
+            )
+
+        # Store the basic configuration and move to scene configuration
+        self.basic_config = user_input
+        return await self.async_step_scenes()
+
+    async def async_step_scenes(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle the scene configuration step."""
 
         errors = {}
 
         try:
-            validated_input = await validate_input(self.hass, user_input)
-        except CannotReadScenesFile:
-            errors["base"] = "cant_read_scenes_file"
-        except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("Unexpected exception")
-            errors["base"] = "unknown"
-        else:
+            booleans, boolean_names = await get_input_booleans_and_boolean_names(
+                self.hass
+            )
+
+            # Get the area ID to filter scenes by area
+            area_id = None
+            if hasattr(self, "basic_config") and AREA_NAME in self.basic_config:
+                area_id = get_area_id_by_name(self.hass, self.basic_config[AREA_NAME])
+
+            # Get scene entities for the area if area is configured
+            scene_entity_ids = None
+            if area_id:
+                entity_reg = entity_registry.async_get(self.hass)
+
+                # Get all scene entities in the area
+                scene_entity_ids = [
+                    entity.entity_id
+                    for entity in entity_registry.async_entries_for_area(
+                        entity_reg, area_id
+                    )
+                    if entity.domain == "scene"
+                ]
+
+            # Helper function to create scene selector with area filtering
+            def create_scene_selector():
+                config = {
+                    "domain": "scene",
+                    "multiple": False,
+                }
+                if scene_entity_ids:
+                    config["include_entities"] = scene_entity_ids
+                return selector.EntitySelector(selector.EntitySelectorConfig(**config))
+
+            # Scene configuration schema
+            scenes_flow_schema = vol.Schema(
+                {
+                    vol.Required(SCENE_NIGHT_RISING_NAME): create_scene_selector(),
+                    vol.Required(SCENE_DAWN_NAME): create_scene_selector(),
+                    vol.Required(SCENE_DAY_RISING_NAME): create_scene_selector(),
+                    vol.Required(SCENE_DAY_SETTING_NAME): create_scene_selector(),
+                    vol.Required(SCENE_DUSK_NAME): create_scene_selector(),
+                    vol.Optional(
+                        SCENE_DAWN_MINIMUM_TIME_OF_DAY, default="22:00:00"
+                    ): selector.TimeSelector(selector.TimeSelectorConfig()),
+                    vol.Required(SCENE_NIGHT_SETTING_NAME): create_scene_selector(),
+                    vol.Optional(
+                        NIGHTLIGHTS_BOOLEAN_NAME,
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=boolean_names,
+                            multiple=False,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        ),
+                    ),
+                    vol.Optional(NIGHTLIGHTS_SCENE_NAME): create_scene_selector(),
+                }
+            )
+
+            if user_input is None:
+                return self.async_show_form(
+                    step_id="scenes",
+                    data_schema=scenes_flow_schema,
+                    description_placeholders={"step": "scenes"},
+                )
+
+            # Combine basic config with scene config
+            combined_input = {**self.basic_config, **user_input}
+            validated_input = await validate_input(self.hass, combined_input)
+
             # Append a unique ID for this scene before saving the data
             validated_input[CONF_UNIQUE_ID] = str(uuid.uuid4())
 
@@ -203,10 +278,15 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 title=validated_input[SCENE_NAME], data=validated_input
             )
 
-        # (If we haven't returned already)
+        except CannotReadScenesFile:
+            errors["base"] = "cant_read_scenes_file"
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected exception")
+            errors["base"] = "unknown"
+
         # Show the form again, just with the errors
         return self.async_show_form(
-            step_id="user", data_schema=config_flow_schema, errors=errors
+            step_id="scenes", data_schema=scenes_flow_schema, errors=errors
         )
 
     @staticmethod
