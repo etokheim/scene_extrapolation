@@ -9,12 +9,30 @@
     },
     "step": {
       "user": {
-        "title": "Initial Setup",
-        "description": "**Remember to configure the integration after submitting**",
+        "title": "Basic Configuration",
+        "description": "Configure the basic settings for your extrapolation scene.",
         "data": {
-          "device_name": "Device name",
-          "scene_name": "Scene name",
+          "scene_name": "Scene Name",
           "area_name": "Area"
+        },
+        "data_description": {
+          "scene_name": "Name for your extrapolation scene",
+          "area_name": "Area where this scene will be used"
+        }
+      },
+      "scenes": {
+        "title": "Scene Configuration",
+        "description": "Creates a scene in your selected area which, when activated, lights your room in the appropriate way, based on the sun elevation. The scene is best matched with an automation that triggers the scene every minute or so.\n\n**Only supports native Home Assistant Scenes** (Ie. not scenes from the Hue integration). The nightlights scene can however be any type of scene.",
+        "data": {
+          "scene_night_rising_name": "Night rising scene",
+          "scene_dawn_name": "Dawn scene",
+          "scene_day_rising_name": "Day rising scene",
+          "scene_day_setting_name": "Day setting scene",
+          "scene_dusk_name": "Dusk scene",
+          "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene",
+          "scene_night_setting_name": "Night setting scene",
+          "nightlights_boolean_name": "Turn on nightlights scene instead when this in on",
+          "nightlights_scene_name": "Nightlights scene"
         }
       }
     }

@@ -187,7 +187,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="user",
                 data_schema=config_flow_schema,
-                description_placeholders={"step": "basic"},
             )
 
         # Store the basic configuration and move to scene configuration
@@ -264,7 +263,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_show_form(
                     step_id="scenes",
                     data_schema=scenes_flow_schema,
-                    description_placeholders={"step": "scenes"},
                 )
 
             # Combine basic config with scene config
