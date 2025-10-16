@@ -5,14 +5,10 @@ from datetime import datetime, timedelta
 
 import asyncio
 import logging
-import os
 from typing import Any
 import uuid
 
 import voluptuous as vol
-import homeassistant.helpers.config_validation as config_validation
-import yaml
-import inspect
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
@@ -20,26 +16,9 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
-from homeassistant.helpers import area_registry
 import homeassistant.helpers.entity_registry as entity_registry
 
 from homeassistant.const import (
-    ATTR_AREA_ID,
-    ATTR_DOMAIN,
-    ATTR_ENTITY_ID,
-    ATTR_SERVICE,
-    ATTR_SERVICE_DATA,
-    ATTR_SUPPORTED_FEATURES,
-    CONF_NAME,
-    EVENT_CALL_SERVICE,
-    EVENT_HOMEASSISTANT_STARTED,
-    EVENT_STATE_CHANGED,
-    SERVICE_TURN_OFF,
-    SERVICE_TURN_ON,
-    STATE_OFF,
-    STATE_ON,
-    SUN_EVENT_SUNRISE,
-    SUN_EVENT_SUNSET,
     CONF_UNIQUE_ID,
 )
 
@@ -105,10 +84,10 @@ async def validate_combined_input(
 
     # Handle boolean configuration
     if NIGHTLIGHTS_BOOLEAN_NAME in combined_input:
-        boolean_name = combined_input[NIGHTLIGHTS_BOOLEAN_NAME]
-        if boolean_name:
-            boolean_id = get_boolean_id_by_name(hass, boolean_name)
-            data_to_store[NIGHTLIGHTS_BOOLEAN_ID] = boolean_id
+        boolean_entity_id = combined_input[NIGHTLIGHTS_BOOLEAN_NAME]
+        if boolean_entity_id:
+            # The selector now returns the entity ID directly
+            data_to_store[NIGHTLIGHTS_BOOLEAN_ID] = boolean_entity_id
 
     # Handle time configuration
     if SCENE_DAWN_MINIMUM_TIME_OF_DAY in combined_input:
@@ -383,7 +362,6 @@ async def create_basic_config_schema(
 
 async def create_scenes_config_schema(hass, area_id, current_values=None):
     """Create the scenes configuration schema for both config and options flows."""
-    booleans, boolean_names = await get_input_booleans_and_boolean_names(hass)
 
     # Get native Home Assistant scene entities for the area if area is configured
     scene_entity_ids = None
@@ -449,15 +427,11 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
             ): create_scene_selector(),
             vol.Optional(
                 NIGHTLIGHTS_BOOLEAN_NAME,
-                default=get_input_boolean_name_by_id(
-                    hass,
-                    defaults.get(NIGHTLIGHTS_BOOLEAN_ID),
-                ),
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=boolean_names,
+                default=defaults.get(NIGHTLIGHTS_BOOLEAN_ID),
+            ): selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain="input_boolean",
                     multiple=False,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
                 ),
             ),
             vol.Optional(
@@ -468,234 +442,3 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
     )
 
 
-async def get_input_booleans_and_boolean_names(hass) -> list:
-    input_booleans = hass.states.async_all("input_boolean")
-
-    input_boolean_names = []
-    for input_boolean in input_booleans:
-        input_boolean_names.append(input_boolean.name)
-
-    return [input_booleans, input_boolean_names]
-
-
-def get_input_boolean_by_id(hass, id):
-    """Finds the input_boolean matching the supplied id"""
-    input_booleans = hass.states.async_all("input_boolean")
-
-    try:
-        input_boolean = next(
-            filter(
-                lambda input_boolean: input_boolean.as_dict()["entity_id"] == id,
-                input_booleans,
-            )
-        )
-    except StopIteration:
-        return None
-
-    # Convert the matching input_boolean to a dict
-    input_boolean = input_boolean.as_dict()
-
-    return input_boolean
-
-
-def get_input_boolean_name_by_id(hass, id):
-    """Supply a input_boolean ID to get its name"""
-    input_boolean = get_input_boolean_by_id(hass, id)
-    return input_boolean["attributes"]["friendly_name"] if input_boolean else None
-
-
-def get_boolean_id_by_name(hass, name):
-    """Supply a boolean name to get its ID"""
-    input_booleans = hass.states.async_all("input_boolean")
-    for input_boolean in input_booleans:
-        if input_boolean.name == name:
-            return input_boolean.entity_id
-    return None
-
-
-async def get_scenes_and_scene_names(hass) -> list:
-    """Get a list of all the scene objects and another list with just the scene names"""
-    scenes = hass.states.async_all("scene")
-    scenes_as_dicts = []
-
-    scene_names = []
-    for scene in scenes:
-        scene_as_dict = scene.as_dict()
-        scene_names.append(scene_as_dict["attributes"]["friendly_name"])
-        scenes_as_dicts.append(scene_as_dict)
-
-    return [scenes_as_dicts, scene_names]
-
-
-def get_scene_by_name(hass, name) -> dict:
-    """Finds the scene matching the supplied name"""
-    scenes = hass.states.async_all("scene")
-
-    try:
-        scene = next(
-            filter(
-                lambda scene: scene.as_dict()["attributes"]["friendly_name"] == name,
-                scenes,
-            )
-        )
-    except StopIteration:
-        return None
-
-    # Convert the matching scene to a dict
-    scene = scene.as_dict()
-
-    return scene
-
-
-def get_scene_by_entity_id(hass, entity_id) -> dict:
-    """Finds the scene matching the supplied entity_id"""
-    # TODO: Is there a better, more direct way to get a scene by ID? Here we fetch all scenes and then filter out one...
-    # I tried the following, which seemed simple, but couldn't find a good way to get it's friendly name.
-    #    entity_registry_instance = entity_registry.async_get(hass)
-    #    scene = entity_registry_instance.async_get(id)
-    # It returns a RegistryEntry, which does have a .to_partial_dict, but that partial version doesn't
-    # include `attributes`, where "friendly_name" resides...
-
-    scenes = hass.states.async_all("scene")
-
-    try:
-        scene = next(
-            filter(lambda scene: scene.as_dict()["entity_id"] == entity_id, scenes)
-        )
-    except StopIteration:
-        return None
-
-    # Convert the matching scene to a dict
-    scene = scene.as_dict()
-
-    return scene
-
-
-def get_scene_name_by_entity_id(hass, entity_id) -> str:
-    """Supply a scene ID to get its name"""
-    scene = get_scene_by_entity_id(hass, entity_id)
-
-    return scene["attributes"]["friendly_name"] if scene else None
-
-
-def get_area_id_by_name(hass, name) -> dict:
-    """Finds the area matching the supplied id"""
-    area_registry_instance = area_registry.async_get(hass)
-    area = area_registry_instance.async_get_area_by_name(name)
-
-    return area.id
-
-
-def get_area_name_by_id(hass, area_id):
-    """Supply an area ID to get its name"""
-    area_registry_instance = area_registry.async_get(hass)
-    area = area_registry_instance.async_get_area(area_id)
-    return area.name if area else None
-
-
-async def get_native_scenes(hass=None) -> list:
-    """Returns scenes from scenes.yaml. Only Home Assistant native scenes are stored here. Ie. not Hue scenes.
-    Alternately supply a hass object to return the scenes with their entity_ids attached.
-    """
-    # TODO: There must be a better way to get the scene's light configuration than
-    # reading and parsing the yaml file manually, like we are doing now.
-
-    # Something like:
-    # scenes = self.hass.states.async_entity_ids("scene")
-
-    # Get the first scene
-    # scene = self.hass.states.get(scenes[0])
-
-    # Get that scene's first light's rgb_color (not it's current state, but the
-    # one defined in the scene)
-    # scene.attributes["entity_id"][0]["rgb_color"])
-
-    try:
-        scenes_locations = ["./config/", "./"]
-        verified_scenes_location = None
-
-        for scenes_location in scenes_locations:
-            if not os.path.exists(scenes_location):
-                continue
-
-            location_content = os.listdir(scenes_location)
-
-            if "scenes.yaml" in location_content:
-                # _LOGGER.info("scenes.yaml was found in %s", scenes_location)
-                verified_scenes_location = scenes_location
-                break
-
-        if not verified_scenes_location:
-            raise CannotFindScenesFile()
-
-        with open(
-            verified_scenes_location + "scenes.yaml", "r"
-        ) as file:  # Open file in "r" (read mode)
-            data = file.read()
-
-            scenes = yaml.load(data, Loader=yaml.loader.SafeLoader)
-
-        if type(scenes) is not list:
-            raise WrongObjectType()
-
-    except WrongObjectType:
-        _LOGGER.warning(
-            "The scenes object is of the wrong type. This is normal if the user hasn't defined any scenes yet. Proceeding with an empty scenes list."
-        )
-        scenes = []
-
-    except CannotFindScenesFile:
-        _LOGGER.warning(
-            "Cannot find the scenes.yaml file. We assume that the user has no scenes."
-        )
-        scenes = []
-
-    except Exception as exception:
-        pwd = os.getcwd()
-        _LOGGER.warn(
-            "Couldn't find the scenes.yaml file in: %s, which has the following content:",
-            pwd,
-        )
-
-        location_content = os.listdir()
-        _LOGGER.warn(location_content)
-        raise CannotReadScenesFile() from exception
-
-    # If we get the hass object supplied, we are also able to search for entity_ids and saturate the scenes with them.
-    if hass:
-        scenes = saturate_data(scenes, hass)
-
-    return scenes
-
-
-def sort_by_area_id(entities, area_id):
-    sorted_entities = []
-
-    for entity in entities:
-        if entity["area_id"] == area_id:
-            sorted_entities.insert(0, entity)
-        else:
-            sorted_entities.append(entity)
-
-    return sorted_entities
-
-
-def saturate_data(scenes, hass: HomeAssistant):
-    """Let's do stupid since Home Assistant is stupid... Meaning, we'll go get the scenes.yaml's scene's entity_ids manually, since they're not there for some reason. Only scene.id resides in scenes.yaml."""
-    saturated_scenes = []
-    ha_scenes = hass.states.async_all("scene")
-    entity_registry_instance = entity_registry.async_get(hass)
-
-    for scene in scenes:
-        # Loop through ha_scenes and match the ID in order to find the corresponding scene from the registry (which contains the entity_id we want)
-        ha_scene = next(
-            filter(lambda ha_scene: ha_scene.attributes["id"] == scene["id"], ha_scenes)
-        )
-
-        # Let's do even more stupid and get the entity for the THIRD time (!) in order to saturate the data with the area ID, which isn't available in neither the scenes.yaml file OR in states
-        ha_entity = entity_registry_instance.async_get(ha_scene.entity_id)
-        scene["entity_id"] = ha_scene.entity_id
-        scene["area_id"] = ha_entity.area_id
-        saturated_scenes.append(scene)
-
-    return saturated_scenes
