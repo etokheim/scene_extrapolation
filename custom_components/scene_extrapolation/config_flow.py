@@ -230,12 +230,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             SCENE_NAME, "Extrapolation Scene"
         )
         current_area_id = self.config_entry.data.get("area_id")
-        current_area_name = None
-        if current_area_id:
-            current_area_name = get_area_name_by_id(self.hass, current_area_id)
 
         config_flow_schema = await create_basic_config_schema(
-            self.hass, current_scene_name, current_area_name
+            self.hass, current_scene_name, current_area_id
         )
 
         if user_input is None:
@@ -317,11 +314,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
 
 async def create_basic_config_schema(
-    hass, current_scene_name=None, current_area_name=None
+    hass, current_scene_name=None, current_area_id=None
 ):
     """Create the basic configuration schema for both config and options flows."""
-    areas, area_names = await get_areas_and_area_names(hass)
-
     return vol.Schema(
         {
             vol.Optional(
@@ -329,12 +324,10 @@ async def create_basic_config_schema(
             ): str,
             vol.Optional(
                 AREA_NAME,
-                default=current_area_name,
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=area_names,
+                default=current_area_id,
+            ): selector.AreaSelector(
+                selector.AreaSelectorConfig(
                     multiple=False,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
                 ),
             ),
         }
@@ -526,21 +519,6 @@ def get_scene_name_by_entity_id(hass, entity_id) -> str:
     scene = get_scene_by_entity_id(hass, entity_id)
 
     return scene["attributes"]["friendly_name"] if scene else None
-
-
-async def get_areas_and_area_names(hass: HomeAssistant) -> list:
-    area_registry_instance = area_registry.async_get(hass)
-    areas = area_registry_instance.async_list_areas()
-
-    # Areas are originally odicts, so we'll convert them to a list, which is what we expect to get
-    areas_as_list = []
-
-    area_names = []
-    for area in areas:
-        area_names.append(area.name)
-        areas_as_list.append(area)
-
-    return [areas_as_list, area_names]
 
 
 def get_area_id_by_name(hass, name) -> dict:
