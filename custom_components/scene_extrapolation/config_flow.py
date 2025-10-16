@@ -3,6 +3,7 @@
 from __future__ import annotations
 from datetime import datetime, timedelta
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -80,14 +81,11 @@ async def validate_combined_input(
 
     # Extract basic info
     scene_name = combined_input.get(SCENE_NAME, "Extrapolation Scene")
-    area_name = combined_input.get(AREA_NAME)
-    area_id = None
-    if area_name:
-        area_id = get_area_id_by_name(hass, area_name)
+    # Note: area information is not stored in the integration data, but on thescene entity
+    # It's only used during initial setup to assign area to the scene entity
 
     data_to_store = {
         SCENE_NAME: scene_name,
-        ATTR_AREA_ID: area_id,
     }
 
     # Handle scene configurations
@@ -174,9 +172,26 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Append a unique ID for this scene before saving the data
             validated_input[CONF_UNIQUE_ID] = str(uuid.uuid4())
 
-            return self.async_create_entry(
+            # Store area_id temporarily for setting on the scene entity after creation
+            area_id = None
+            if AREA_NAME in self.basic_config:
+                area_id = get_area_id_by_name(self.hass, self.basic_config[AREA_NAME])
+
+            # Create the config entry
+            result = self.async_create_entry(
                 title=validated_input[SCENE_NAME], data=validated_input
             )
+
+            # Set area_id on the scene entity after it's created
+            if area_id:
+                # Schedule setting the area_id on the scene entity
+                self.hass.async_create_task(
+                    self._async_set_scene_area_id(
+                        validated_input[CONF_UNIQUE_ID], area_id
+                    )
+                )
+
+            return result
 
         except CannotReadScenesFile:
             errors["base"] = "cant_read_scenes_file"
@@ -188,6 +203,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="scenes", data_schema=scenes_flow_schema, errors=errors
         )
+
+    async def _async_set_scene_area_id(self, unique_id: str, area_id: str):
+        """Set the area_id on the scene entity after it's created."""
+        # Wait for the scene entity to be created
+        await asyncio.sleep(1)
+
+        # Find the scene entity by unique_id
+        entity_reg = entity_registry.async_get(self.hass)
+        for entity_id, entity_entry in entity_reg.entities.items():
+            if entity_entry.unique_id == unique_id and entity_entry.domain == "scene":
+                # Set the area_id on the scene entity
+                entity_reg.async_update_entity(entity_id, area_id=area_id)
+                _LOGGER.debug("Set area_id %s on scene entity %s", area_id, entity_id)
+                break
 
     @staticmethod
     @callback
@@ -234,8 +263,21 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         """Handle the scene configuration step."""
         errors = {}
         try:
-            # Use existing area_id from config entry (no basic config in options flow)
-            area_id = self.config_entry.data.get("area_id")
+            # Get area_id from the scene entity created by this integration
+            area_id = None
+            entity_reg = entity_registry.async_get(self.hass)
+
+            # Find the scene entity created by this integration using the unique_id
+            unique_id = self.config_entry.data.get(CONF_UNIQUE_ID)
+            if unique_id:
+                for entity_id, entity_entry in entity_reg.entities.items():
+                    if (
+                        entity_entry.unique_id == unique_id
+                        and entity_entry.domain == "scene"
+                        and entity_entry.config_entry_id == self.config_entry.entry_id
+                    ):
+                        area_id = entity_entry.area_id
+                        break
 
             # Get current values from config entry for pre-population
             current_values = {
@@ -271,12 +313,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 )
 
             # For options flow, create basic config from existing config entry data
+            # Note: area information is not stored in integration data
             basic_config = {
                 SCENE_NAME: self.config_entry.data.get(
                     SCENE_NAME, "Extrapolation Scene"
-                ),
-                AREA_NAME: get_area_name_by_id(
-                    self.hass, self.config_entry.data.get("area_id")
                 ),
             }
 

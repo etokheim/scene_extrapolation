@@ -123,15 +123,11 @@ class ExtrapolationScene(Scene):
         self._attr_name = name
         self._attr_unique_id = config_entry.data.get(CONF_UNIQUE_ID)
 
-        # TODO: Figure out how to set the area of the scene
-        # TODO: Get the ID of the area, not the name (hard coded ID for now)
-        # Should probably store the ID in the config, instead of the name
-        # then find the name when editing the config flow in the UI
-        self._area_id = (
-            config_entry.options.get(ATTR_AREA_ID)
-            or config_entry.data.get(ATTR_AREA_ID)
-            or None
-        )
+        # Get area_id from the scene entity itself (not stored in integration data)
+        # The area_id is set during initial config flow and stored on the scene entity
+        entity_registry_instance = entity_registry.async_get(self.hass)
+        entity_entry = entity_registry_instance.async_get(self.entity_id)
+        self._area_id = entity_entry.area_id if entity_entry else None
 
         # Used for calculating solar events when activating the scene
         self.latitude = self.hass.config.latitude
@@ -154,12 +150,9 @@ class ExtrapolationScene(Scene):
         # Wait a tick for the scene to be registered before updating
         await asyncio.sleep(0)
 
-        entity_registry_instance = entity_registry.async_get(self.hass)
-
-        entity_registry_instance.async_update_entity(
-            self.entity_id,
-            area_id=self._area_id,  # TODO: Only set this once - as the user can't change the config, but can edit the scene's area directly. Always setting this overwrites any changes.
-        )
+        # Note: area_id is now managed by the scene entity itself
+        # and is set during the initial config flow
+        # No need to update it here as it's not stored in integration data
 
     async def async_get_in_memory_scenes(self):
         """Get scenes from in-memory scene entities instead of reading YAML."""
