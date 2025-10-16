@@ -370,10 +370,12 @@ async def create_basic_config_schema(
             vol.Optional(
                 AREA_NAME,
                 default=current_area_name,
-            ): selector.AreaSelector(
-                selector.AreaSelectorConfig(
-                    multiple=False,
-                ),
+            ): vol.Maybe(
+                selector.AreaSelector(
+                    selector.AreaSelectorConfig(
+                        multiple=False,
+                    ),
+                )
             ),
         }
     )
