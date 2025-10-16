@@ -280,24 +280,39 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         break
 
             # Get current values from config entry for pre-population
+            # Check both data and options fields since initial config stores in data
             current_values = {
-                SCENE_NIGHT_RISING_ID: self.config_entry.options.get(
-                    SCENE_NIGHT_RISING_ID
+                SCENE_NIGHT_RISING_ID: (
+                    self.config_entry.options.get(SCENE_NIGHT_RISING_ID)
+                    or self.config_entry.data.get(SCENE_NIGHT_RISING_ID)
                 ),
-                SCENE_DAWN_ID: self.config_entry.options.get(SCENE_DAWN_ID),
-                SCENE_DAY_RISING_ID: self.config_entry.options.get(SCENE_DAY_RISING_ID),
-                SCENE_DAY_SETTING_ID: self.config_entry.options.get(
-                    SCENE_DAY_SETTING_ID
+                SCENE_DAWN_ID: (
+                    self.config_entry.options.get(SCENE_DAWN_ID)
+                    or self.config_entry.data.get(SCENE_DAWN_ID)
                 ),
-                SCENE_DUSK_ID: self.config_entry.options.get(SCENE_DUSK_ID),
-                SCENE_NIGHT_SETTING_ID: self.config_entry.options.get(
-                    SCENE_NIGHT_SETTING_ID
+                SCENE_DAY_RISING_ID: (
+                    self.config_entry.options.get(SCENE_DAY_RISING_ID)
+                    or self.config_entry.data.get(SCENE_DAY_RISING_ID)
                 ),
-                NIGHTLIGHTS_BOOLEAN_ID: self.config_entry.options.get(
-                    NIGHTLIGHTS_BOOLEAN_ID
+                SCENE_DAY_SETTING_ID: (
+                    self.config_entry.options.get(SCENE_DAY_SETTING_ID)
+                    or self.config_entry.data.get(SCENE_DAY_SETTING_ID)
                 ),
-                NIGHTLIGHTS_SCENE_ID: self.config_entry.options.get(
-                    NIGHTLIGHTS_SCENE_ID
+                SCENE_DUSK_ID: (
+                    self.config_entry.options.get(SCENE_DUSK_ID)
+                    or self.config_entry.data.get(SCENE_DUSK_ID)
+                ),
+                SCENE_NIGHT_SETTING_ID: (
+                    self.config_entry.options.get(SCENE_NIGHT_SETTING_ID)
+                    or self.config_entry.data.get(SCENE_NIGHT_SETTING_ID)
+                ),
+                NIGHTLIGHTS_BOOLEAN_ID: (
+                    self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
+                    or self.config_entry.data.get(NIGHTLIGHTS_BOOLEAN_ID)
+                ),
+                NIGHTLIGHTS_SCENE_ID: (
+                    self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID)
+                    or self.config_entry.data.get(NIGHTLIGHTS_SCENE_ID)
                 ),
             }
 
