@@ -253,71 +253,62 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 self.hass
             )
 
-            # TODO: Filter the displayed scenes based on the area input, so it's easier to find
-            # the correct scene
+            # Get the area ID to filter scenes by area
+            area_id = self.config_entry.data.get("area_id")
+
+            # Get scene entities for the area if area is configured
+            scene_entity_ids = None
+            if area_id:
+                entity_reg = entity_registry.async_get(self.hass)
+
+                # Get all scene entities in the area
+                scene_entity_ids = [
+                    entity.entity_id
+                    for entity in entity_registry.async_entries_for_area(
+                        entity_reg, area_id
+                    )
+                    if entity.domain == "scene"
+                ]
+
+            # Helper function to create scene selector with area filtering
+            def create_scene_selector():
+                config = {
+                    "domain": "scene",
+                    "multiple": False,
+                }
+                if scene_entity_ids:
+                    config["include_entities"] = scene_entity_ids
+                return selector.EntitySelector(selector.EntitySelectorConfig(**config))
+
             options_flow_schema = vol.Schema(
                 {
-                    # vol.Required(
-                    #     "scene_day",
-                    #     default=list(self.scenes),
-                    # ): config_validation.multi_select(scene_names),
                     vol.Required(
                         SCENE_NIGHT_RISING_NAME,
                         default=self.config_entry.options.get(SCENE_NIGHT_RISING_ID),
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="scene",
-                            multiple=False,
-                        ),
-                    ),
+                    ): create_scene_selector(),
                     vol.Required(
                         SCENE_DAWN_NAME,
                         default=self.config_entry.options.get(SCENE_DAWN_ID),
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="scene",
-                            multiple=False,
-                        ),
-                    ),
+                    ): create_scene_selector(),
                     vol.Required(
                         SCENE_DAY_RISING_NAME,
                         default=self.config_entry.options.get(SCENE_DAY_RISING_ID),
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="scene",
-                            multiple=False,
-                        ),
-                    ),
+                    ): create_scene_selector(),
                     vol.Required(
                         SCENE_DAY_SETTING_NAME,
                         default=self.config_entry.options.get(SCENE_DAY_SETTING_ID),
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="scene",
-                            multiple=False,
-                        ),
-                    ),
+                    ): create_scene_selector(),
                     vol.Required(
                         SCENE_DUSK_NAME,
                         default=self.config_entry.options.get(SCENE_DUSK_ID),
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="scene",
-                            multiple=False,
-                        ),
-                    ),
+                    ): create_scene_selector(),
                     vol.Optional(
                         SCENE_DAWN_MINIMUM_TIME_OF_DAY, default="22:00:00"
                     ): selector.TimeSelector(selector.TimeSelectorConfig()),
                     vol.Required(
                         SCENE_NIGHT_SETTING_NAME,
                         default=self.config_entry.options.get(SCENE_NIGHT_SETTING_ID),
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="scene",
-                            multiple=False,
-                        ),
-                    ),
+                    ): create_scene_selector(),
                     vol.Optional(
                         NIGHTLIGHTS_BOOLEAN_NAME,
                         default=get_input_boolean_name_by_id(
@@ -334,20 +325,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     vol.Optional(
                         NIGHTLIGHTS_SCENE_NAME,
                         default=self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID),
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="scene",
-                            multiple=False,
-                        ),
-                    ),
-                    # vol.Required(
-                    #     "show_things",
-                    #     default=self.config_entry.options.get("show_things"),
-                    # ): bool,
-                    # vol.Optional(
-                    #     "scene_dusk",
-                    #     default=self.config_entry.options.get("scene_dusk"),
-                    # ): str,
+                    ): create_scene_selector(),
                 }
             )
 
