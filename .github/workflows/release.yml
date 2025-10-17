@@ -48,14 +48,6 @@ jobs:
           mv temp.json custom_components/scene_extrapolation/manifest.json
           echo "Updated manifest.json to version $VERSION"
 
-      - name: Commit version bump
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add custom_components/scene_extrapolation/manifest.json
-          git commit -m "Bump version to ${{ steps.version.outputs.version }}"
-          git push origin master
-
       - name: Update CHANGELOG.md for release
         if: steps.check_release.outputs.should_release == 'true'
         id: update_changelog
@@ -122,11 +114,24 @@ jobs:
 
           echo "Updated CHANGELOG.md: moved Unreleased to $VERSION and added new Unreleased section"
 
-      - name: Commit updated CHANGELOG.md
-        if: steps.check_release.outputs.should_release == 'true'
+      - name: Commit all changes
         run: |
-          git add CHANGELOG.md
-          git commit -m "Release ${{ steps.version.outputs.version }}: move Unreleased to version and add new Unreleased section"
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add custom_components/scene_extrapolation/manifest.json
+          if [ -f "CHANGELOG.md" ]; then
+            git add CHANGELOG.md
+          fi
+          if [ -f "release_notes.md" ]; then
+            git add release_notes.md
+          fi
+
+          # Create appropriate commit message based on whether this is a release or just version bump
+          if [ "${{ steps.check_release.outputs.should_release }}" == "true" ]; then
+            git commit -m "Release ${{ steps.version.outputs.version }}: update version and changelog"
+          else
+            git commit -m "Bump version to ${{ steps.version.outputs.version }}"
+          fi
           git push origin master
 
       - name: Create Release
