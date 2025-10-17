@@ -122,6 +122,8 @@ class ExtrapolationScene(Scene):
         self._attr_icon = "mdi:auto-fix"
         self._attr_name = name
         self._attr_unique_id = config_entry.data.get(CONF_UNIQUE_ID)
+        self._attr_integration = "scene_extrapolation"
+        self._brightness_modifier = 0
 
         # Get area_id from the scene entity itself (not stored in integration data)
         # The area_id is set during initial config flow and stored on the scene entity
@@ -136,9 +138,6 @@ class ExtrapolationScene(Scene):
         self.city = LocationInfo(
             timezone=self.time_zone, latitude=self.latitude, longitude=self.longitude
         )
-
-        # Initialize brightness modifier attribute
-        self._brightness_modifier = 0
 
         # No caching needed - we'll access in-memory scene entities directly
 
@@ -215,6 +214,7 @@ class ExtrapolationScene(Scene):
         """Return the state attributes."""
         return {
             "brightness_modifier": self._brightness_modifier,
+            "integration": self._attr_integration,
         }
 
     async def async_activate(self, transition=0, brightness_modifier=0):
