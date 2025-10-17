@@ -114,3 +114,4 @@ jobs:
           git tag -a "v$NEW_VERSION" -m "Version $NEW_VERSION release=true"
           git push origin "v$NEW_VERSION"
           echo "Created and pushed tag v$NEW_VERSION with release trigger"
+          echo "🔄 Version and Release workflow will be triggered automatically"

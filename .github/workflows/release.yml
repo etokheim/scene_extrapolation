@@ -1,4 +1,4 @@
-name: Release
+name: Version and Release
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - "v*"
 
 jobs:
-  release:
+  version-and-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -27,7 +27,8 @@ jobs:
         id: check_release
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          TAG_MESSAGE=$(git tag -l --format='%(contents)' "$TAG_NAME")
+          # Get the tag message using git show
+          TAG_MESSAGE=$(git show --format='%B' -s "$TAG_NAME" 2>/dev/null || echo "")
           echo "Tag message: $TAG_MESSAGE"
 
           if echo "$TAG_MESSAGE" | grep -q "release=true"; then
@@ -39,13 +40,20 @@ jobs:
           fi
 
       - name: Update manifest version
-        if: steps.check_release.outputs.should_release == 'true'
         run: |
           VERSION=${{ steps.version.outputs.version }}
           # Update manifest.json with the new version
           jq --arg version "$VERSION" '.version = $version' custom_components/scene_extrapolation/manifest.json > temp.json
           mv temp.json custom_components/scene_extrapolation/manifest.json
           echo "Updated manifest.json to version $VERSION"
+
+      - name: Commit version bump
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add custom_components/scene_extrapolation/manifest.json
+          git commit -m "Bump version to ${{ steps.version.outputs.version }}"
+          git push
 
       - name: Update CHANGELOG.md for release
         if: steps.check_release.outputs.should_release == 'true'
@@ -103,8 +111,6 @@ jobs:
       - name: Commit updated CHANGELOG.md
         if: steps.check_release.outputs.should_release == 'true'
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
           git add CHANGELOG.md
           git commit -m "Release ${{ steps.version.outputs.version }}: move Unreleased to version and add new Unreleased section"
           git push
@@ -121,9 +127,11 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Skip Release
+      - name: Version Bump Complete
         if: steps.check_release.outputs.should_release == 'false'
         run: |
-          echo "ℹ️  Skipping release creation (tag message doesn't contain 'release=true')"
-          echo "💡 To trigger a release, include 'release=true' in your tag message:"
+          echo "✅ Version bump completed successfully!"
+          echo "📝 Updated manifest.json to version ${{ steps.version.outputs.version }}"
+          echo "ℹ️  No release created (tag message doesn't contain 'release=true')"
+          echo "💡 To create a release, include 'release=true' in your tag message:"
           echo "   git tag -a v${{ steps.version.outputs.version }} -m 'Version ${{ steps.version.outputs.version }} release=true'"

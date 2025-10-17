@@ -16,7 +16,7 @@ This project uses GitHub Actions to automate the release process. There are two 
 - Updates `CHANGELOG.md` with new version entry
 - Commits and pushes changes
 - Optionally creates and pushes a Git tag **with `release=true` trigger**
-- **Release workflow automatically moves "Unreleased" content to the new version and adds a fresh "Unreleased" section**
+- **Version and Release workflow automatically handles the rest**
 
 **Usage**:
 
@@ -30,19 +30,16 @@ This project uses GitHub Actions to automate the release process. There are two 
 5. Choose whether to create a release immediately
 6. Click "Run workflow"
 
-### 2. Release Workflow (`release.yml`)
+### 2. Version and Release Workflow (`release.yml`)
 
 **Trigger**: Automatically when a tag matching `v*` is pushed
 
 **Features**:
 
-- Extracts version from the tag
+- **Always runs version bump**: Updates `manifest.json` with the tag version
 - **Checks tag message for `release=true` to determine if release should be created**
-- Updates `manifest.json` with the correct version (only if release=true)
-- **Moves "Unreleased" section content to the new version with release date** (only if release=true)
-- **Adds a fresh "Unreleased" section at the top for future changes** (only if release=true)
-- Creates a GitHub release with the version's changelog (only if release=true)
-- Publishes the release (only if release=true)
+- **If `release=true`**: Moves "Unreleased" content to new version, adds fresh "Unreleased" section, creates GitHub release
+- **If no `release=true`**: Just version bump, no release creation
 
 ## Tag-Based Release Process
 
