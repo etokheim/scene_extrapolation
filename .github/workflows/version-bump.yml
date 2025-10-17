@@ -99,6 +99,7 @@ jobs:
           mv $TEMP_CHANGELOG CHANGELOG.md
 
           echo "Updated CHANGELOG.md with version $NEW_VERSION"
+          echo "Note: The release workflow will move Unreleased content to this version and add a new Unreleased section"
 
       - name: Commit and push changes
         run: |
@@ -110,6 +111,6 @@ jobs:
         if: ${{ github.event.inputs.create_release == 'true' }}
         run: |
           NEW_VERSION=${{ steps.new_version.outputs.new_version }}
-          git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
+          git tag -a "v$NEW_VERSION" -m "Version $NEW_VERSION release=true"
           git push origin "v$NEW_VERSION"
-          echo "Created and pushed tag v$NEW_VERSION"
+          echo "Created and pushed tag v$NEW_VERSION with release trigger"

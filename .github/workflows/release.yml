@@ -23,7 +23,23 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+      - name: Check tag message for release trigger
+        id: check_release
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          TAG_MESSAGE=$(git tag -l --format='%(contents)' "$TAG_NAME")
+          echo "Tag message: $TAG_MESSAGE"
+
+          if echo "$TAG_MESSAGE" | grep -q "release=true"; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ Release triggered by tag message"
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "ℹ️  No release triggered (tag message doesn't contain 'release=true')"
+          fi
+
       - name: Update manifest version
+        if: steps.check_release.outputs.should_release == 'true'
         run: |
           VERSION=${{ steps.version.outputs.version }}
           # Update manifest.json with the new version
@@ -31,17 +47,70 @@ jobs:
           mv temp.json custom_components/scene_extrapolation/manifest.json
           echo "Updated manifest.json to version $VERSION"
 
-      - name: Extract changelog for this version
-        id: changelog
+      - name: Update CHANGELOG.md for release
+        if: steps.check_release.outputs.should_release == 'true'
+        id: update_changelog
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          # Extract the changelog for this specific version
+          DATE=$(date +%Y-%m-%d)
+
+          # Create a temporary file for the updated changelog
+          TEMP_CHANGELOG=$(mktemp)
+
+          # Add header
+          echo "# Changelog" > "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+          echo "All notable changes to this project will be documented in this file." >> "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+          echo "The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)," >> "$TEMP_CHANGELOG"
+          echo "and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)." >> "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+
+          # Add new Unreleased section
+          echo "## [Unreleased]" >> "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+          echo "### Added" >> "$TEMP_CHANGELOG"
+          echo "- " >> "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+          echo "### Changed" >> "$TEMP_CHANGELOG"
+          echo "- " >> "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+          echo "### Fixed" >> "$TEMP_CHANGELOG"
+          echo "- " >> "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+
+          # Add the released version (convert Unreleased to the new version)
+          echo "## [$VERSION] - $DATE" >> "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+
+          # Extract the Unreleased section content and add it to the new version
+          awk "/^## \[Unreleased\]/,/^## \[/ {if (/^## \[/ && !/^## \[Unreleased\]/) exit; if (!/^## \[Unreleased\]/) print}" CHANGELOG.md >> "$TEMP_CHANGELOG"
+          echo "" >> "$TEMP_CHANGELOG"
+
+          # Add all other existing versions
+          awk "/^## \[[0-9]/,/^## \[Unreleased\]/ {if (/^## \[Unreleased\]/) exit; print}" CHANGELOG.md >> "$TEMP_CHANGELOG"
+
+          # Replace the original changelog
+          mv "$TEMP_CHANGELOG" CHANGELOG.md
+
+          # Extract just the new version's changelog for the release notes
           awk "/^## \[$VERSION\]/,/^## \[/ {if (/^## \[/ && !/^## \[$VERSION\]/) exit; print}" CHANGELOG.md > release_notes.md
           # Remove the last line if it's the next version header
           sed -i '$ { /^## \[/d; }' release_notes.md
-          echo "Extracted changelog for version $VERSION"
+
+          echo "Updated CHANGELOG.md: moved Unreleased to $VERSION and added new Unreleased section"
+
+      - name: Commit updated CHANGELOG.md
+        if: steps.check_release.outputs.should_release == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add CHANGELOG.md
+          git commit -m "Release ${{ steps.version.outputs.version }}: move Unreleased to version and add new Unreleased section"
+          git push
 
       - name: Create Release
+        if: steps.check_release.outputs.should_release == 'true'
         id: create_release
         uses: ncipollo/release-action@v1
         with:
@@ -51,3 +120,10 @@ jobs:
           name: "Scene Extrapolation ${{ steps.version.outputs.version }}"
           draft: false
           prerelease: false
+
+      - name: Skip Release
+        if: steps.check_release.outputs.should_release == 'false'
+        run: |
+          echo "ℹ️  Skipping release creation (tag message doesn't contain 'release=true')"
+          echo "💡 To trigger a release, include 'release=true' in your tag message:"
+          echo "   git tag -a v${{ steps.version.outputs.version }} -m 'Version ${{ steps.version.outputs.version }} release=true'"
