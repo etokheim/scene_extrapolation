@@ -4,12 +4,14 @@
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/scene_extrapolation#readme",
   "issue_tracker": "https://www.home-assistant.io/integrations/scene_extrapolation/issues",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "requirements": [],
   "ssdp": [],
   "zeroconf": [],
   "homekit": {},
   "dependencies": [],
-  "codeowners": ["@etokheim"],
+  "codeowners": [
+    "@etokheim"
+  ],
   "iot_class": "calculated"
 }
