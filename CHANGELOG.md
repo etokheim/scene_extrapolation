@@ -28,7 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Integration is blocking the thread - must use async (minor issue)
 - Remove deprecated constants
--
 
 ## [0.0.1] - 2024-01-01
 
