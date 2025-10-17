@@ -31,11 +31,21 @@ jobs:
           mv temp.json custom_components/scene_extrapolation/manifest.json
           echo "Updated manifest.json to version $VERSION"
 
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          # Extract the changelog for this specific version
+          awk "/^## \[$VERSION\]/,/^## \[/ {if (/^## \[/ && !/^## \[$VERSION\]/) exit; print}" CHANGELOG.md > release_notes.md
+          # Remove the last line if it's the next version header
+          sed -i '$ { /^## \[/d; }' release_notes.md
+          echo "Extracted changelog for version $VERSION"
+
       - name: Create Release
         id: create_release
         uses: ncipollo/release-action@v1
         with:
-          bodyFile: "CHANGELOG.md"
+          bodyFile: "release_notes.md"
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ steps.version.outputs.tag }}
           name: "Scene Extrapolation ${{ steps.version.outputs.version }}"
