@@ -93,7 +93,8 @@ jobs:
           echo "" >> "$TEMP_CHANGELOG"
 
           # Extract the Unreleased section content and add it to the new version
-          awk "/^## \[Unreleased\]/,/^## \[/ {if (/^## \[/ && !/^## \[Unreleased\]/) exit; if (!/^## \[Unreleased\]/) print}" CHANGELOG.md >> "$TEMP_CHANGELOG"
+          # Use sed to extract content between Unreleased and next version (more reliable)
+          sed -n '/^## \[Unreleased\]/,/^## \[/p' CHANGELOG.md | sed '1d;$d' >> "$TEMP_CHANGELOG"
           echo "" >> "$TEMP_CHANGELOG"
 
           # Add all other existing versions
@@ -103,9 +104,21 @@ jobs:
           mv "$TEMP_CHANGELOG" CHANGELOG.md
 
           # Extract just the new version's changelog for the release notes
-          awk "/^## \[$VERSION\]/,/^## \[/ {if (/^## \[/ && !/^## \[$VERSION\]/) exit; print}" CHANGELOG.md > release_notes.md
-          # Remove the last line if it's the next version header
-          sed -i '$ { /^## \[/d; }' release_notes.md
+          # Create release notes file with proper content
+          echo "# Scene Extrapolation $VERSION" > release_notes.md
+          echo "" >> release_notes.md
+
+          # Extract the version section content
+          awk "/^## \[$VERSION\]/,/^## \[/ {if (/^## \[/ && !/^## \[$VERSION\]/) exit; if (!/^## \[$VERSION\]/) print}" CHANGELOG.md >> release_notes.md
+
+          # If no content was extracted, add a default message
+          if [ ! -s release_notes.md ] || [ $(wc -l < release_notes.md) -le 2 ]; then
+            echo "## Changes" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "This release includes various improvements and bug fixes." >> release_notes.md
+            echo "" >> release_notes.md
+            echo "For detailed changes, see the [changelog](https://github.com/${{ github.repository }}/blob/master/CHANGELOG.md)." >> release_notes.md
+          fi
 
           echo "Updated CHANGELOG.md: moved Unreleased to $VERSION and added new Unreleased section"
 
