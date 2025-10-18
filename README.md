@@ -29,12 +29,15 @@ The integration automatically creates a transition between the scenes you config
 3. Performance is not the best. Takes 1 second to activate
 
    - Around 5 times longer than a basic scene, which usually takes around 200ms.
-   - <details><summary>Click to see some performance numbers</summary>
+   - <details>
+     <summary>Click to see some performance numbers</summary>
+
      _You can find these numbers for your use case as well by turning on debug logging for the integration and checking the logs_
 
      ```
      	Loaded 5 scenes from in-memory entities
      	Time getting native scenes: 				  2.6035308837890625ms
+     	Time calculating solar events: 				  0.31375885009765625ms
      	Time getting sun events (precalculated):	  0.591278076171875ms
      	Time extrapolating: 						862.5073432922363ms
      	Time total applying scene: 					866.2581443786621ms
