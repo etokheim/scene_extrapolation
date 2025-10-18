@@ -8,16 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- 
+
+-
 
 ### Changed
-- 
+
+- Removed night rising and night setting options
 
 ### Fixed
-- 
+
+-
 
 ## [1.0.0] - 2025-10-17
-
 
 ### Added
 
@@ -40,7 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Integration is blocking the thread - must use async (minor issue)
 - Remove deprecated constants
-
 
 ## [0.0.1] - 2024-01-01
 

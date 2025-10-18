@@ -25,8 +25,6 @@ from homeassistant.const import (
 from .const import (
     DOMAIN,
     SCENE_NAME,
-    SCENE_NIGHT_RISING_NAME,
-    SCENE_NIGHT_RISING_ID,
     SCENE_DAWN_NAME,
     SCENE_DAWN_ID,
     SCENE_DAY_RISING_NAME,
@@ -36,8 +34,6 @@ from .const import (
     SCENE_DUSK_NAME,
     SCENE_DUSK_ID,
     SCENE_DAWN_MINIMUM_TIME_OF_DAY,
-    SCENE_NIGHT_SETTING_NAME,
-    SCENE_NIGHT_SETTING_ID,
     AREA_NAME,
     NIGHTLIGHTS_BOOLEAN_NAME,
     NIGHTLIGHTS_BOOLEAN_ID,
@@ -69,12 +65,10 @@ async def validate_combined_input(
 
     # Handle scene configurations
     scene_name_to_id_mapping = {
-        SCENE_NIGHT_RISING_NAME: SCENE_NIGHT_RISING_ID,
         SCENE_DAWN_NAME: SCENE_DAWN_ID,
         SCENE_DAY_RISING_NAME: SCENE_DAY_RISING_ID,
         SCENE_DAY_SETTING_NAME: SCENE_DAY_SETTING_ID,
         SCENE_DUSK_NAME: SCENE_DUSK_ID,
-        SCENE_NIGHT_SETTING_NAME: SCENE_NIGHT_SETTING_ID,
         NIGHTLIGHTS_SCENE_NAME: NIGHTLIGHTS_SCENE_ID,
     }
 
@@ -263,10 +257,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             # Get current values from config entry for pre-population
             # Check both data and options fields since initial config stores in data
             current_values = {
-                SCENE_NIGHT_RISING_ID: (
-                    self.config_entry.options.get(SCENE_NIGHT_RISING_ID)
-                    or self.config_entry.data.get(SCENE_NIGHT_RISING_ID)
-                ),
                 SCENE_DAWN_ID: (
                     self.config_entry.options.get(SCENE_DAWN_ID)
                     or self.config_entry.data.get(SCENE_DAWN_ID)
@@ -282,10 +272,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 SCENE_DUSK_ID: (
                     self.config_entry.options.get(SCENE_DUSK_ID)
                     or self.config_entry.data.get(SCENE_DUSK_ID)
-                ),
-                SCENE_NIGHT_SETTING_ID: (
-                    self.config_entry.options.get(SCENE_NIGHT_SETTING_ID)
-                    or self.config_entry.data.get(SCENE_NIGHT_SETTING_ID)
                 ),
                 NIGHTLIGHTS_BOOLEAN_ID: (
                     self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
@@ -399,10 +385,6 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
     return vol.Schema(
         {
             vol.Required(
-                SCENE_NIGHT_RISING_NAME,
-                default=defaults.get(SCENE_NIGHT_RISING_ID),
-            ): create_scene_selector(),
-            vol.Required(
                 SCENE_DAWN_NAME,
                 default=defaults.get(SCENE_DAWN_ID),
             ): create_scene_selector(),
@@ -421,10 +403,6 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
             vol.Optional(
                 SCENE_DAWN_MINIMUM_TIME_OF_DAY, default="22:00:00"
             ): selector.TimeSelector(selector.TimeSelectorConfig()),
-            vol.Required(
-                SCENE_NIGHT_SETTING_NAME,
-                default=defaults.get(SCENE_NIGHT_SETTING_ID),
-            ): create_scene_selector(),
             vol.Optional(
                 NIGHTLIGHTS_BOOLEAN_NAME,
                 default=defaults.get(NIGHTLIGHTS_BOOLEAN_ID),
@@ -440,5 +418,3 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
             ): create_scene_selector(),
         }
     )
-
-

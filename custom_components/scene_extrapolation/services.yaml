@@ -24,13 +24,13 @@ turn_on:
           mode: slider
     transition:
       name: Transition time
-      description: Transition time from 0 to 6553 seconds
+      description: Transition time from 0 to 1000 seconds
       required: false
       default: 0
       selector:
         number:
           min: 0
-          max: 6553
+          max: 1000
           step: 1
           unit_of_measurement: "s"
           mode: slider

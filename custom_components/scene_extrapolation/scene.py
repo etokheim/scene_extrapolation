@@ -70,10 +70,6 @@ from .const import (
     SCENE_DAY_SETTING_NAME,
     SCENE_DUSK_ID,
     SCENE_DUSK_NAME,
-    SCENE_NIGHT_RISING_ID,
-    SCENE_NIGHT_RISING_NAME,
-    SCENE_NIGHT_SETTING_ID,
-    SCENE_NIGHT_SETTING_NAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -291,6 +287,7 @@ class ExtrapolationScene(Scene):
             date=datetime.now(tz=ZoneInfo(self.time_zone)),
         )
 
+        # Spoiler: Calculating the solar event takes no time at all! Under half a millisecond.
         _LOGGER.debug(
             "Time calculating solar events: %sms",
             (time.time() - start_time_calculate_solar_events) * 1000,
@@ -314,15 +311,6 @@ class ExtrapolationScene(Scene):
 
         # TODO: Consider adding noon as an event
         sun_events = [
-            SunEvent(
-                name=SCENE_NIGHT_RISING_NAME,
-                scene=get_scene_by_uuid(
-                    scenes, self.config_entry.options.get(SCENE_NIGHT_RISING_ID)
-                ),
-                start_time=self.datetime_to_seconds_since_midnight(
-                    solar_events["midnight"]
-                ),
-            ),
             SunEvent(
                 name=SCENE_DAWN_NAME,
                 scene=get_scene_by_uuid(
@@ -360,22 +348,19 @@ class ExtrapolationScene(Scene):
                     scene_dawn_minimum_time_of_day,
                 ),
             ),
-            SunEvent(
-                name=SCENE_NIGHT_SETTING_NAME,
-                scene=get_scene_by_uuid(
-                    scenes, self.config_entry.options.get(SCENE_NIGHT_SETTING_ID)
-                ),
-                start_time=86400,  # 00:00 - TODO: Find a better way to do this, rather than hard coding the time
-            ),
         ]
 
         start_time_sun_events = time.time()
 
         for sun_event in sun_events:
-            _LOGGER.debug("%s: %s", sun_event.name, sun_event.start_time)
+            _LOGGER.debug(
+                "%s starting at: %s seconds after midnight",
+                sun_event.name,
+                sun_event.start_time,
+            )
 
         _LOGGER.debug(
-            "Time since midnight: %s", self.seconds_since_midnight(transition)
+            "Time since midnight: %s seconds", self.seconds_since_midnight(transition)
         )
         _LOGGER.debug(
             "Time now: %s", datetime.now(tz=ZoneInfo(self.hass.config.time_zone))
