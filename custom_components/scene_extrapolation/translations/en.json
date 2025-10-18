@@ -12,11 +12,11 @@
         "description": "Configure the basic settings for your extrapolation scene.",
         "data": {
           "scene_name": "Scene Name*",
-          "area_name": "Area (Optional)"
+          "area_id": "Area (Optional)"
         },
         "data_description": {
           "scene_name": "Name for your extrapolation scene",
-          "area_name": "Area where this scene will be used"
+          "area_id": "Area where this scene will be used"
         }
       },
       "scenes": {
@@ -55,11 +55,11 @@
         "description": "Configure the basic settings for your extrapolation scene.",
         "data": {
           "scene_name": "Scene Name*",
-          "area_name": "Area (Optional)"
+          "area_id": "Area (Optional)"
         },
         "data_description": {
           "scene_name": "Name for your extrapolation scene",
-          "area_name": "Area where this scene will be used"
+          "area_id": "Area where this scene will be used"
         }
       },
       "scenes": {

@@ -2,7 +2,7 @@
 
 DOMAIN = "scene_extrapolation"
 
-AREA_NAME = "area_name"
+AREA_ID = "area_id"
 
 SCENE_NAME = "scene_name"
 

@@ -36,7 +36,7 @@ from .const import (
     SCENE_DUSK_NAME,
     SCENE_DUSK_ID,
     SCENE_DUSK_MINIMUM_TIME_OF_DAY,
-    AREA_NAME,
+    AREA_ID,
     NIGHTLIGHTS_BOOLEAN_NAME,
     NIGHTLIGHTS_BOOLEAN_ID,
     NIGHTLIGHTS_SCENE_NAME,
@@ -139,9 +139,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             # Get the area ID to filter scenes by area
             area_id = None
-            if hasattr(self, "basic_config") and AREA_NAME in self.basic_config:
+            if hasattr(self, "basic_config") and AREA_ID in self.basic_config:
                 # The area selector returns the area ID directly, not the name
-                area_id = self.basic_config[AREA_NAME]
+                area_id = self.basic_config[AREA_ID]
 
             # Create scenes configuration schema
             scenes_flow_schema = await create_scenes_config_schema(self.hass, area_id)
@@ -174,9 +174,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         try:
             if user_input is None:
-                # Create nightlights configuration schema with current values for options flow
+                # Create nightlights configuration schema
                 current_values = None
                 if hasattr(self, "config_entry") and self.config_entry:
+                    # Options flow - get current values from config entry
                     current_values = {
                         NIGHTLIGHTS_BOOLEAN_ID: (
                             self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
@@ -187,9 +188,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             or self.config_entry.data.get(NIGHTLIGHTS_SCENE_ID)
                         ),
                     }
-
+                    # Get area_id from config entry
+                    area_id = self.config_entry.options.get(
+                        AREA_ID
+                    ) or self.config_entry.data.get(AREA_ID)
+                else:
+                    # Config flow - no current values, get area_id from basic_config
+                    area_id = (
+                        self.basic_config.get(AREA_ID)
+                        if hasattr(self, "basic_config")
+                        else None
+                    )
                 nightlights_flow_schema = await create_nightlights_config_schema(
-                    self.hass, current_values
+                    self.hass, current_values, area_id
                 )
                 return self.async_show_form(
                     step_id="nightlights",
@@ -227,9 +238,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
                 # Store area_id temporarily for setting on the scene entity after creation
                 area_id = None
-                if AREA_NAME in self.basic_config:
+                if AREA_ID in self.basic_config:
                     # The area selector returns the area ID directly
-                    area_id = self.basic_config[AREA_NAME]
+                    area_id = self.basic_config[AREA_ID]
 
                 result = self.async_create_entry(
                     title=validated_input[SCENE_NAME], data=validated_input
@@ -252,7 +263,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "unknown"
 
         # Show the form again, just with the errors
-        nightlights_flow_schema = await create_nightlights_config_schema(self.hass)
+        # Get area_id from basic_config or config_entry
+        if hasattr(self, "basic_config"):
+            # Config flow - get area from basic_config
+            area_id = self.basic_config.get(AREA_ID)
+        elif hasattr(self, "config_entry"):
+            # Options flow - get area from config_entry
+            area_id = self.config_entry.options.get(
+                AREA_ID
+            ) or self.config_entry.data.get(AREA_ID)
+        else:
+            area_id = None
+        nightlights_flow_schema = await create_nightlights_config_schema(
+            self.hass, area_id=area_id
+        )
         return self.async_show_form(
             step_id="nightlights",
             data_schema=nightlights_flow_schema,
@@ -455,7 +479,20 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             errors["base"] = "unknown"
 
         # Show the form again, just with the errors
-        nightlights_flow_schema = await create_nightlights_config_schema(self.hass)
+        # Get area_id from basic_config or config_entry
+        if hasattr(self, "basic_config"):
+            # Config flow - get area from basic_config
+            area_id = self.basic_config.get(AREA_ID)
+        elif hasattr(self, "config_entry"):
+            # Options flow - get area from config_entry
+            area_id = self.config_entry.options.get(
+                AREA_ID
+            ) or self.config_entry.data.get(AREA_ID)
+        else:
+            area_id = None
+        nightlights_flow_schema = await create_nightlights_config_schema(
+            self.hass, area_id=area_id
+        )
         return self.async_show_form(
             step_id="nightlights",
             data_schema=nightlights_flow_schema,
@@ -476,7 +513,7 @@ async def create_basic_config_schema(
                 "scene_name", default=current_scene_name or "Automatic Lighting"
             ): str,
             vol.Optional(
-                AREA_NAME,
+                AREA_ID,
                 default=current_area_name,
             ): vol.Maybe(
                 selector.AreaSelector(
@@ -489,27 +526,47 @@ async def create_basic_config_schema(
     )
 
 
-def create_nightlights_scene_selector(hass):
+def create_nightlights_scene_selector(hass, area_id=None):
     """Create a scene selector for nightlights configuration."""
-    # Get all native Home Assistant scenes
-    entity_reg = entity_registry.async_get(hass)
-    native_scene_entities = [
-        entity.entity_id
-        for entity in entity_reg.entities.values()
-        if entity.domain == "scene" and entity.platform == "homeassistant"
-    ]
-
     config = {
         "domain": "scene",
         "multiple": False,
     }
-    if native_scene_entities:
-        config["include_entities"] = native_scene_entities
+
+    if area_id:
+        # Filter scenes to the selected area
+        entity_reg = entity_registry.async_get(hass)
+        scene_entity_ids = [
+            entity.entity_id
+            for entity in entity_registry.async_entries_for_area(entity_reg, area_id)
+            if entity.domain == "scene" and entity.platform == "homeassistant"
+        ]
+        if scene_entity_ids:
+            config["include_entities"] = scene_entity_ids
+        else:
+            # If area has no scenes, fall back to all native Home Assistant scenes
+            native_scene_entities = [
+                entity.entity_id
+                for entity in entity_reg.entities.values()
+                if entity.domain == "scene" and entity.platform == "homeassistant"
+            ]
+            if native_scene_entities:
+                config["include_entities"] = native_scene_entities
+    else:
+        # If no area filtering, show all native Home Assistant scenes
+        entity_reg = entity_registry.async_get(hass)
+        native_scene_entities = [
+            entity.entity_id
+            for entity in entity_reg.entities.values()
+            if entity.domain == "scene" and entity.platform == "homeassistant"
+        ]
+        if native_scene_entities:
+            config["include_entities"] = native_scene_entities
 
     return selector.EntitySelector(selector.EntitySelectorConfig(**config))
 
 
-async def create_nightlights_config_schema(hass, current_values=None):
+async def create_nightlights_config_schema(hass, current_values=None, area_id=None):
     """Create the nightlights configuration schema."""
     # Use current values if provided (for options flow), otherwise use defaults
     defaults = current_values or {}
@@ -531,7 +588,7 @@ async def create_nightlights_config_schema(hass, current_values=None):
                 NIGHTLIGHTS_SCENE_NAME,
                 default=defaults.get(NIGHTLIGHTS_SCENE_ID),
             ): vol.Maybe(
-                create_nightlights_scene_selector(hass),
+                create_nightlights_scene_selector(hass, area_id),
             ),
         }
     )
