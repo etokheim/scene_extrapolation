@@ -57,7 +57,7 @@ async def validate_combined_input(
     combined_input = {**basic_config, **scenes_config}
 
     # Extract basic info
-    scene_name = combined_input.get(SCENE_NAME, "Extrapolation Scene")
+    scene_name = combined_input.get(SCENE_NAME, "Automatic Lighting")
     # Note: area information is not stored in the integration data, but on thescene entity
     # It's only used during initial setup to assign area to the scene entity
 
@@ -324,7 +324,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             # Note: area information is not stored in integration data
             basic_config = {
                 SCENE_NAME: self.config_entry.data.get(
-                    SCENE_NAME, "Extrapolation Scene"
+                    SCENE_NAME, "Automatic Lighting"
                 ),
             }
 
@@ -356,7 +356,7 @@ async def create_basic_config_schema(
     return vol.Schema(
         {
             vol.Optional(
-                "scene_name", default=current_scene_name or "Extrapolation Scene"
+                "scene_name", default=current_scene_name or "Automatic Lighting"
             ): str,
             vol.Optional(
                 AREA_NAME,

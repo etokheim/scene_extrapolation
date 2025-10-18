@@ -87,7 +87,7 @@ async def async_setup_entry(
     scene_name = (
         config_entry.options.get("scene_name")
         or config_entry.data.get("scene_name")
-        or "Extrapolation Scene"
+        or "Automatic Lighting"
     )
 
     async_add_entities([ExtrapolationScene(scene_name, hass, config_entry)])
