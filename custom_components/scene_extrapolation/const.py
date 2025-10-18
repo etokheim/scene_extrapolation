@@ -14,6 +14,9 @@ SCENE_DAWN_MINIMUM_TIME_OF_DAY = "scene_dusk_minimum_time_of_day"
 SCENE_DAY_RISING_NAME = "scene_day_rising_name"
 SCENE_DAY_RISING_ID = "scene_day_rising_id"
 
+SCENE_NOON_NAME = "scene_noon_name"
+SCENE_NOON_ID = "scene_noon_id"
+
 SCENE_DAY_SETTING_NAME = "scene_day_setting_name"
 SCENE_DAY_SETTING_ID = "scene_day_setting_id"
 

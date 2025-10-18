@@ -66,6 +66,8 @@ from .const import (
     SCENE_DAWN_NAME,
     SCENE_DAY_RISING_ID,
     SCENE_DAY_RISING_NAME,
+    SCENE_NOON_ID,
+    SCENE_NOON_NAME,
     SCENE_DAY_SETTING_ID,
     SCENE_DAY_SETTING_NAME,
     SCENE_DUSK_ID,
@@ -309,7 +311,6 @@ class ExtrapolationScene(Scene):
             "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
         )
 
-        # TODO: Consider adding noon as an event
         sun_events = [
             SunEvent(
                 name=SCENE_DAWN_NAME,
@@ -327,6 +328,15 @@ class ExtrapolationScene(Scene):
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["sunrise"]
+                ),
+            ),
+            SunEvent(
+                name=SCENE_NOON_NAME,
+                scene=get_scene_by_uuid(
+                    scenes, self.config_entry.options.get(SCENE_NOON_ID)
+                ),
+                start_time=self.datetime_to_seconds_since_midnight(
+                    solar_events["noon"]
                 ),
             ),
             SunEvent(

@@ -26,6 +26,7 @@
         "data": {
           "scene_dawn_name": "Dawn scene",
           "scene_day_rising_name": "Day rising scene",
+          "scene_noon_name": "Noon scene",
           "scene_day_setting_name": "Day setting scene",
           "scene_dusk_name": "Dusk scene",
           "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene",
@@ -59,6 +60,7 @@
         "data": {
           "scene_dawn_name": "Dawn scene",
           "scene_day_rising_name": "Day rising scene",
+          "scene_noon_name": "Noon scene",
           "scene_day_setting_name": "Day setting scene",
           "scene_dusk_name": "Dusk scene",
           "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene",

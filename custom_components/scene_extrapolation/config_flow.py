@@ -29,6 +29,8 @@ from .const import (
     SCENE_DAWN_ID,
     SCENE_DAY_RISING_NAME,
     SCENE_DAY_RISING_ID,
+    SCENE_NOON_NAME,
+    SCENE_NOON_ID,
     SCENE_DAY_SETTING_NAME,
     SCENE_DAY_SETTING_ID,
     SCENE_DUSK_NAME,
@@ -67,6 +69,7 @@ async def validate_combined_input(
     scene_name_to_id_mapping = {
         SCENE_DAWN_NAME: SCENE_DAWN_ID,
         SCENE_DAY_RISING_NAME: SCENE_DAY_RISING_ID,
+        SCENE_NOON_NAME: SCENE_NOON_ID,
         SCENE_DAY_SETTING_NAME: SCENE_DAY_SETTING_ID,
         SCENE_DUSK_NAME: SCENE_DUSK_ID,
         NIGHTLIGHTS_SCENE_NAME: NIGHTLIGHTS_SCENE_ID,
@@ -265,6 +268,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     self.config_entry.options.get(SCENE_DAY_RISING_ID)
                     or self.config_entry.data.get(SCENE_DAY_RISING_ID)
                 ),
+                SCENE_NOON_ID: (
+                    self.config_entry.options.get(SCENE_NOON_ID)
+                    or self.config_entry.data.get(SCENE_NOON_ID)
+                ),
                 SCENE_DAY_SETTING_ID: (
                     self.config_entry.options.get(SCENE_DAY_SETTING_ID)
                     or self.config_entry.data.get(SCENE_DAY_SETTING_ID)
@@ -391,6 +398,10 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
             vol.Required(
                 SCENE_DAY_RISING_NAME,
                 default=defaults.get(SCENE_DAY_RISING_ID),
+            ): create_scene_selector(),
+            vol.Required(
+                SCENE_NOON_NAME,
+                default=defaults.get(SCENE_NOON_ID),
             ): create_scene_selector(),
             vol.Required(
                 SCENE_DAY_SETTING_NAME,
