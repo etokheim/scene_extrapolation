@@ -11,14 +11,14 @@ SCENE_DAWN_NAME = "scene_dawn_name"
 SCENE_DAWN_ID = "scene_dawn_id"
 SCENE_DAWN_MINIMUM_TIME_OF_DAY = "scene_dusk_minimum_time_of_day"
 
-SCENE_DAY_RISING_NAME = "scene_day_rising_name"
-SCENE_DAY_RISING_ID = "scene_day_rising_id"
+SCENE_SUNRISE_NAME = "scene_sunrise_name"
+SCENE_SUNRISE_ID = "scene_sunrise_id"
 
 SCENE_NOON_NAME = "scene_noon_name"
 SCENE_NOON_ID = "scene_noon_id"
 
-SCENE_DAY_SETTING_NAME = "scene_day_setting_name"
-SCENE_DAY_SETTING_ID = "scene_day_setting_id"
+SCENE_SUNSET_NAME = "scene_sunset_name"
+SCENE_SUNSET_ID = "scene_sunset_id"
 
 SCENE_DUSK_NAME = "scene_dusk_name"
 SCENE_DUSK_ID = "scene_dusk_id"

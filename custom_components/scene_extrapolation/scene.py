@@ -64,12 +64,12 @@ from .const import (
     SCENE_DAWN_ID,
     SCENE_DAWN_MINIMUM_TIME_OF_DAY,
     SCENE_DAWN_NAME,
-    SCENE_DAY_RISING_ID,
-    SCENE_DAY_RISING_NAME,
+    SCENE_SUNRISE_ID,
+    SCENE_SUNRISE_NAME,
     SCENE_NOON_ID,
     SCENE_NOON_NAME,
-    SCENE_DAY_SETTING_ID,
-    SCENE_DAY_SETTING_NAME,
+    SCENE_SUNSET_ID,
+    SCENE_SUNSET_NAME,
     SCENE_DUSK_ID,
     SCENE_DUSK_NAME,
 )
@@ -322,9 +322,9 @@ class ExtrapolationScene(Scene):
                 ),
             ),
             SunEvent(
-                name=SCENE_DAY_RISING_NAME,
+                name=SCENE_SUNRISE_NAME,
                 scene=get_scene_by_uuid(
-                    scenes, self.config_entry.options.get(SCENE_DAY_RISING_ID)
+                    scenes, self.config_entry.options.get(SCENE_SUNRISE_ID)
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["sunrise"]
@@ -340,9 +340,9 @@ class ExtrapolationScene(Scene):
                 ),
             ),
             SunEvent(
-                name=SCENE_DAY_SETTING_NAME,
+                name=SCENE_SUNSET_NAME,
                 scene=get_scene_by_uuid(
-                    scenes, self.config_entry.options.get(SCENE_DAY_SETTING_ID)
+                    scenes, self.config_entry.options.get(SCENE_SUNSET_ID)
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["sunset"]

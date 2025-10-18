@@ -27,12 +27,12 @@ from .const import (
     SCENE_NAME,
     SCENE_DAWN_NAME,
     SCENE_DAWN_ID,
-    SCENE_DAY_RISING_NAME,
-    SCENE_DAY_RISING_ID,
+    SCENE_SUNRISE_NAME,
+    SCENE_SUNRISE_ID,
     SCENE_NOON_NAME,
     SCENE_NOON_ID,
-    SCENE_DAY_SETTING_NAME,
-    SCENE_DAY_SETTING_ID,
+    SCENE_SUNSET_NAME,
+    SCENE_SUNSET_ID,
     SCENE_DUSK_NAME,
     SCENE_DUSK_ID,
     SCENE_DAWN_MINIMUM_TIME_OF_DAY,
@@ -68,9 +68,9 @@ async def validate_combined_input(
     # Handle scene configurations
     scene_name_to_id_mapping = {
         SCENE_DAWN_NAME: SCENE_DAWN_ID,
-        SCENE_DAY_RISING_NAME: SCENE_DAY_RISING_ID,
+        SCENE_SUNRISE_NAME: SCENE_SUNRISE_ID,
         SCENE_NOON_NAME: SCENE_NOON_ID,
-        SCENE_DAY_SETTING_NAME: SCENE_DAY_SETTING_ID,
+        SCENE_SUNSET_NAME: SCENE_SUNSET_ID,
         SCENE_DUSK_NAME: SCENE_DUSK_ID,
         NIGHTLIGHTS_SCENE_NAME: NIGHTLIGHTS_SCENE_ID,
     }
@@ -264,17 +264,17 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     self.config_entry.options.get(SCENE_DAWN_ID)
                     or self.config_entry.data.get(SCENE_DAWN_ID)
                 ),
-                SCENE_DAY_RISING_ID: (
-                    self.config_entry.options.get(SCENE_DAY_RISING_ID)
-                    or self.config_entry.data.get(SCENE_DAY_RISING_ID)
+                SCENE_SUNRISE_ID: (
+                    self.config_entry.options.get(SCENE_SUNRISE_ID)
+                    or self.config_entry.data.get(SCENE_SUNRISE_ID)
                 ),
                 SCENE_NOON_ID: (
                     self.config_entry.options.get(SCENE_NOON_ID)
                     or self.config_entry.data.get(SCENE_NOON_ID)
                 ),
-                SCENE_DAY_SETTING_ID: (
-                    self.config_entry.options.get(SCENE_DAY_SETTING_ID)
-                    or self.config_entry.data.get(SCENE_DAY_SETTING_ID)
+                SCENE_SUNSET_ID: (
+                    self.config_entry.options.get(SCENE_SUNSET_ID)
+                    or self.config_entry.data.get(SCENE_SUNSET_ID)
                 ),
                 SCENE_DUSK_ID: (
                     self.config_entry.options.get(SCENE_DUSK_ID)
@@ -396,16 +396,16 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
                 default=defaults.get(SCENE_DAWN_ID),
             ): create_scene_selector(),
             vol.Required(
-                SCENE_DAY_RISING_NAME,
-                default=defaults.get(SCENE_DAY_RISING_ID),
+                SCENE_SUNRISE_NAME,
+                default=defaults.get(SCENE_SUNRISE_ID),
             ): create_scene_selector(),
             vol.Required(
                 SCENE_NOON_NAME,
                 default=defaults.get(SCENE_NOON_ID),
             ): create_scene_selector(),
             vol.Required(
-                SCENE_DAY_SETTING_NAME,
-                default=defaults.get(SCENE_DAY_SETTING_ID),
+                SCENE_SUNSET_NAME,
+                default=defaults.get(SCENE_SUNSET_ID),
             ): create_scene_selector(),
             vol.Required(
                 SCENE_DUSK_NAME,
