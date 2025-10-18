@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New default scene name: Extrapolation scene -> Automatic Lighting
 - Updated integration name: Scene Extrapolation -> Scene Extrapolation (Circadian Rythm)
 - Add support for extrapolating effects!
+- Make the nightlights boolean and nightlights scene optional
+- Mark required and optional fields
 
 ### Fixed
 

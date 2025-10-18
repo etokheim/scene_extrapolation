@@ -72,19 +72,30 @@ async def validate_combined_input(
         SCENE_NOON_NAME: SCENE_NOON_ID,
         SCENE_SUNSET_NAME: SCENE_SUNSET_ID,
         SCENE_DUSK_NAME: SCENE_DUSK_ID,
-        NIGHTLIGHTS_SCENE_NAME: NIGHTLIGHTS_SCENE_ID,
     }
 
     for scene_name_key, scene_id_key in scene_name_to_id_mapping.items():
         if scene_name_key in combined_input:
             data_to_store[scene_id_key] = combined_input[scene_name_key]
 
+    # Handle nightlights configuration
+    nightlights_boolean = combined_input.get(NIGHTLIGHTS_BOOLEAN_NAME)
+    nightlights_scene = combined_input.get(NIGHTLIGHTS_SCENE_NAME)
+
+    # Handle nightlights scene separately (only if boolean is provided)
+    if nightlights_scene:
+        data_to_store[NIGHTLIGHTS_SCENE_ID] = nightlights_scene
+
     # Handle boolean configuration
-    if NIGHTLIGHTS_BOOLEAN_NAME in combined_input:
-        boolean_entity_id = combined_input[NIGHTLIGHTS_BOOLEAN_NAME]
-        if boolean_entity_id:
-            # The selector now returns the entity ID directly
-            data_to_store[NIGHTLIGHTS_BOOLEAN_ID] = boolean_entity_id
+    if nightlights_boolean:
+        # The selector now returns the entity ID directly
+        data_to_store[NIGHTLIGHTS_BOOLEAN_ID] = nightlights_boolean
+
+        # If nightlights boolean is provided, nightlights scene is required
+        if not nightlights_scene:
+            raise HomeAssistantError(
+                "Nightlights scene is required when a nightlights boolean is configured"
+            )
 
     # Handle time configuration - always set a default value
     time_str = combined_input.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY, "22:00:00")
@@ -173,6 +184,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         except CannotReadScenesFile:
             errors["base"] = "cant_read_scenes_file"
+        except HomeAssistantError as err:
+            errors["base"] = str(err)
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
@@ -338,6 +351,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
         except CannotReadScenesFile:
             errors["base"] = "cant_read_scenes_file"
+        except HomeAssistantError as err:
+            errors["base"] = str(err)
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
@@ -436,15 +451,19 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
             vol.Optional(
                 NIGHTLIGHTS_BOOLEAN_NAME,
                 default=defaults.get(NIGHTLIGHTS_BOOLEAN_ID),
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(
-                    domain="input_boolean",
-                    multiple=False,
+            ): vol.Maybe(
+                selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="input_boolean",
+                        multiple=False,
+                    ),
                 ),
             ),
             vol.Optional(
                 NIGHTLIGHTS_SCENE_NAME,
                 default=defaults.get(NIGHTLIGHTS_SCENE_ID),
-            ): create_scene_selector(),
+            ): vol.Maybe(
+                create_scene_selector(),
+            ),
         }
     )
