@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Changes to `Earliest time for triggering the dusk scene` wasn't saved
 - Updated issue and documentation URLs
+- Stopped using the soon to be deprecated `color_temp` argument in `turn_on` service
 
 ## [1.0.0] - 2025-10-17
 

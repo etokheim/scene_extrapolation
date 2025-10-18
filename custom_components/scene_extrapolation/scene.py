@@ -15,7 +15,6 @@ from astral.sun import midnight, sun  # TODO: Play with time_at_elevation
 from homeassistant.components.fan import DOMAIN as FAN_DOMAIN
 from homeassistant.components.homeassistant.scene import HomeAssistantScene
 from homeassistant.components.light import (
-    _DEPRECATED_ATTR_COLOR_TEMP as DEPRECATED_ATTR_COLOR_TEMP,
     ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
     ATTR_COLOR_TEMP_KELVIN,
@@ -36,8 +35,6 @@ from homeassistant.helpers import entity_registry
 
 # TODO: Move this function to __init__ maybe? At least somewhere more fitting for reuse
 
-# Use deprecated mired attribute name for compatibility with scenes data
-ATTR_COLOR_TEMP = DEPRECATED_ATTR_COLOR_TEMP.value
 
 from homeassistant.const import (  # noqa: E402
     ATTR_AREA_ID,
@@ -730,12 +727,7 @@ async def extrapolate_entities(
                 brightness_modifier,
             )
 
-        if final_color_mode == ColorMode.COLOR_TEMP:
-            final_entity[ATTR_COLOR_TEMP] = extrapolate_color_temp(
-                from_entity, to_entity, final_entity, scene_transition_progress_percent
-            )
-
-        elif final_color_mode == ATTR_COLOR_TEMP_KELVIN:
+        if final_color_mode in (ColorMode.COLOR_TEMP, ATTR_COLOR_TEMP_KELVIN):
             final_entity[ATTR_COLOR_TEMP_KELVIN] = extrapolate_temp_kelvin(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
@@ -880,76 +872,6 @@ def extrapolate_state(
     return final_state
 
 
-def extrapolate_color_temp(
-    from_entity, to_entity, final_entity, scene_transition_progress_percent
-):
-    """Extrapolate color temperature."""
-    from_color_temp = (
-        from_entity[ATTR_COLOR_TEMP]
-        if ATTR_COLOR_TEMP in from_entity
-        else to_entity[
-            ATTR_COLOR_TEMP
-        ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
-    )
-
-    to_color_temp = (
-        to_entity[ATTR_COLOR_TEMP]
-        if ATTR_COLOR_TEMP in to_entity
-        else from_entity[
-            ATTR_COLOR_TEMP
-        ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
-    )
-
-    if from_color_temp is None:
-        _LOGGER.warning(
-            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information",
-        )
-
-        _LOGGER.debug(
-            "We only support extrapolating between color modes that already have a value in the scenes.yaml file. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating to. (Extrapolating from: %s, to: %s)",
-            from_entity[ATTR_COLOR_MODE],
-            to_entity[ATTR_COLOR_MODE],
-        )
-
-        from_color_temp = to_color_temp
-    elif to_color_temp is None:
-        _LOGGER.warning(
-            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information",
-        )
-
-        _LOGGER.debug(
-            "We only support extrapolating between color modes that already have a value in the scenes.yaml file. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating from. (Extrapolating from: %s, to: %s)",
-            from_entity[ATTR_COLOR_MODE],
-            to_entity[ATTR_COLOR_MODE],
-        )
-
-        to_color_temp = from_color_temp
-
-    final_color_temp = extrapolate_number(
-        from_color_temp,
-        to_color_temp,
-        scene_transition_progress_percent,
-    )
-
-    _LOGGER.debug(
-        "From color_temp:  %s / %s",
-        from_color_temp,
-        from_entity.get(ATTR_BRIGHTNESS, None),
-    )
-    _LOGGER.debug(
-        "Final color_temp: %s / %s",
-        final_color_temp,
-        final_entity[ATTR_BRIGHTNESS],
-    )
-    _LOGGER.debug(
-        "To color_temp:    %s / %s",
-        to_color_temp,
-        to_entity.get(ATTR_BRIGHTNESS, None),
-    )
-
-    return final_color_temp
-
-
 def extrapolate_temp_kelvin(
     from_entity, to_entity, final_entity, scene_transition_progress_percent
 ):
@@ -970,6 +892,31 @@ def extrapolate_temp_kelvin(
         ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
     )
 
+    if from_color_temp_kelvin is None:
+        _LOGGER.warning(
+            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information",
+        )
+
+        _LOGGER.debug(
+            "We only support extrapolating between color modes that already have a value in the scenes.yaml file. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating to. (Extrapolating from: %s, to: %s)",
+            from_entity[ATTR_COLOR_MODE],
+            to_entity[ATTR_COLOR_MODE],
+        )
+
+        from_color_temp_kelvin = to_color_temp_kelvin
+    elif to_color_temp_kelvin is None:
+        _LOGGER.warning(
+            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information",
+        )
+
+        _LOGGER.debug(
+            "We only support extrapolating between color modes that already have a value in the scenes.yaml file. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating from. (Extrapolating from: %s, to: %s)",
+            from_entity[ATTR_COLOR_MODE],
+            to_entity[ATTR_COLOR_MODE],
+        )
+
+        to_color_temp_kelvin = from_color_temp_kelvin
+
     final_color_temp_kelvin = extrapolate_number(
         from_color_temp_kelvin,
         to_color_temp_kelvin,
@@ -977,17 +924,17 @@ def extrapolate_temp_kelvin(
     )
 
     _LOGGER.debug(
-        "From:  %s / %s",
+        "From color_temp_kelvin:  %s / %s",
         from_color_temp_kelvin,
         from_entity.get(ATTR_BRIGHTNESS, None),
     )
     _LOGGER.debug(
-        "Final: %s / %s",
+        "Final color_temp_kelvin: %s / %s",
         final_color_temp_kelvin,
         final_entity[ATTR_BRIGHTNESS],
     )
     _LOGGER.debug(
-        "To:    %s / %s",
+        "To color_temp_kelvin:    %s / %s",
         to_color_temp_kelvin,
         to_entity.get(ATTR_BRIGHTNESS, None),
     )
