@@ -905,7 +905,7 @@ def extrapolate_temp_kelvin(
         )
 
         _LOGGER.debug(
-            "We only support extrapolating between color modes that already have a value in the scenes.yaml file. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating to. (Extrapolating from: %s, to: %s)",
+            "We only support extrapolating between color modes that already have a value in the scene entities. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating to. (Extrapolating from: %s, to: %s)",
             from_entity[ATTR_COLOR_MODE],
             to_entity[ATTR_COLOR_MODE],
         )
@@ -917,7 +917,7 @@ def extrapolate_temp_kelvin(
         )
 
         _LOGGER.debug(
-            "We only support extrapolating between color modes that already have a value in the scenes.yaml file. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating from. (Extrapolating from: %s, to: %s)",
+            "We only support extrapolating between color modes that already have a value in the scene entities. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating from. (Extrapolating from: %s, to: %s)",
             from_entity[ATTR_COLOR_MODE],
             to_entity[ATTR_COLOR_MODE],
         )

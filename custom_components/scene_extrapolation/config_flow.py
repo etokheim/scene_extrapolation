@@ -152,38 +152,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data_schema=scenes_flow_schema,
                 )
 
-            # Validate and combine basic config with scene config
-            validated_input = await validate_combined_input(
-                self.hass, self.basic_config, user_input
-            )
+            # Store the scenes configuration and move to nightlights configuration
+            self.scenes_config = user_input
+            return await self.async_step_nightlights()
 
-            # Append a unique ID for this scene before saving the data
-            validated_input[CONF_UNIQUE_ID] = str(uuid.uuid4())
-
-            # Store area_id temporarily for setting on the scene entity after creation
-            area_id = None
-            if AREA_NAME in self.basic_config:
-                # The area selector returns the area ID directly
-                area_id = self.basic_config[AREA_NAME]
-
-            # Create the config entry
-            result = self.async_create_entry(
-                title=validated_input[SCENE_NAME], data=validated_input
-            )
-
-            # Set area_id on the scene entity after it's created
-            if area_id:
-                # Schedule setting the area_id on the scene entity
-                self.hass.async_create_task(
-                    self._async_set_scene_area_id(
-                        validated_input[CONF_UNIQUE_ID], area_id
-                    )
-                )
-
-            return result
-
-        except CannotReadScenesFile:
-            errors["base"] = "cant_read_scenes_file"
         except HomeAssistantError as err:
             errors["base"] = str(err)
         except Exception:  # pylint: disable=broad-except
@@ -193,6 +165,101 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Show the form again, just with the errors
         return self.async_show_form(
             step_id="scenes", data_schema=scenes_flow_schema, errors=errors
+        )
+
+    async def async_step_nightlights(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle the nightlights configuration step."""
+        errors = {}
+        try:
+            if user_input is None:
+                # Create nightlights configuration schema with current values for options flow
+                current_values = None
+                if hasattr(self, "config_entry") and self.config_entry:
+                    current_values = {
+                        NIGHTLIGHTS_BOOLEAN_ID: (
+                            self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
+                            or self.config_entry.data.get(NIGHTLIGHTS_BOOLEAN_ID)
+                        ),
+                        NIGHTLIGHTS_SCENE_ID: (
+                            self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID)
+                            or self.config_entry.data.get(NIGHTLIGHTS_SCENE_ID)
+                        ),
+                    }
+
+                nightlights_flow_schema = await create_nightlights_config_schema(
+                    self.hass, current_values
+                )
+                return self.async_show_form(
+                    step_id="nightlights",
+                    data_schema=nightlights_flow_schema,
+                    description_placeholders={
+                        "description": "If you want to configure a dedicated nightlights scene, you can do that here. This is completely optional - you can skip this step if you don't need nightlights functionality."
+                    },
+                )
+
+            # Handle config vs options flow
+            if hasattr(self, "config_entry") and self.config_entry:
+                # Options flow - use existing config entry data
+                basic_config = {
+                    SCENE_NAME: self.config_entry.data.get(
+                        SCENE_NAME, "Automatic Lighting"
+                    ),
+                }
+                validated_input = await validate_combined_input(
+                    self.hass,
+                    basic_config,
+                    user_input,
+                    self.config_entry,
+                )
+                return self.async_create_entry(
+                    title=validated_input[SCENE_NAME], data=validated_input
+                )
+            else:
+                # Config flow - create new entry
+                validated_input = await validate_combined_input(
+                    self.hass, self.basic_config, user_input
+                )
+
+                # Append a unique ID for this scene before saving the data
+                validated_input[CONF_UNIQUE_ID] = str(uuid.uuid4())
+
+                # Store area_id temporarily for setting on the scene entity after creation
+                area_id = None
+                if AREA_NAME in self.basic_config:
+                    # The area selector returns the area ID directly
+                    area_id = self.basic_config[AREA_NAME]
+
+                result = self.async_create_entry(
+                    title=validated_input[SCENE_NAME], data=validated_input
+                )
+
+                # Set area_id on the scene entity after creation
+                if area_id:
+                    self.hass.async_create_task(
+                        self._async_set_scene_area_id(
+                            validated_input[CONF_UNIQUE_ID], area_id
+                        )
+                    )
+
+                return result
+
+        except HomeAssistantError as err:
+            errors["base"] = str(err)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected exception")
+            errors["base"] = "unknown"
+
+        # Show the form again, just with the errors
+        nightlights_flow_schema = await create_nightlights_config_schema(self.hass)
+        return self.async_show_form(
+            step_id="nightlights",
+            data_schema=nightlights_flow_schema,
+            errors=errors,
+            description_placeholders={
+                "description": "If you want to configure a dedicated nightlights scene, you can do that here. This is completely optional - you can skip this step if you don't need nightlights functionality."
+            },
         )
 
     async def _async_set_scene_area_id(self, unique_id: str, area_id: str):
@@ -217,18 +284,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Create the options flow."""
 
         return OptionsFlowHandler(config_entry)
-
-
-class CannotReadScenesFile(HomeAssistantError):
-    """Error to indicate we cannot read the file."""
-
-
-class CannotFindScenesFile(HomeAssistantError):
-    """Error to indicate we cannot find the file."""
-
-
-class WrongObjectType(HomeAssistantError):
-    """Error to indicate that the variable holding the scenes is of the wrong type."""
 
 
 # TODO: We will probably also have to add an options update event listener
@@ -332,25 +387,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     data_schema=scenes_flow_schema,
                 )
 
-            # For options flow, create basic config from existing config entry data
-            # Note: area information is not stored in integration data
-            basic_config = {
-                SCENE_NAME: self.config_entry.data.get(
-                    SCENE_NAME, "Automatic Lighting"
-                ),
-            }
+            # Store the scenes configuration and move to nightlights configuration
+            self.scenes_config = user_input
+            return await self.async_step_nightlights()
 
-            # Validate and combine basic config with scene config
-            validated_input = await validate_combined_input(
-                self.hass, basic_config, user_input, self.config_entry
-            )
-
-            return self.async_create_entry(
-                title=validated_input[SCENE_NAME], data=validated_input
-            )
-
-        except CannotReadScenesFile:
-            errors["base"] = "cant_read_scenes_file"
         except HomeAssistantError as err:
             errors["base"] = str(err)
         except Exception:  # pylint: disable=broad-except
@@ -360,6 +400,69 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         # Show the form again, just with the errors
         return self.async_show_form(
             step_id="scenes", data_schema=scenes_flow_schema, errors=errors
+        )
+
+    async def async_step_nightlights(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle the nightlights configuration step."""
+        errors = {}
+        try:
+            if user_input is None:
+                # Create nightlights configuration schema with current values for options flow
+                current_values = {
+                    NIGHTLIGHTS_BOOLEAN_ID: (
+                        self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
+                        or self.config_entry.data.get(NIGHTLIGHTS_BOOLEAN_ID)
+                    ),
+                    NIGHTLIGHTS_SCENE_ID: (
+                        self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID)
+                        or self.config_entry.data.get(NIGHTLIGHTS_SCENE_ID)
+                    ),
+                }
+
+                nightlights_flow_schema = await create_nightlights_config_schema(
+                    self.hass, current_values
+                )
+                return self.async_show_form(
+                    step_id="nightlights",
+                    data_schema=nightlights_flow_schema,
+                    description_placeholders={
+                        "description": "If you want to configure a dedicated nightlights scene, you can do that here. This is completely optional - you can skip this step if you don't need nightlights functionality."
+                    },
+                )
+
+            # Options flow - use existing config entry data
+            basic_config = {
+                SCENE_NAME: self.config_entry.data.get(
+                    SCENE_NAME, "Automatic Lighting"
+                ),
+            }
+            validated_input = await validate_combined_input(
+                self.hass,
+                basic_config,
+                user_input,
+                self.config_entry,
+            )
+            return self.async_create_entry(
+                title=validated_input[SCENE_NAME], data=validated_input
+            )
+
+        except HomeAssistantError as err:
+            errors["base"] = str(err)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected exception")
+            errors["base"] = "unknown"
+
+        # Show the form again, just with the errors
+        nightlights_flow_schema = await create_nightlights_config_schema(self.hass)
+        return self.async_show_form(
+            step_id="nightlights",
+            data_schema=nightlights_flow_schema,
+            errors=errors,
+            description_placeholders={
+                "description": "If you want to configure a dedicated nightlights scene, you can do that here. This is completely optional - you can skip this step if you don't need nightlights functionality."
+            },
         )
 
 
@@ -381,6 +484,54 @@ async def create_basic_config_schema(
                         multiple=False,
                     ),
                 )
+            ),
+        }
+    )
+
+
+def create_nightlights_scene_selector(hass):
+    """Create a scene selector for nightlights configuration."""
+    # Get all native Home Assistant scenes
+    entity_reg = entity_registry.async_get(hass)
+    native_scene_entities = [
+        entity.entity_id
+        for entity in entity_reg.entities.values()
+        if entity.domain == "scene" and entity.platform == "homeassistant"
+    ]
+
+    config = {
+        "domain": "scene",
+        "multiple": False,
+    }
+    if native_scene_entities:
+        config["include_entities"] = native_scene_entities
+
+    return selector.EntitySelector(selector.EntitySelectorConfig(**config))
+
+
+async def create_nightlights_config_schema(hass, current_values=None):
+    """Create the nightlights configuration schema."""
+    # Use current values if provided (for options flow), otherwise use defaults
+    defaults = current_values or {}
+
+    return vol.Schema(
+        {
+            vol.Optional(
+                NIGHTLIGHTS_BOOLEAN_NAME,
+                default=defaults.get(NIGHTLIGHTS_BOOLEAN_ID),
+            ): vol.Maybe(
+                selector.EntitySelector(
+                    selector.EntitySelectorConfig(
+                        domain="input_boolean",
+                        multiple=False,
+                    ),
+                ),
+            ),
+            vol.Optional(
+                NIGHTLIGHTS_SCENE_NAME,
+                default=defaults.get(NIGHTLIGHTS_SCENE_ID),
+            ): vol.Maybe(
+                create_nightlights_scene_selector(hass),
             ),
         }
     )
@@ -448,22 +599,5 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
                 SCENE_DUSK_MINIMUM_TIME_OF_DAY,
                 default=defaults.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY, "22:00:00"),
             ): selector.TimeSelector(selector.TimeSelectorConfig()),
-            vol.Optional(
-                NIGHTLIGHTS_BOOLEAN_NAME,
-                default=defaults.get(NIGHTLIGHTS_BOOLEAN_ID),
-            ): vol.Maybe(
-                selector.EntitySelector(
-                    selector.EntitySelectorConfig(
-                        domain="input_boolean",
-                        multiple=False,
-                    ),
-                ),
-            ),
-            vol.Optional(
-                NIGHTLIGHTS_SCENE_NAME,
-                default=defaults.get(NIGHTLIGHTS_SCENE_ID),
-            ): vol.Maybe(
-                create_scene_selector(),
-            ),
         }
     )

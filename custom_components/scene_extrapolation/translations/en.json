@@ -4,12 +4,11 @@
       "already_configured": "Device is already configured"
     },
     "error": {
-      "cant_read_scenes_file": "Can't read scenes.yaml file",
       "unknown": "Unexpected error"
     },
     "step": {
       "user": {
-        "title": "Basic Configuration",
+        "title": "1/3 Basic Configuration",
         "description": "Configure the basic settings for your extrapolation scene.",
         "data": {
           "scene_name": "Scene Name*",
@@ -21,7 +20,7 @@
         }
       },
       "scenes": {
-        "title": "Scene Configuration",
+        "title": "2/3 Scenes Configuration",
         "description": "Creates a scene in your selected area which, when activated, lights your room in the appropriate way, based on the sun elevation. The scene is best matched with an automation that triggers the scene every minute or so.\n\n**Only supports native Home Assistant Scenes** (Ie. not scenes from the Hue integration). The nightlights scene can however be any type of scene.",
         "data": {
           "scene_dawn_name": "Dawn scene*",
@@ -29,16 +28,25 @@
           "scene_noon_name": "Noon scene*",
           "scene_sunset_name": "Sunset scene*",
           "scene_dusk_name": "Dusk scene*",
-          "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene",
-          "nightlights_boolean_name": "Turn on nightlights scene instead when this is on (Optional)",
+          "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene"
+        }
+      },
+      "nightlights": {
+        "title": "3/3 Nightlights Configuration",
+        "description": "{description}",
+        "data": {
+          "nightlights_boolean_name": "Nightlights trigger (Optional)",
           "nightlights_scene_name": "Nightlights scene (Optional)"
+        },
+        "data_description": {
+          "nightlights_boolean_name": "Input boolean that triggers nightlights mode instead of normal extrapolation",
+          "nightlights_scene_name": "Scene to activate when nightlights mode is triggered"
         }
       }
     }
   },
   "options": {
     "error": {
-      "cant_read_scenes_file": "Can't read scenes.yaml file",
       "unknown": "Unexpected error"
     },
     "step": {
@@ -55,7 +63,7 @@
         }
       },
       "scenes": {
-        "title": "Scene Configuration",
+        "title": "1/2 Scene Configuration",
         "description": "Creates a scene in your selected area which, when activated, lights your room in the appropriate way, based on the sun elevation. The scene is best matched with an automation that triggers the scene every minute or so.\n\n**Only supports native Home Assistant Scenes** (Ie. not scenes from the Hue integration). The nightlights scene can however be any type of scene.",
         "data": {
           "scene_dawn_name": "Dawn scene*",
@@ -63,9 +71,19 @@
           "scene_noon_name": "Noon scene*",
           "scene_sunset_name": "Sunset scene*",
           "scene_dusk_name": "Dusk scene*",
-          "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene",
-          "nightlights_boolean_name": "Turn on nightlights scene instead when this is on (Optional)",
+          "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene"
+        }
+      },
+      "nightlights": {
+        "title": "2/2 Nightlights Configuration",
+        "description": "{description}",
+        "data": {
+          "nightlights_boolean_name": "Nightlights trigger (Optional)",
           "nightlights_scene_name": "Nightlights scene (Optional)"
+        },
+        "data_description": {
+          "nightlights_boolean_name": "Input boolean that triggers nightlights mode instead of normal extrapolation",
+          "nightlights_scene_name": "Scene to activate when nightlights mode is triggered"
         }
       }
     }
