@@ -235,7 +235,12 @@ class ExtrapolationScene(Scene):
         #             Handle nightlights             #
         ##############################################
         nightlights_boolean_id = self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
-        nightlights_boolean = self.hass.states.get(nightlights_boolean_id).state == "on"
+        nightlights_boolean = False
+
+        if nightlights_boolean_id:
+            nightlights_state = self.hass.states.get(nightlights_boolean_id)
+            if nightlights_state:
+                nightlights_boolean = nightlights_state.state == "on"
 
         # Turn on night lights instead if the nightlights_boolean is on
         if nightlights_boolean:
@@ -305,7 +310,7 @@ class ExtrapolationScene(Scene):
 
         scene_dusk_minimum_time_of_day = self.config_entry.options.get(
             SCENE_DUSK_MINIMUM_TIME_OF_DAY
-        )
+        ) or self.config_entry.data.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
 
         assert isinstance(scene_dusk_minimum_time_of_day, numbers.Number), (
             "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
@@ -315,7 +320,9 @@ class ExtrapolationScene(Scene):
             SunEvent(
                 name=SCENE_DAWN_NAME,
                 scene=get_scene_by_uuid(
-                    scenes, self.config_entry.options.get(SCENE_DAWN_ID)
+                    scenes,
+                    self.config_entry.options.get(SCENE_DAWN_ID)
+                    or self.config_entry.data.get(SCENE_DAWN_ID),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["dawn"]
@@ -324,7 +331,9 @@ class ExtrapolationScene(Scene):
             SunEvent(
                 name=SCENE_SUNRISE_NAME,
                 scene=get_scene_by_uuid(
-                    scenes, self.config_entry.options.get(SCENE_SUNRISE_ID)
+                    scenes,
+                    self.config_entry.options.get(SCENE_SUNRISE_ID)
+                    or self.config_entry.data.get(SCENE_SUNRISE_ID),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["sunrise"]
@@ -333,7 +342,9 @@ class ExtrapolationScene(Scene):
             SunEvent(
                 name=SCENE_NOON_NAME,
                 scene=get_scene_by_uuid(
-                    scenes, self.config_entry.options.get(SCENE_NOON_ID)
+                    scenes,
+                    self.config_entry.options.get(SCENE_NOON_ID)
+                    or self.config_entry.data.get(SCENE_NOON_ID),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["noon"]
@@ -342,7 +353,9 @@ class ExtrapolationScene(Scene):
             SunEvent(
                 name=SCENE_SUNSET_NAME,
                 scene=get_scene_by_uuid(
-                    scenes, self.config_entry.options.get(SCENE_SUNSET_ID)
+                    scenes,
+                    self.config_entry.options.get(SCENE_SUNSET_ID)
+                    or self.config_entry.data.get(SCENE_SUNSET_ID),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["sunset"]
@@ -351,7 +364,9 @@ class ExtrapolationScene(Scene):
             SunEvent(
                 name=SCENE_DUSK_NAME,
                 scene=get_scene_by_uuid(
-                    scenes, self.config_entry.options.get(SCENE_DUSK_ID)
+                    scenes,
+                    self.config_entry.options.get(SCENE_DUSK_ID)
+                    or self.config_entry.data.get(SCENE_DUSK_ID),
                 ),
                 start_time=max(
                     self.datetime_to_seconds_since_midnight(solar_events["dusk"]),

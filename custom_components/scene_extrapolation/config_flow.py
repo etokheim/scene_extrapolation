@@ -86,16 +86,15 @@ async def validate_combined_input(
             # The selector now returns the entity ID directly
             data_to_store[NIGHTLIGHTS_BOOLEAN_ID] = boolean_entity_id
 
-    # Handle time configuration
-    if SCENE_DUSK_MINIMUM_TIME_OF_DAY in combined_input:
-        time_str = combined_input[SCENE_DUSK_MINIMUM_TIME_OF_DAY]
-        if time_str:
-            # TimeSelector returns time in HH:MM:SS format
-            time_parts = time_str.split(":")
-            seconds = (
-                int(time_parts[0]) * 3600 + int(time_parts[1]) * 60 + int(time_parts[2])
-            )
-            data_to_store[SCENE_DUSK_MINIMUM_TIME_OF_DAY] = seconds
+    # Handle time configuration - always set a default value
+    time_str = combined_input.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY, "22:00:00")
+    if time_str:
+        # TimeSelector returns time in HH:MM:SS format
+        time_parts = time_str.split(":")
+        seconds = (
+            int(time_parts[0]) * 3600 + int(time_parts[1]) * 60 + int(time_parts[2])
+        )
+        data_to_store[SCENE_DUSK_MINIMUM_TIME_OF_DAY] = seconds
 
     return data_to_store
 
