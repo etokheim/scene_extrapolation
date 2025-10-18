@@ -14,12 +14,13 @@ The integration automatically creates a transition between the scenes you config
 
 1. Simple to use and understand
 2. Supports any colors - not just white and warm white!
-3. Can turn off that too bright undimmable light in the evening
-4. But can also turn ON that cozy low light lamp in the evening. (The one that doesn't need to be on during the day).
-5. Since it's just a scene, it can control all sorts of things! (Not that I'd reccommend it?)
+3. Even support effects! Eg. turn on the `Fireplace` effect after sunset
+4. Can turn off that too bright undimmable light in the evening
+5. But can also turn ON that cozy low light lamp in the evening. (The one that doesn't need to be on during the day).
+6. Since it's just a scene, it can control all sorts of things! (Not that I'd reccommend it?)
    - Sunshade down when the sun is out?
    - Door locked when the sun goes down?
-6. Can use a dedicated scene at night (if an input_boolean is on)
+7. Can use a dedicated scene at night (if an input_boolean is on)
 
 ## Disadvantages
 

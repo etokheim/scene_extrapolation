@@ -18,6 +18,7 @@ from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
     ATTR_COLOR_TEMP_KELVIN,
+    ATTR_EFFECT,
     ATTR_HS_COLOR,
     ATTR_RGB_COLOR,
     ATTR_RGBW_COLOR,
@@ -752,6 +753,12 @@ async def extrapolate_entities(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
 
+        # Handle effects
+        if ATTR_EFFECT in from_entity or ATTR_EFFECT in to_entity:
+            final_entity[ATTR_EFFECT] = extrapolate_effect(
+                from_entity, to_entity, final_entity, scene_transition_progress_percent
+            )
+
         # Apply all changes at once
         await apply_entity_state(final_entity, hass, transition_time)
 
@@ -1116,3 +1123,40 @@ def extrapolate_rgbww(
     )
 
     return rgbww_extrapolated
+
+
+def extrapolate_effect(
+    from_entity, to_entity, final_entity, scene_transition_progress_percent
+):
+    """Extrapolate light effects."""
+    from_effect = (
+        from_entity[ATTR_EFFECT]
+        if ATTR_EFFECT in from_entity
+        else to_entity[ATTR_EFFECT]
+    )
+
+    to_effect = (
+        to_entity[ATTR_EFFECT] if ATTR_EFFECT in to_entity else from_entity[ATTR_EFFECT]
+    )
+
+    # Effects can't be smoothly interpolated like colors or brightness
+    # Instead, we choose which effect to use based on the transition progress
+    if scene_transition_progress_percent < 50:
+        final_effect = from_effect
+    else:
+        final_effect = to_effect
+
+    _LOGGER.debug(
+        "From effect:  %s",
+        from_effect,
+    )
+    _LOGGER.debug(
+        "Final effect: %s",
+        final_effect,
+    )
+    _LOGGER.debug(
+        "To effect:    %s",
+        to_effect,
+    )
+
+    return final_effect
