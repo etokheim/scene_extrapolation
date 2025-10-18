@@ -14,10 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Removed night rising and night setting options
+- Renamed sun setting and sun rising to sunset and sunrise
 
 ### Fixed
 
--
+- Changes to `Earliest time for triggering the dusk scene` wasn't saved
 
 ## [1.0.0] - 2025-10-17
 

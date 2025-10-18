@@ -62,7 +62,7 @@ from .const import (
     NIGHTLIGHTS_BOOLEAN_ID,
     NIGHTLIGHTS_SCENE_ID,
     SCENE_DAWN_ID,
-    SCENE_DAWN_MINIMUM_TIME_OF_DAY,
+    SCENE_DUSK_MINIMUM_TIME_OF_DAY,
     SCENE_DAWN_NAME,
     SCENE_SUNRISE_ID,
     SCENE_SUNRISE_NAME,
@@ -303,11 +303,11 @@ class ExtrapolationScene(Scene):
         #     date=datetime.now(tz=pytz.timezone(time_zone)),
         # )
 
-        scene_dawn_minimum_time_of_day = self.config_entry.options.get(
-            SCENE_DAWN_MINIMUM_TIME_OF_DAY
+        scene_dusk_minimum_time_of_day = self.config_entry.options.get(
+            SCENE_DUSK_MINIMUM_TIME_OF_DAY
         )
 
-        assert isinstance(scene_dawn_minimum_time_of_day, numbers.Number), (
+        assert isinstance(scene_dusk_minimum_time_of_day, numbers.Number), (
             "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
         )
 
@@ -355,7 +355,7 @@ class ExtrapolationScene(Scene):
                 ),
                 start_time=max(
                     self.datetime_to_seconds_since_midnight(solar_events["dusk"]),
-                    scene_dawn_minimum_time_of_day,
+                    scene_dusk_minimum_time_of_day,
                 ),
             ),
         ]

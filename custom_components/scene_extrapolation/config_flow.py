@@ -35,7 +35,7 @@ from .const import (
     SCENE_SUNSET_ID,
     SCENE_DUSK_NAME,
     SCENE_DUSK_ID,
-    SCENE_DAWN_MINIMUM_TIME_OF_DAY,
+    SCENE_DUSK_MINIMUM_TIME_OF_DAY,
     AREA_NAME,
     NIGHTLIGHTS_BOOLEAN_NAME,
     NIGHTLIGHTS_BOOLEAN_ID,
@@ -87,14 +87,15 @@ async def validate_combined_input(
             data_to_store[NIGHTLIGHTS_BOOLEAN_ID] = boolean_entity_id
 
     # Handle time configuration
-    if SCENE_DAWN_MINIMUM_TIME_OF_DAY in combined_input:
-        time_str = combined_input[SCENE_DAWN_MINIMUM_TIME_OF_DAY]
+    if SCENE_DUSK_MINIMUM_TIME_OF_DAY in combined_input:
+        time_str = combined_input[SCENE_DUSK_MINIMUM_TIME_OF_DAY]
         if time_str:
+            # TimeSelector returns time in HH:MM:SS format
             time_parts = time_str.split(":")
             seconds = (
                 int(time_parts[0]) * 3600 + int(time_parts[1]) * 60 + int(time_parts[2])
             )
-            data_to_store[SCENE_DAWN_MINIMUM_TIME_OF_DAY] = seconds
+            data_to_store[SCENE_DUSK_MINIMUM_TIME_OF_DAY] = seconds
 
     return data_to_store
 
@@ -228,6 +229,20 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         """Initialize options flow."""
         self.config_entry = config_entry
 
+    def _convert_seconds_to_time_string(self, seconds):
+        """Convert seconds since midnight to HH:MM:SS format."""
+        if seconds is None:
+            return "22:00:00"  # Default value
+
+        if isinstance(seconds, str):
+            # Already a time string, return as is
+            return seconds
+
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -279,6 +294,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 SCENE_DUSK_ID: (
                     self.config_entry.options.get(SCENE_DUSK_ID)
                     or self.config_entry.data.get(SCENE_DUSK_ID)
+                ),
+                SCENE_DUSK_MINIMUM_TIME_OF_DAY: self._convert_seconds_to_time_string(
+                    self.config_entry.options.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
+                    or self.config_entry.data.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
                 ),
                 NIGHTLIGHTS_BOOLEAN_ID: (
                     self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
@@ -412,7 +431,8 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
                 default=defaults.get(SCENE_DUSK_ID),
             ): create_scene_selector(),
             vol.Optional(
-                SCENE_DAWN_MINIMUM_TIME_OF_DAY, default="22:00:00"
+                SCENE_DUSK_MINIMUM_TIME_OF_DAY,
+                default=defaults.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY, "22:00:00"),
             ): selector.TimeSelector(selector.TimeSelectorConfig()),
             vol.Optional(
                 NIGHTLIGHTS_BOOLEAN_NAME,

@@ -9,7 +9,6 @@ SCENE_NAME = "scene_name"
 
 SCENE_DAWN_NAME = "scene_dawn_name"
 SCENE_DAWN_ID = "scene_dawn_id"
-SCENE_DAWN_MINIMUM_TIME_OF_DAY = "scene_dusk_minimum_time_of_day"
 
 SCENE_SUNRISE_NAME = "scene_sunrise_name"
 SCENE_SUNRISE_ID = "scene_sunrise_id"
@@ -22,6 +21,7 @@ SCENE_SUNSET_ID = "scene_sunset_id"
 
 SCENE_DUSK_NAME = "scene_dusk_name"
 SCENE_DUSK_ID = "scene_dusk_id"
+SCENE_DUSK_MINIMUM_TIME_OF_DAY = "scene_dusk_minimum_time_of_day"
 
 
 NIGHTLIGHTS_BOOLEAN_NAME = "nightlights_boolean_name"
