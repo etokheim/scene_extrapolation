@@ -15,10 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed night rising and night setting options
 - Renamed sun setting and sun rising to sunset and sunrise
+- New default scene name: Extrapolation scene -> Automatic Lighting
+- Updated integration name: Scene Extrapolation -> Scene Extrapolation (Circadian Rythm)
 
 ### Fixed
 
 - Changes to `Earliest time for triggering the dusk scene` wasn't saved
+- Updated issue and documentation URLs
 
 ## [1.0.0] - 2025-10-17
 

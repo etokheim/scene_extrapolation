@@ -1,17 +1,15 @@
 {
   "domain": "scene_extrapolation",
-  "name": "Scene Extrapolation",
+  "name": "Scene Extrapolation (Circadian Rhythm)",
   "config_flow": true,
-  "documentation": "https://www.home-assistant.io/integrations/scene_extrapolation#readme",
-  "issue_tracker": "https://www.home-assistant.io/integrations/scene_extrapolation/issues",
+  "documentation": "https://github.com/etokheim/scene_extrapolation/blob/master/README.md",
+  "issue_tracker": "https://github.com/etokheim/scene_extrapolation/issues",
   "version": "1.0.0",
   "requirements": [],
   "ssdp": [],
   "zeroconf": [],
   "homekit": {},
   "dependencies": [],
-  "codeowners": [
-    "@etokheim"
-  ],
+  "codeowners": ["@etokheim"],
   "iot_class": "calculated"
 }
