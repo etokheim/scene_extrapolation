@@ -28,6 +28,14 @@ The integration automatically creates a transition between the scenes you config
    - And as we all know, setting up and editing scenes in Home Assistant is TEDIOUS!
 3. Performance is not the best. Takes 1 second to activate
    - Around 5 times longer than a basic scene, which usually takes around 200ms.
+   - <details><summary>Click to see some performance numbers</summary>
+     _You can find these numbers for your use case as well by turning on debug logging for the integration and checking the logs_
+     Loaded 5 scenes from in-memory entities
+     Time getting native scenes: 2.6035308837890625ms
+     Time getting sun events (precalculated): 0.591278076171875ms
+     Time extrapolating: 862.5073432922363ms
+     Time total applying scene: 866.2581443786621ms
+     </details>
 
 Alternative solutions:
 
@@ -51,9 +59,9 @@ Examples of functionality you can add:
 
 ---
 
-# TSDR? (Too short, didn't read)
+# TSDR? (Too short, didn't read?)
 
-_As described by ChatGPT, for those who thought the readme was too short:_
+_For those who thought the readme was too short I've provided a more flowery description of the integration, as described by ChatGPT:_
 
 Picture this: a dynamic world where your surroundings transform seamlessly with the changing hues of the day. Imagine effortlessly orchestrating the perfect ambiance for every moment, from the golden dawn to the twilight glow. Welcome to the realm of Scene Extrapolation – where your scenes evolve with the dance of the sun!
 
