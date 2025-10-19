@@ -7,15 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚨 Breaking changes
+
+Breaking changes are marked with an emergency light emoji: 🚨
+
+### Summary: Improved UX and minimize the time to setup!
+
+This release's focus is on improving the UX and minimize the time it takes to set up the integration - but there are also lots of other goodies!
+
 ### Added
 
-- Add noon scene option
+- 🚨 Add noon scene option
 - Add support for extrapolating effects!
 
 ### Changed
 
-- Removed night rising and night setting options
-- Renamed sun setting and sun rising to sunset and sunrise
+- 🚨 Removed night rising and night setting options
+- 🚨 Renamed sun setting and sun rising to sunset and sunrise
 - New default scene name: Extrapolation scene -> Automatic Lighting
 - Updated integration name: Scene Extrapolation -> Scene Extrapolation (Circadian Rythm)
 - Make the nightlights boolean and nightlights scene optional
