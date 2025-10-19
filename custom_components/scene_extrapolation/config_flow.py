@@ -1,7 +1,6 @@
 """Config flow for Scene Extrapolation integration."""
 
 from __future__ import annotations
-from datetime import datetime, timedelta
 
 import asyncio
 import logging
@@ -16,7 +15,7 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
-import homeassistant.helpers.entity_registry as entity_registry
+from homeassistant.helpers import entity_registry as er
 
 from homeassistant.const import (
     CONF_UNIQUE_ID,
@@ -41,6 +40,7 @@ from .const import (
     NIGHTLIGHTS_BOOLEAN_ID,
     NIGHTLIGHTS_SCENE_NAME,
     NIGHTLIGHTS_SCENE_ID,
+    DISPLAY_SCENES_COMBINED,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -65,18 +65,40 @@ async def validate_combined_input(
         SCENE_NAME: scene_name,
     }
 
-    # Handle scene configurations
-    scene_name_to_id_mapping = {
-        SCENE_DAWN_NAME: SCENE_DAWN_ID,
-        SCENE_SUNRISE_NAME: SCENE_SUNRISE_ID,
-        SCENE_NOON_NAME: SCENE_NOON_ID,
-        SCENE_SUNSET_NAME: SCENE_SUNSET_ID,
-        SCENE_DUSK_NAME: SCENE_DUSK_ID,
-    }
+    # Check if we're in combined mode
+    display_scenes_combined = combined_input.get(DISPLAY_SCENES_COMBINED, False)
 
-    for scene_name_key, scene_id_key in scene_name_to_id_mapping.items():
-        if scene_name_key in combined_input:
-            data_to_store[scene_id_key] = combined_input[scene_name_key]
+    if not display_scenes_combined:
+        # Separate mode - handle each scene individually
+        scene_name_to_id_mapping = {
+            SCENE_DAWN_NAME: SCENE_DAWN_ID,
+            SCENE_SUNRISE_NAME: SCENE_SUNRISE_ID,
+            SCENE_NOON_NAME: SCENE_NOON_ID,
+            SCENE_SUNSET_NAME: SCENE_SUNSET_ID,
+            SCENE_DUSK_NAME: SCENE_DUSK_ID,
+        }
+
+        for scene_name_key, scene_id_key in scene_name_to_id_mapping.items():
+            if scene_name_key in combined_input:
+                data_to_store[scene_id_key] = combined_input[scene_name_key]
+    else:
+        # Combined mode - duplicate selections
+        # Dawn and dusk scene (combined)
+        dawn_and_dusk_scene = combined_input.get("scene_dawn_and_dusk")
+        if dawn_and_dusk_scene:
+            data_to_store[SCENE_DAWN_ID] = dawn_and_dusk_scene
+            data_to_store[SCENE_DUSK_ID] = dawn_and_dusk_scene
+
+        # Noon scene
+        noon_scene = combined_input.get(SCENE_NOON_NAME)
+        if noon_scene:
+            data_to_store[SCENE_NOON_ID] = noon_scene
+
+        # Sunrise and sunset scene (combined)
+        sunrise_and_sunset_scene = combined_input.get("scene_sunrise_and_sunset")
+        if sunrise_and_sunset_scene:
+            data_to_store[SCENE_SUNRISE_ID] = sunrise_and_sunset_scene
+            data_to_store[SCENE_SUNSET_ID] = sunrise_and_sunset_scene
 
     # Handle nightlights configuration
     nightlights_boolean = combined_input.get(NIGHTLIGHTS_BOOLEAN_NAME)
@@ -119,7 +141,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step - basic configuration."""
-        config_flow_schema = await create_basic_config_schema(self.hass)
+        # For new entries, use None to get default value of True (combined mode)
+        config_flow_schema = await create_basic_config_schema(
+            self.hass, current_display_scenes_combined=None
+        )
 
         if user_input is None:
             return self.async_show_form(
@@ -143,8 +168,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # The area selector returns the area ID directly, not the name
                 area_id = self.basic_config[AREA_ID]
 
+            # Get the combined mode setting from basic config
+            display_scenes_combined = False
+            if (
+                hasattr(self, "basic_config")
+                and DISPLAY_SCENES_COMBINED in self.basic_config
+            ):
+                display_scenes_combined = self.basic_config[DISPLAY_SCENES_COMBINED]
+
             # Create scenes configuration schema
-            scenes_flow_schema = await create_scenes_config_schema(self.hass, area_id)
+            scenes_flow_schema = await create_scenes_config_schema(
+                self.hass, area_id, display_scenes_combined=display_scenes_combined
+            )
 
             if user_input is None:
                 return self.async_show_form(
@@ -292,7 +327,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         await asyncio.sleep(1)
 
         # Find the scene entity by unique_id
-        entity_reg = entity_registry.async_get(self.hass)
+        entity_reg = er.async_get(self.hass)
         for entity_id, entity_entry in entity_reg.entities.items():
             if entity_entry.unique_id == unique_id and entity_entry.domain == "scene":
                 # Set the area_id on the scene entity
@@ -337,8 +372,49 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step - skip basic configuration and go directly to scenes."""
-        # Skip basic configuration and go directly to scenes configuration
+        """Handle the initial step - basic configuration for options flow."""
+        # Get current values from config entry for pre-population
+        current_scene_name = self.config_entry.data.get(
+            SCENE_NAME, "Automatic Lighting"
+        )
+        # Get area_id from the scene entity created by this integration
+        area_id = None
+        entity_reg = er.async_get(self.hass)
+        unique_id = self.config_entry.data.get(CONF_UNIQUE_ID)
+        if unique_id:
+            for entity_id, entity_entry in entity_reg.entities.items():
+                if (
+                    entity_entry.unique_id == unique_id
+                    and entity_entry.domain == "scene"
+                    and entity_entry.config_entry_id == self.config_entry.entry_id
+                ):
+                    area_id = entity_entry.area_id
+                    break
+
+        # Get current combined mode setting (default to False for existing entries for backwards compatibility)
+        current_display_scenes_combined = self.config_entry.options.get(
+            DISPLAY_SCENES_COMBINED
+        )
+        if current_display_scenes_combined is None:
+            # If not set, default to False for existing entries (backwards compatibility - separate mode)
+            current_display_scenes_combined = False
+
+        # Create basic configuration schema with current values
+        basic_flow_schema = await create_basic_config_schema(
+            self.hass,
+            current_scene_name=current_scene_name,
+            current_area_name=area_id,
+            current_display_scenes_combined=current_display_scenes_combined,
+        )
+
+        if user_input is None:
+            return self.async_show_form(
+                step_id="init",
+                data_schema=basic_flow_schema,
+            )
+
+        # Store the basic configuration and move to scene configuration
+        self.basic_config = user_input
         return await self.async_step_scenes()
 
     async def async_step_scenes(
@@ -349,7 +425,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         try:
             # Get area_id from the scene entity created by this integration
             area_id = None
-            entity_reg = entity_registry.async_get(self.hass)
+            entity_reg = er.async_get(self.hass)
 
             # Find the scene entity created by this integration using the unique_id
             unique_id = self.config_entry.data.get(CONF_UNIQUE_ID)
@@ -400,9 +476,20 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 ),
             }
 
+            # Get the combined mode setting from basic config
+            display_scenes_combined = False
+            if (
+                hasattr(self, "basic_config")
+                and DISPLAY_SCENES_COMBINED in self.basic_config
+            ):
+                display_scenes_combined = self.basic_config[DISPLAY_SCENES_COMBINED]
+
             # Create scenes configuration schema with current values
             scenes_flow_schema = await create_scenes_config_schema(
-                self.hass, area_id, current_values
+                self.hass,
+                area_id,
+                current_values,
+                display_scenes_combined=display_scenes_combined,
             )
 
             if user_input is None:
@@ -504,7 +591,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
 
 async def create_basic_config_schema(
-    hass, current_scene_name=None, current_area_name=None
+    hass: HomeAssistant,
+    current_scene_name=None,
+    current_area_name=None,
+    current_display_scenes_combined=None,
 ):
     """Create the basic configuration schema for both config and options flows."""
     return vol.Schema(
@@ -522,11 +612,17 @@ async def create_basic_config_schema(
                     ),
                 )
             ),
+            vol.Optional(
+                DISPLAY_SCENES_COMBINED,
+                default=current_display_scenes_combined
+                if current_display_scenes_combined is not None
+                else True,
+            ): bool,
         }
     )
 
 
-def create_nightlights_scene_selector(hass, area_id=None):
+def create_nightlights_scene_selector(hass: HomeAssistant, area_id=None):
     """Create a scene selector for nightlights configuration."""
     config = {
         "domain": "scene",
@@ -535,10 +631,10 @@ def create_nightlights_scene_selector(hass, area_id=None):
 
     if area_id:
         # Filter scenes to the selected area
-        entity_reg = entity_registry.async_get(hass)
+        entity_reg = er.async_get(hass)
         scene_entity_ids = [
             entity.entity_id
-            for entity in entity_registry.async_entries_for_area(entity_reg, area_id)
+            for entity in er.async_entries_for_area(entity_reg, area_id)
             if entity.domain == "scene" and entity.platform == "homeassistant"
         ]
         if scene_entity_ids:
@@ -554,7 +650,7 @@ def create_nightlights_scene_selector(hass, area_id=None):
                 config["include_entities"] = native_scene_entities
     else:
         # If no area filtering, show all native Home Assistant scenes
-        entity_reg = entity_registry.async_get(hass)
+        entity_reg = er.async_get(hass)
         native_scene_entities = [
             entity.entity_id
             for entity in entity_reg.entities.values()
@@ -566,7 +662,9 @@ def create_nightlights_scene_selector(hass, area_id=None):
     return selector.EntitySelector(selector.EntitySelectorConfig(**config))
 
 
-async def create_nightlights_config_schema(hass, current_values=None, area_id=None):
+async def create_nightlights_config_schema(
+    hass: HomeAssistant, current_values=None, area_id=None
+):
     """Create the nightlights configuration schema."""
     # Use current values if provided (for options flow), otherwise use defaults
     defaults = current_values or {}
@@ -594,16 +692,18 @@ async def create_nightlights_config_schema(hass, current_values=None, area_id=No
     )
 
 
-async def create_scenes_config_schema(hass, area_id, current_values=None):
+async def create_scenes_config_schema(
+    hass: HomeAssistant, area_id, current_values=None, display_scenes_combined=False
+):
     """Create the scenes configuration schema for both config and options flows."""
 
     # Get native Home Assistant scene entities for the area if area is configured
     scene_entity_ids = None
     if area_id:
-        entity_reg = entity_registry.async_get(hass)
+        entity_reg = er.async_get(hass)
         scene_entity_ids = [
             entity.entity_id
-            for entity in entity_registry.async_entries_for_area(entity_reg, area_id)
+            for entity in er.async_entries_for_area(entity_reg, area_id)
             if entity.domain == "scene" and entity.platform == "homeassistant"
         ]
 
@@ -617,7 +717,7 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
             config["include_entities"] = scene_entity_ids
         else:
             # If no area filtering, still filter for native Home Assistant scenes only
-            entity_reg = entity_registry.async_get(hass)
+            entity_reg = er.async_get(hass)
             native_scene_entities = [
                 entity.entity_id
                 for entity in entity_reg.entities.values()
@@ -630,31 +730,55 @@ async def create_scenes_config_schema(hass, area_id, current_values=None):
     # Use current values if provided (for options flow), otherwise use defaults
     defaults = current_values or {}
 
-    return vol.Schema(
-        {
-            vol.Required(
-                SCENE_DAWN_NAME,
-                default=defaults.get(SCENE_DAWN_ID),
-            ): create_scene_selector(),
-            vol.Required(
-                SCENE_SUNRISE_NAME,
-                default=defaults.get(SCENE_SUNRISE_ID),
-            ): create_scene_selector(),
-            vol.Required(
-                SCENE_NOON_NAME,
-                default=defaults.get(SCENE_NOON_ID),
-            ): create_scene_selector(),
-            vol.Required(
-                SCENE_SUNSET_NAME,
-                default=defaults.get(SCENE_SUNSET_ID),
-            ): create_scene_selector(),
-            vol.Required(
-                SCENE_DUSK_NAME,
-                default=defaults.get(SCENE_DUSK_ID),
-            ): create_scene_selector(),
-            vol.Optional(
-                SCENE_DUSK_MINIMUM_TIME_OF_DAY,
-                default=defaults.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY, "22:00:00"),
-            ): selector.TimeSelector(selector.TimeSelectorConfig()),
-        }
-    )
+    if not display_scenes_combined:
+        # Separate mode - 5 scene selectors
+        return vol.Schema(
+            {
+                vol.Required(
+                    SCENE_DAWN_NAME,
+                    default=defaults.get(SCENE_DAWN_ID),
+                ): create_scene_selector(),
+                vol.Required(
+                    SCENE_SUNRISE_NAME,
+                    default=defaults.get(SCENE_SUNRISE_ID),
+                ): create_scene_selector(),
+                vol.Required(
+                    SCENE_NOON_NAME,
+                    default=defaults.get(SCENE_NOON_ID),
+                ): create_scene_selector(),
+                vol.Required(
+                    SCENE_SUNSET_NAME,
+                    default=defaults.get(SCENE_SUNSET_ID),
+                ): create_scene_selector(),
+                vol.Required(
+                    SCENE_DUSK_NAME,
+                    default=defaults.get(SCENE_DUSK_ID),
+                ): create_scene_selector(),
+                vol.Optional(
+                    SCENE_DUSK_MINIMUM_TIME_OF_DAY,
+                    default=defaults.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY, "22:00:00"),
+                ): selector.TimeSelector(selector.TimeSelectorConfig()),
+            }
+        )
+    else:
+        # Combined mode - 3 scene selectors
+        return vol.Schema(
+            {
+                vol.Required(
+                    "scene_dawn_and_dusk",  # Combined dawn/dusk scene
+                    default=defaults.get(SCENE_DAWN_ID),  # Use dawn as default
+                ): create_scene_selector(),
+                vol.Required(
+                    SCENE_NOON_NAME,
+                    default=defaults.get(SCENE_NOON_ID),
+                ): create_scene_selector(),
+                vol.Required(
+                    "scene_sunrise_and_sunset",  # Combined sunrise/sunset scene
+                    default=defaults.get(SCENE_SUNRISE_ID),  # Use sunrise as default
+                ): create_scene_selector(),
+                vol.Optional(
+                    SCENE_DUSK_MINIMUM_TIME_OF_DAY,
+                    default=defaults.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY, "22:00:00"),
+                ): selector.TimeSelector(selector.TimeSelectorConfig()),
+            }
+        )

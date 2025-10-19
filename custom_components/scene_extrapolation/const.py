@@ -29,3 +29,6 @@ NIGHTLIGHTS_BOOLEAN_ID = "nightlights_boolean_id"
 
 NIGHTLIGHTS_SCENE_NAME = "nightlights_scene_name"
 NIGHTLIGHTS_SCENE_ID = "nightlights_scene_id"
+
+# Combined mode toggle
+DISPLAY_SCENES_COMBINED = "display_scenes_combined"

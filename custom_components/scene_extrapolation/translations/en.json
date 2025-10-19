@@ -12,11 +12,13 @@
         "description": "Configure the basic settings for your extrapolation scene.",
         "data": {
           "scene_name": "Scene Name*",
-          "area_id": "Area (Optional)"
+          "area_id": "Area (Optional)",
+          "display_scenes_combined": "Combine dawn/dusk and sunrise/sunset scenes?"
         },
         "data_description": {
           "scene_name": "Name for your extrapolation scene",
-          "area_id": "Area where this scene will be used"
+          "area_id": "Area where this scene will be used",
+          "display_scenes_combined": "If on, configure 3 scenes in the next step. If off, configure 5"
         }
       },
       "scenes": {
@@ -28,6 +30,8 @@
           "scene_noon_name": "Noon scene*",
           "scene_sunset_name": "Sunset scene*",
           "scene_dusk_name": "Dusk scene*",
+          "scene_dawn_and_dusk": "Dawn and dusk scene*",
+          "scene_sunrise_and_sunset": "Sunrise and sunset scene*",
           "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene"
         }
       },
@@ -55,11 +59,13 @@
         "description": "Configure the basic settings for your extrapolation scene.",
         "data": {
           "scene_name": "Scene Name*",
-          "area_id": "Area (Optional)"
+          "area_id": "Area (Optional)",
+          "display_scenes_combined": "Combine dawn/dusk and sunrise/sunset scenes?"
         },
         "data_description": {
           "scene_name": "Name for your extrapolation scene",
-          "area_id": "Area where this scene will be used"
+          "area_id": "Area where this scene will be used",
+          "display_scenes_combined": "If on, configure 3 scenes in the next step. If off, configure 5"
         }
       },
       "scenes": {
@@ -71,6 +77,8 @@
           "scene_noon_name": "Noon scene*",
           "scene_sunset_name": "Sunset scene*",
           "scene_dusk_name": "Dusk scene*",
+          "scene_dawn_and_dusk": "Dawn and dusk scene*",
+          "scene_sunrise_and_sunset": "Sunrise and sunset scene*",
           "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene"
         }
       },
