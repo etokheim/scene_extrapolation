@@ -24,6 +24,7 @@ This release's focus is on improving the UX and minimize the time it takes to se
 
 - 🚨 Removed night rising and night setting options
 - 🚨 Renamed sun setting and sun rising to sunset and sunrise
+- Simplify configuration by optionally combining dawn/dusk and sunrise/sunset scenes
 - New default scene name: Extrapolation scene -> Automatic Lighting
 - Updated integration name: Scene Extrapolation -> Scene Extrapolation (Circadian Rythm)
 - Make the nightlights boolean and nightlights scene optional

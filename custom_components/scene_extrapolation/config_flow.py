@@ -46,6 +46,28 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _infer_display_scenes_combined(config_entry: config_entries.ConfigEntry) -> bool:
+    """Infer whether scenes should be displayed in combined mode based on stored scene IDs."""
+    stored_dawn = config_entry.options.get(SCENE_DAWN_ID) or config_entry.data.get(
+        SCENE_DAWN_ID
+    )
+    stored_dusk = config_entry.options.get(SCENE_DUSK_ID) or config_entry.data.get(
+        SCENE_DUSK_ID
+    )
+    stored_sunrise = config_entry.options.get(
+        SCENE_SUNRISE_ID
+    ) or config_entry.data.get(SCENE_SUNRISE_ID)
+    stored_sunset = config_entry.options.get(SCENE_SUNSET_ID) or config_entry.data.get(
+        SCENE_SUNSET_ID
+    )
+
+    if stored_dawn and stored_dusk and stored_sunrise and stored_sunset:
+        return stored_dawn == stored_dusk and stored_sunrise == stored_sunset
+    else:
+        # Fallback: keep separate layout for safety
+        return False
+
+
 async def validate_combined_input(
     hass: HomeAssistant,
     basic_config: dict[str, Any],
@@ -141,9 +163,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step - basic configuration."""
-        # For new entries, use None to get default value of True (combined mode)
+        # For new entries, always default to combined mode
         config_flow_schema = await create_basic_config_schema(
-            self.hass, current_display_scenes_combined=None
+            self.hass, current_display_scenes_combined=True
         )
 
         if user_input is None:
@@ -168,8 +190,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # The area selector returns the area ID directly, not the name
                 area_id = self.basic_config[AREA_ID]
 
-            # Get the combined mode setting from basic config
-            display_scenes_combined = False
+            # Infer combined/separate mode from stored scene IDs
+            display_scenes_combined = _infer_display_scenes_combined(self.config_entry)
+            # If the user toggled the checkbox on the previous step, honor that
             if (
                 hasattr(self, "basic_config")
                 and DISPLAY_SCENES_COMBINED in self.basic_config
@@ -391,15 +414,18 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     area_id = entity_entry.area_id
                     break
 
-        # Get current combined mode setting (default to False for existing entries for backwards compatibility)
+        # Determine combined/separate mode for existing entries
+        # Priority: use stored option if available; otherwise infer from data
         current_display_scenes_combined = self.config_entry.options.get(
             DISPLAY_SCENES_COMBINED
         )
         if current_display_scenes_combined is None:
-            # If not set, default to False for existing entries (backwards compatibility - separate mode)
-            current_display_scenes_combined = False
+            current_display_scenes_combined = _infer_display_scenes_combined(
+                self.config_entry
+            )
 
         # Create basic configuration schema with current values
+        # Options flow: initialize from inference
         basic_flow_schema = await create_basic_config_schema(
             self.hass,
             current_scene_name=current_scene_name,
@@ -476,8 +502,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 ),
             }
 
-            # Get the combined mode setting from basic config
-            display_scenes_combined = False
+            # Infer combined/separate mode from stored scene IDs
+            display_scenes_combined = _infer_display_scenes_combined(self.config_entry)
+            # If the user toggled the checkbox on the previous step, honor that
             if (
                 hasattr(self, "basic_config")
                 and DISPLAY_SCENES_COMBINED in self.basic_config
@@ -614,9 +641,11 @@ async def create_basic_config_schema(
             ),
             vol.Optional(
                 DISPLAY_SCENES_COMBINED,
-                default=current_display_scenes_combined
-                if current_display_scenes_combined is not None
-                else True,
+                default=(
+                    current_display_scenes_combined
+                    if current_display_scenes_combined is not None
+                    else True
+                ),
             ): bool,
         }
     )
