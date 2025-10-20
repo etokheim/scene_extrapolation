@@ -190,9 +190,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # The area selector returns the area ID directly, not the name
                 area_id = self.basic_config[AREA_ID]
 
-            # Infer combined/separate mode from stored scene IDs
-            display_scenes_combined = _infer_display_scenes_combined(self.config_entry)
-            # If the user toggled the checkbox on the previous step, honor that
+            # Get the combined mode setting from basic config
+            display_scenes_combined = False
             if (
                 hasattr(self, "basic_config")
                 and DISPLAY_SCENES_COMBINED in self.basic_config
