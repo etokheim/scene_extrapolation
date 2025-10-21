@@ -9,7 +9,7 @@
     "step": {
       "user": {
         "title": "1/3 Basic Configuration",
-        "description": "Configure the basic settings for your extrapolation scene.",
+        "description": "Creates a scene which, when activated, lights your room based on the sun elevation. The scene is best matched with an automation that triggers the scene every 5 minutes or so.\n\n**Only supports native Home Assistant Scenes** (Ie. not scenes from the Hue integration).\n\n_All settings can be changed later._",
         "data": {
           "scene_name": "Scene Name*",
           "area_id": "Area (Optional)",
@@ -17,13 +17,13 @@
         },
         "data_description": {
           "scene_name": "Name for your extrapolation scene",
-          "area_id": "Area where this scene will be used",
+          "area_id": "Which area the scene will be assigned to",
           "display_scenes_combined": "If on, configure 3 scenes in the next step. If off, configure 5"
         }
       },
       "scenes": {
         "title": "2/3 Scenes Configuration",
-        "description": "Creates a scene in your selected area which, when activated, lights your room in the appropriate way, based on the sun elevation. The scene is best matched with an automation that triggers the scene every minute or so.\n\n**Only supports native Home Assistant Scenes** (Ie. not scenes from the Hue integration). The nightlights scene can however be any type of scene.",
+        "description": "Match solar events with a scene. At the time of the event the scene will be fully activated, then transition towards the scene matched with the next event.\n\n_Selectors only show **native Home Assistant scenes** assigned to the selected area._",
         "data": {
           "scene_dawn_name": "Dawn scene*",
           "scene_sunrise_name": "Sunrise scene*",
@@ -33,11 +33,18 @@
           "scene_dawn_and_dusk": "Dawn and dusk scene*",
           "scene_sunrise_and_sunset": "Sunrise and sunset scene*",
           "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene"
+        },
+        "data_description": {
+          "scene_dawn_name": "First light",
+          "scene_noon_name": "When the sun is at its highest point",
+          "scene_dusk_name": "Last light",
+          "scene_dawn_and_dusk": "First and last light",
+          "scene_dusk_minimum_time_of_day": "To avoid lights dimming too much, too early"
         }
       },
       "nightlights": {
         "title": "3/3 Nightlights Configuration",
-        "description": "{description}",
+        "description": "If you want to configure a dedicated nightlights scene, you can do that here. This is completely optional - you can skip this step if you don't need nightlights functionality.\n\n**Note:** Due to limitations in Home Assistant, it's not possible to clear values once stored.",
         "data": {
           "nightlights_boolean_name": "Nightlights trigger (Optional)",
           "nightlights_scene_name": "Nightlights scene (Optional)"
@@ -55,22 +62,18 @@
     },
     "step": {
       "init": {
-        "title": "Basic Configuration",
-        "description": "Configure the basic settings for your extrapolation scene.",
+        "title": "1/3 Edit {scene_name}",
+        "description": "## {scene_name}\nAssigned area: **{area_name}**\n\n_To change the scene name or the assigned area, just update the scene entity directly._",
         "data": {
-          "scene_name": "Scene Name*",
-          "area_id": "Area (Optional)",
           "display_scenes_combined": "Combine dawn/dusk and sunrise/sunset scenes?"
         },
         "data_description": {
-          "scene_name": "Name for your extrapolation scene",
-          "area_id": "Area where this scene will be used",
           "display_scenes_combined": "If on, configure 3 scenes in the next step. If off, configure 5"
         }
       },
       "scenes": {
-        "title": "1/2 Scene Configuration",
-        "description": "Creates a scene in your selected area which, when activated, lights your room in the appropriate way, based on the sun elevation. The scene is best matched with an automation that triggers the scene every minute or so.\n\n**Only supports native Home Assistant Scenes** (Ie. not scenes from the Hue integration). The nightlights scene can however be any type of scene.",
+        "title": "2/3 Scene Configuration",
+        "description": "Match solar events with a scene. At the time of the event the scene will be fully activated, then transition towards the scene matched with the next event.\n\n_Selectors only show **native Home Assistant scenes** assigned to the selected area._",
         "data": {
           "scene_dawn_name": "Dawn scene*",
           "scene_sunrise_name": "Sunrise scene*",
@@ -80,11 +83,18 @@
           "scene_dawn_and_dusk": "Dawn and dusk scene*",
           "scene_sunrise_and_sunset": "Sunrise and sunset scene*",
           "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene"
+        },
+        "data_description": {
+          "scene_dawn_name": "First light",
+          "scene_noon_name": "When the sun is at its highest point",
+          "scene_dusk_name": "Last light",
+          "scene_dawn_and_dusk": "First and last light",
+          "scene_dusk_minimum_time_of_day": "To avoid lights dimming too much, too early"
         }
       },
       "nightlights": {
-        "title": "2/2 Nightlights Configuration",
-        "description": "{description}",
+        "title": "3/3 Nightlights Configuration",
+        "description": "If you want to configure a dedicated nightlights scene, you can do that here. This is completely optional - you can skip this step if you don't need nightlights functionality.\n\n**Note:** Due to limitations in Home Assistant, it's not possible to clear values once stored.",
         "data": {
           "nightlights_boolean_name": "Nightlights trigger (Optional)",
           "nightlights_scene_name": "Nightlights scene (Optional)"

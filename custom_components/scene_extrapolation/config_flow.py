@@ -16,6 +16,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import area_registry as ar
 
 from homeassistant.const import (
     CONF_UNIQUE_ID,
@@ -296,9 +297,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_show_form(
                     step_id="nightlights",
                     data_schema=nightlights_flow_schema,
-                    description_placeholders={
-                        "description": "If you want to configure a dedicated nightlights scene, you can do that here. This is completely optional - you can skip this step if you don't need nightlights functionality."
-                    },
                 )
 
             _LOGGER.info("=== NIGHTLIGHTS STEP - PROCESSING INPUT ===")
@@ -392,9 +390,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="nightlights",
             data_schema=nightlights_flow_schema,
             errors=errors,
-            description_placeholders={
-                "description": "If you want to configure a dedicated nightlights scene, you can do that here. This is completely optional - you can skip this step if you don't need nightlights functionality."
-            },
         )
 
     async def _async_set_scene_area_id(self, unique_id: str, area_id: str):
@@ -498,9 +493,39 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
         if user_input is None:
+            # Get area friendly name
+            area_friendly_name = "Unassigned"
+            if area_id:
+                area_reg = ar.async_get(self.hass)
+                if area_id in area_reg.areas:
+                    area_friendly_name = area_reg.areas[area_id].name or area_id
+
+            # Get scene friendly name
+            scene_friendly_name = self.config_entry.data.get(
+                SCENE_NAME, "Unknown Scene"
+            )
+            unique_id = self.config_entry.data.get(CONF_UNIQUE_ID)
+            if unique_id:
+                entity_reg = er.async_get(self.hass)
+                for entity_id, entity_entry in entity_reg.entities.items():
+                    if (
+                        entity_entry.unique_id == unique_id
+                        and entity_entry.domain == "scene"
+                        and entity_entry.config_entry_id == self.config_entry.entry_id
+                    ):
+                        _LOGGER.info("entity_entry: %s", entity_entry)
+                        scene_friendly_name = (
+                            entity_entry.name or entity_entry.original_name or entity_id
+                        )
+                        break
+
             return self.async_show_form(
                 step_id="init",
                 data_schema=basic_flow_schema,
+                description_placeholders={
+                    "scene_name": scene_friendly_name,
+                    "area_name": area_friendly_name,
+                },
             )
 
         # Store the basic configuration and move to scene configuration

@@ -30,6 +30,8 @@ This release's focus is on improving the UX and minimize the time it takes to se
 - Make the nightlights boolean and nightlights scene optional
 - Mark required and optional fields
 - Move nightlights configuration into its own config step to make the config less overwhelming
+- No longer store area_id in the configuration. Instead just assign it to the scene entity and fetch it from there (to always keep it up to date).
+- Hide scene name and area from the options/edit flow (this should be edited directly on the scene entity)
 
 ### Fixed
 
