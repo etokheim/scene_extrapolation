@@ -761,16 +761,16 @@ def create_nightlights_scene_selector(hass: HomeAssistant, area_id=None):
         scene_entity_ids = [
             entity.entity_id
             for entity in er.async_entries_for_area(entity_reg, area_id)
-            if entity.domain == "scene" and entity.platform == "homeassistant"
+            if entity.domain == "scene"
         ]
         if scene_entity_ids:
             config["include_entities"] = scene_entity_ids
         else:
-            # If area has no scenes, fall back to all native Home Assistant scenes
+            # If area has no scenes, fall back to all scenes
             native_scene_entities = [
                 entity.entity_id
                 for entity in entity_reg.entities.values()
-                if entity.domain == "scene" and entity.platform == "homeassistant"
+                if entity.domain == "scene"
             ]
             if native_scene_entities:
                 config["include_entities"] = native_scene_entities
@@ -780,7 +780,7 @@ def create_nightlights_scene_selector(hass: HomeAssistant, area_id=None):
         native_scene_entities = [
             entity.entity_id
             for entity in entity_reg.entities.values()
-            if entity.domain == "scene" and entity.platform == "homeassistant"
+            if entity.domain == "scene"
         ]
         if native_scene_entities:
             config["include_entities"] = native_scene_entities
