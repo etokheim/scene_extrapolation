@@ -72,11 +72,19 @@ async def validate_combined_input(
     hass: HomeAssistant,
     basic_config: dict[str, Any],
     scenes_config: dict[str, Any],
+    nightlights_config: dict[str, Any],
     config_entry: config_entries.ConfigEntry = None,
 ) -> dict[str, Any]:
     """Validate and combine basic config and scenes config for both flows."""
+    _LOGGER.info("=== VALIDATE_COMBINED_INPUT START ===")
+    _LOGGER.info("Basic config received: %s", basic_config)
+    _LOGGER.info("Scenes config received: %s", scenes_config)
+    _LOGGER.info("Nightlights config received: %s", nightlights_config)
+    _LOGGER.info("Config entry provided: %s", config_entry is not None)
+
     # Combine the inputs
-    combined_input = {**basic_config, **scenes_config}
+    combined_input = {**basic_config, **scenes_config, **nightlights_config}
+    _LOGGER.info("Combined input: %s", combined_input)
 
     # Extract basic info
     scene_name = combined_input.get(SCENE_NAME, "Automatic Lighting")
@@ -87,11 +95,17 @@ async def validate_combined_input(
         SCENE_NAME: scene_name,
     }
 
+    # Store area_id if provided
+    if AREA_ID in combined_input:
+        data_to_store[AREA_ID] = combined_input[AREA_ID]
+
     # Check if we're in combined mode
     display_scenes_combined = combined_input.get(DISPLAY_SCENES_COMBINED, False)
+    _LOGGER.info("Display scenes combined: %s", display_scenes_combined)
 
     if not display_scenes_combined:
         # Separate mode - handle each scene individually
+        _LOGGER.info("Processing SEPARATE mode")
         scene_name_to_id_mapping = {
             SCENE_DAWN_NAME: SCENE_DAWN_ID,
             SCENE_SUNRISE_NAME: SCENE_SUNRISE_ID,
@@ -103,24 +117,34 @@ async def validate_combined_input(
         for scene_name_key, scene_id_key in scene_name_to_id_mapping.items():
             if scene_name_key in combined_input:
                 data_to_store[scene_id_key] = combined_input[scene_name_key]
+                _LOGGER.info(
+                    "Stored %s -> %s: %s",
+                    scene_name_key,
+                    scene_id_key,
+                    combined_input[scene_name_key],
+                )
     else:
         # Combined mode - duplicate selections
+        _LOGGER.info("Processing COMBINED mode")
         # Dawn and dusk scene (combined)
         dawn_and_dusk_scene = combined_input.get("scene_dawn_and_dusk")
         if dawn_and_dusk_scene:
             data_to_store[SCENE_DAWN_ID] = dawn_and_dusk_scene
             data_to_store[SCENE_DUSK_ID] = dawn_and_dusk_scene
+            _LOGGER.info("Stored dawn/dusk scene: %s", dawn_and_dusk_scene)
 
         # Noon scene
         noon_scene = combined_input.get(SCENE_NOON_NAME)
         if noon_scene:
             data_to_store[SCENE_NOON_ID] = noon_scene
+            _LOGGER.info("Stored noon scene: %s", noon_scene)
 
         # Sunrise and sunset scene (combined)
         sunrise_and_sunset_scene = combined_input.get("scene_sunrise_and_sunset")
         if sunrise_and_sunset_scene:
             data_to_store[SCENE_SUNRISE_ID] = sunrise_and_sunset_scene
             data_to_store[SCENE_SUNSET_ID] = sunrise_and_sunset_scene
+            _LOGGER.info("Stored sunrise/sunset scene: %s", sunrise_and_sunset_scene)
 
     # Handle nightlights configuration
     nightlights_boolean = combined_input.get(NIGHTLIGHTS_BOOLEAN_NAME)
@@ -151,6 +175,8 @@ async def validate_combined_input(
         )
         data_to_store[SCENE_DUSK_MINIMUM_TIME_OF_DAY] = seconds
 
+    _LOGGER.info("Final data to store: %s", data_to_store)
+    _LOGGER.info("=== VALIDATE_COMBINED_INPUT END ===")
     return data_to_store
 
 
@@ -173,6 +199,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 step_id="user",
                 data_schema=config_flow_schema,
             )
+
+        _LOGGER.info("=== CONFIG FLOW USER STEP ===")
+        _LOGGER.info("User input received: %s", user_input)
 
         # Store the basic configuration and move to scene configuration
         self.basic_config = user_input
@@ -209,6 +238,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data_schema=scenes_flow_schema,
                 )
 
+            _LOGGER.info("=== CONFIG FLOW SCENES STEP ===")
+            _LOGGER.info("Scenes user input received: %s", user_input)
+            _LOGGER.info("Basic config: %s", self.basic_config)
+
             # Store the scenes configuration and move to nightlights configuration
             self.scenes_config = user_input
             return await self.async_step_nightlights()
@@ -231,6 +264,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         try:
             if user_input is None:
+                _LOGGER.info("=== NIGHTLIGHTS STEP - SHOWING FORM ===")
                 # Create nightlights configuration schema
                 current_values = None
                 if hasattr(self, "config_entry") and self.config_entry:
@@ -267,31 +301,43 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     },
                 )
 
+            _LOGGER.info("=== NIGHTLIGHTS STEP - PROCESSING INPUT ===")
+            _LOGGER.info("Nightlights user input received: %s", user_input)
+
             # Handle config vs options flow
             if hasattr(self, "config_entry") and self.config_entry:
+                _LOGGER.info("Processing OPTIONS flow")
                 # Options flow - use existing config entry data
                 basic_config = {
                     SCENE_NAME: self.config_entry.data.get(
                         SCENE_NAME, "Automatic Lighting"
                     ),
                 }
+                # For options flow, we need to combine scenes and nightlights data
+                combined_scenes_nightlights = {**self.scenes_config, **user_input}
                 validated_input = await validate_combined_input(
                     self.hass,
                     basic_config,
-                    user_input,
+                    combined_scenes_nightlights,
                     self.config_entry,
                 )
                 return self.async_create_entry(
                     title=validated_input[SCENE_NAME], data=validated_input
                 )
             else:
+                _LOGGER.info("Processing CONFIG flow")
+                _LOGGER.info("Basic config: %s", self.basic_config)
+                _LOGGER.info("Scenes config: %s", self.scenes_config)
                 # Config flow - create new entry
                 validated_input = await validate_combined_input(
-                    self.hass, self.basic_config, user_input
+                    self.hass, self.basic_config, self.scenes_config, user_input
                 )
 
                 # Append a unique ID for this scene before saving the data
                 validated_input[CONF_UNIQUE_ID] = str(uuid.uuid4())
+                _LOGGER.info(
+                    "Final validated input for config flow: %s", validated_input
+                )
 
                 # Store area_id temporarily for setting on the scene entity after creation
                 area_id = None
@@ -299,9 +345,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # The area selector returns the area ID directly
                     area_id = self.basic_config[AREA_ID]
 
+                _LOGGER.info(
+                    "Creating config entry with title: %s", validated_input[SCENE_NAME]
+                )
+                _LOGGER.info(
+                    "Data being passed to async_create_entry: %s", validated_input
+                )
                 result = self.async_create_entry(
                     title=validated_input[SCENE_NAME], data=validated_input
                 )
+                _LOGGER.info("Config entry created. Result: %s", result)
+                _LOGGER.info("Config entry data after creation: %s", result.get("data"))
 
                 # Set area_id on the scene entity after creation
                 if area_id:
@@ -395,6 +449,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step - basic configuration for options flow."""
+        _LOGGER.info("=== OPTIONS FLOW INIT START ===")
+        _LOGGER.info("Config entry data: %s", self.config_entry.data)
+        _LOGGER.info("Config entry options: %s", self.config_entry.options)
+
         # Get current values from config entry for pre-population
         current_scene_name = self.config_entry.data.get(
             SCENE_NAME, "Automatic Lighting"
@@ -418,9 +476,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         current_display_scenes_combined = self.config_entry.options.get(
             DISPLAY_SCENES_COMBINED
         )
+        _LOGGER.info(
+            "Stored display_scenes_combined option: %s", current_display_scenes_combined
+        )
         if current_display_scenes_combined is None:
             current_display_scenes_combined = _infer_display_scenes_combined(
                 self.config_entry
+            )
+            _LOGGER.info(
+                "Inferred display_scenes_combined: %s", current_display_scenes_combined
             )
 
         # Create basic configuration schema with current values
@@ -524,6 +588,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     data_schema=scenes_flow_schema,
                 )
 
+            _LOGGER.info("=== OPTIONS FLOW SCENES STEP ===")
+            _LOGGER.info("Scenes user input received: %s", user_input)
+            _LOGGER.info("Basic config: %s", self.basic_config)
+
             # Store the scenes configuration and move to nightlights configuration
             self.scenes_config = user_input
             return await self.async_step_nightlights()
@@ -546,6 +614,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         errors = {}
         try:
             if user_input is None:
+                _LOGGER.info("=== OPTIONS FLOW NIGHTLIGHTS STEP - SHOWING FORM ===")
                 # Create nightlights configuration schema with current values for options flow
                 current_values = {
                     NIGHTLIGHTS_BOOLEAN_ID: (
@@ -557,9 +626,16 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         or self.config_entry.data.get(NIGHTLIGHTS_SCENE_ID)
                     ),
                 }
+                _LOGGER.info("Current nightlights values: %s", current_values)
+
+                # Get area_id from the config entry
+                area_id = self.config_entry.options.get(
+                    AREA_ID
+                ) or self.config_entry.data.get(AREA_ID)
+                _LOGGER.info("Area ID: %s", area_id)
 
                 nightlights_flow_schema = await create_nightlights_config_schema(
-                    self.hass, current_values
+                    self.hass, current_values, area_id
                 )
                 return self.async_show_form(
                     step_id="nightlights",
@@ -569,15 +645,23 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     },
                 )
 
+            _LOGGER.info("=== OPTIONS FLOW NIGHTLIGHTS STEP - PROCESSING INPUT ===")
+            _LOGGER.info("Nightlights user input received: %s", user_input)
+            _LOGGER.info("Scenes config: %s", self.scenes_config)
+
             # Options flow - use existing config entry data
             basic_config = {
                 SCENE_NAME: self.config_entry.data.get(
                     SCENE_NAME, "Automatic Lighting"
                 ),
             }
+            _LOGGER.info("Scenes config: %s", self.scenes_config)
+            _LOGGER.info("Nightlights config: %s", user_input)
+
             validated_input = await validate_combined_input(
                 self.hass,
                 basic_config,
+                self.scenes_config,
                 user_input,
                 self.config_entry,
             )
