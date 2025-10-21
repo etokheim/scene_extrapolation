@@ -595,7 +595,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
             # Store the scenes configuration and move to nightlights configuration
             self.scenes_config = user_input
-            return await self.async_step_nightlights()
+            return await self.async_step_nightlights(area_id)
 
         except HomeAssistantError as err:
             errors["base"] = str(err)
@@ -609,7 +609,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_nightlights(
-        self, user_input: dict[str, Any] | None = None
+        self, user_input: dict[str, Any] | None = None, area_id: str | None = None
     ) -> FlowResult:
         """Handle the nightlights configuration step."""
         errors = {}
@@ -629,10 +629,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 }
                 _LOGGER.info("Current nightlights values: %s", current_values)
 
-                # Get area_id from the config entry
-                area_id = self.config_entry.options.get(
-                    AREA_ID
-                ) or self.config_entry.data.get(AREA_ID)
                 _LOGGER.info("Area ID: %s", area_id)
 
                 nightlights_flow_schema = await create_nightlights_config_schema(
