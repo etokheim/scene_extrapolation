@@ -494,6 +494,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             current_scene_name=current_scene_name,
             current_area_name=area_id,
             current_display_scenes_combined=current_display_scenes_combined,
+            is_options_flow=True,
         )
 
         if user_input is None:
@@ -705,33 +706,50 @@ async def create_basic_config_schema(
     current_scene_name=None,
     current_area_name=None,
     current_display_scenes_combined=None,
+    is_options_flow=False,
 ):
     """Create the basic configuration schema for both config and options flows."""
-    return vol.Schema(
-        {
-            vol.Optional(
-                "scene_name", default=current_scene_name or "Automatic Lighting"
-            ): str,
-            vol.Optional(
-                AREA_ID,
-                default=current_area_name,
-            ): vol.Maybe(
-                selector.AreaSelector(
-                    selector.AreaSelectorConfig(
-                        multiple=False,
+    if is_options_flow:
+        # For options flow, hide scene name and area ID
+        return vol.Schema(
+            {
+                vol.Optional(
+                    DISPLAY_SCENES_COMBINED,
+                    default=(
+                        current_display_scenes_combined
+                        if current_display_scenes_combined is not None
+                        else True  # Default to True (combined) if not explicitly set
                     ),
-                )
-            ),
-            vol.Optional(
-                DISPLAY_SCENES_COMBINED,
-                default=(
-                    current_display_scenes_combined
-                    if current_display_scenes_combined is not None
-                    else True
+                ): bool,
+            }
+        )
+    else:
+        # For config flow, show all fields
+        return vol.Schema(
+            {
+                vol.Optional(
+                    "scene_name", default=current_scene_name or "Automatic Lighting"
+                ): str,
+                vol.Optional(
+                    AREA_ID,
+                    default=current_area_name,
+                ): vol.Maybe(
+                    selector.AreaSelector(
+                        selector.AreaSelectorConfig(
+                            multiple=False,
+                        ),
+                    )
                 ),
-            ): bool,
-        }
-    )
+                vol.Optional(
+                    DISPLAY_SCENES_COMBINED,
+                    default=(
+                        current_display_scenes_combined
+                        if current_display_scenes_combined is not None
+                        else True
+                    ),
+                ): bool,
+            }
+        )
 
 
 def create_nightlights_scene_selector(hass: HomeAssistant, area_id=None):
