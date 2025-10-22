@@ -920,12 +920,12 @@ async def create_scenes_config_schema(
                     default=defaults.get(SCENE_DAWN_ID),  # Use dawn as default
                 ): create_scene_selector(),
                 vol.Required(
-                    SCENE_NOON_NAME,
-                    default=defaults.get(SCENE_NOON_ID),
-                ): create_scene_selector(),
-                vol.Required(
                     "scene_sunrise_and_sunset",  # Combined sunrise/sunset scene
                     default=defaults.get(SCENE_SUNRISE_ID),  # Use sunrise as default
+                ): create_scene_selector(),
+                vol.Required(
+                    SCENE_NOON_NAME,
+                    default=defaults.get(SCENE_NOON_ID),
                 ): create_scene_selector(),
                 vol.Optional(
                     SCENE_DUSK_MINIMUM_TIME_OF_DAY,
