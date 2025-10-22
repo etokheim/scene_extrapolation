@@ -75,6 +75,7 @@ async def validate_combined_input(
     scenes_config: dict[str, Any],
     nightlights_config: dict[str, Any],
     config_entry: config_entries.ConfigEntry = None,
+    display_scenes_combined: bool = False,
 ) -> dict[str, Any]:
     """Validate and combine basic config and scenes config for both flows."""
     _LOGGER.info("=== VALIDATE_COMBINED_INPUT START ===")
@@ -100,8 +101,7 @@ async def validate_combined_input(
     if AREA_ID in combined_input:
         data_to_store[AREA_ID] = combined_input[AREA_ID]
 
-    # Check if we're in combined mode
-    display_scenes_combined = combined_input.get(DISPLAY_SCENES_COMBINED, False)
+    # Use the passed display_scenes_combined parameter
     _LOGGER.info("Display scenes combined: %s", display_scenes_combined)
 
     if not display_scenes_combined:
@@ -245,6 +245,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             # Store the scenes configuration and move to nightlights configuration
             self.scenes_config = user_input
+            self.display_scenes_combined = display_scenes_combined
             return await self.async_step_nightlights()
 
         except HomeAssistantError as err:
@@ -313,11 +314,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
                 # For options flow, we need to combine scenes and nightlights data
                 combined_scenes_nightlights = {**self.scenes_config, **user_input}
+                # Get display_scenes_combined, with fallback for backward compatibility
+                display_scenes_combined = getattr(
+                    self, "display_scenes_combined", False
+                )
                 validated_input = await validate_combined_input(
                     self.hass,
                     basic_config,
                     combined_scenes_nightlights,
                     self.config_entry,
+                    display_scenes_combined=display_scenes_combined,
                 )
                 return self.async_create_entry(
                     title=validated_input[SCENE_NAME], data=validated_input
@@ -327,8 +333,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.info("Basic config: %s", self.basic_config)
                 _LOGGER.info("Scenes config: %s", self.scenes_config)
                 # Config flow - create new entry
+                # Get display_scenes_combined, with fallback for backward compatibility
+                display_scenes_combined = getattr(
+                    self, "display_scenes_combined", False
+                )
                 validated_input = await validate_combined_input(
-                    self.hass, self.basic_config, self.scenes_config, user_input
+                    self.hass,
+                    self.basic_config,
+                    self.scenes_config,
+                    user_input,
+                    display_scenes_combined=display_scenes_combined,
                 )
 
                 # Append a unique ID for this scene before saving the data
@@ -620,6 +634,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
             # Store the scenes configuration and move to nightlights configuration
             self.scenes_config = user_input
+            self.display_scenes_combined = display_scenes_combined
             return await self.async_step_nightlights(area_id=area_id)
 
         except HomeAssistantError as err:
@@ -680,12 +695,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             _LOGGER.info("Scenes config: %s", self.scenes_config)
             _LOGGER.info("Nightlights config: %s", user_input)
 
+            # Get display_scenes_combined, with fallback for backward compatibility
+            display_scenes_combined = getattr(self, "display_scenes_combined", False)
             validated_input = await validate_combined_input(
                 self.hass,
                 basic_config,
                 self.scenes_config,
                 user_input,
                 self.config_entry,
+                display_scenes_combined=display_scenes_combined,
             )
             return self.async_create_entry(
                 title=validated_input[SCENE_NAME], data=validated_input
