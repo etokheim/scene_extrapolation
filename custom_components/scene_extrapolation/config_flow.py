@@ -620,7 +620,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
             # Store the scenes configuration and move to nightlights configuration
             self.scenes_config = user_input
-            return await self.async_step_nightlights(area_id)
+            return await self.async_step_nightlights(area_id=area_id)
 
         except HomeAssistantError as err:
             errors["base"] = str(err)
