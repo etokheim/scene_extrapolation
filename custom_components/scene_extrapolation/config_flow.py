@@ -720,38 +720,45 @@ async def create_basic_config_schema(
 
 
 def create_nightlights_scene_selector(hass: HomeAssistant, area_id=None):
-    """Create a scene selector for nightlights configuration."""
+    """Create a scene selector for nightlights configuration that excludes scenes from this integration."""
     config = {
         "domain": "scene",
         "multiple": False,
     }
 
+    def is_native_non_extrapolation_scene(entity):
+        # Only include scenes that are NOT from this integration
+        return (
+            entity.domain == "scene"
+            and getattr(entity, "platform", None) != "scene_extrapolation"
+        )
+
+    entity_reg = er.async_get(hass)
+
     if area_id:
-        # Filter scenes to the selected area
-        entity_reg = er.async_get(hass)
+        # Filter scenes to the selected area, non-scene_extrapolation scenes
         scene_entity_ids = [
             entity.entity_id
             for entity in er.async_entries_for_area(entity_reg, area_id)
-            if entity.domain == "scene"
+            if is_native_non_extrapolation_scene(entity)
         ]
         if scene_entity_ids:
             config["include_entities"] = scene_entity_ids
         else:
-            # If area has no scenes, fall back to all scenes
+            # If area has no matching scenes, fall back to all matching scenes
             native_scene_entities = [
                 entity.entity_id
                 for entity in entity_reg.entities.values()
-                if entity.domain == "scene"
+                if is_native_non_extrapolation_scene(entity)
             ]
             if native_scene_entities:
                 config["include_entities"] = native_scene_entities
     else:
-        # If no area filtering, show all native Home Assistant scenes
-        entity_reg = er.async_get(hass)
+        # If no area filtering, non-scene_extrapolation scenes
         native_scene_entities = [
             entity.entity_id
             for entity in entity_reg.entities.values()
-            if entity.domain == "scene"
+            if is_native_non_extrapolation_scene(entity)
         ]
         if native_scene_entities:
             config["include_entities"] = native_scene_entities
