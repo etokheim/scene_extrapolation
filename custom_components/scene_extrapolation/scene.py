@@ -30,12 +30,6 @@ from homeassistant.components.light import (
 from homeassistant.components.lock import LockState
 from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN, Scene
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry
-
-# TODO: Move this function to __init__ maybe? At least somewhere more fitting for reuse
-
 
 from homeassistant.const import (  # noqa: E402
     ATTR_AREA_ID,
@@ -55,21 +49,24 @@ from homeassistant.const import (  # noqa: E402
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry
 
 from .const import (
     NIGHTLIGHTS_BOOLEAN_ID,
     NIGHTLIGHTS_SCENE_ID,
     SCENE_DAWN_ID,
-    SCENE_DUSK_MINIMUM_TIME_OF_DAY,
     SCENE_DAWN_NAME,
-    SCENE_SUNRISE_ID,
-    SCENE_SUNRISE_NAME,
+    SCENE_DUSK_ID,
+    SCENE_DUSK_MINIMUM_TIME_OF_DAY,
+    SCENE_DUSK_NAME,
     SCENE_NOON_ID,
     SCENE_NOON_NAME,
+    SCENE_SUNRISE_ID,
+    SCENE_SUNRISE_NAME,
     SCENE_SUNSET_ID,
     SCENE_SUNSET_NAME,
-    SCENE_DUSK_ID,
-    SCENE_DUSK_NAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
