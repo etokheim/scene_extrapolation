@@ -117,6 +117,7 @@ class ExtrapolationScene(Scene):
         self._attr_unique_id = config_entry.data.get(CONF_UNIQUE_ID)
         self._attr_integration = "scene_extrapolation"
         self._brightness_modifier = 0
+        self._transition_modifier = 0
 
         # Get area_id from the scene entity itself (not stored in integration data)
         # The area_id is set during initial config flow and stored on the scene entity
@@ -207,17 +208,21 @@ class ExtrapolationScene(Scene):
         """Return the state attributes."""
         return {
             "brightness_modifier": self._brightness_modifier,
+            "transition_modifier": self._transition_modifier,
             "integration": self._attr_integration,
         }
 
-    async def async_activate(self, transition=0, brightness_modifier=0):
+    async def async_activate(
+        self, transition=0, brightness_modifier=0, transition_modifier=0
+    ):
         """Activate the scene."""
-        # Store the brightness modifier as an attribute
+        # Store the brightness modifier and transition modifier as attributes
         self._brightness_modifier = brightness_modifier
+        self._transition_modifier = transition_modifier
 
         start_time = time.time()  # Used for performance monitoring
 
-        # Trigger a state update to make the attribute visible immediately
+        # Trigger a state update to make the attributes visible immediately
         self.async_write_ha_state()
 
         if transition == 6553:
@@ -379,8 +384,22 @@ class ExtrapolationScene(Scene):
                 sun_event.start_time,
             )
 
+        # Calculate time shift based on transition modifier
+        time_shift = self._calculate_time_shift_from_transition_modifier(
+            transition_modifier
+        )
+
+        _LOGGER.info(
+            "Transition modifier: %s%%, calculated time shift: %s seconds (%s minutes)",
+            transition_modifier,
+            time_shift,
+            round(time_shift / 60, 1) if time_shift != 0 else 0,
+        )
+
+        final_time = self.seconds_since_midnight(transition + time_shift)
         _LOGGER.debug(
-            "Time since midnight: %s seconds", self.seconds_since_midnight(transition)
+            "Time since midnight: %s seconds (after time shift)",
+            final_time,
         )
         _LOGGER.debug(
             "Time now: %s", datetime.now(tz=ZoneInfo(self.hass.config.time_zone))
@@ -389,27 +408,27 @@ class ExtrapolationScene(Scene):
         current_sun_event = self.get_sun_event(
             offset=0,
             sun_events=sun_events,
-            seconds_since_midnight=self.seconds_since_midnight(transition),
+            seconds_since_midnight=final_time,
         )
 
         next_sun_event = self.get_sun_event(
             offset=1,
             sun_events=sun_events,
-            seconds_since_midnight=self.seconds_since_midnight(transition),
+            seconds_since_midnight=final_time,
         )
 
         scene_transition_progress_percent = self.get_scene_transition_progress_percent(
-            current_sun_event, next_sun_event, transition
+            current_sun_event, next_sun_event, final_time
         )
 
-        _LOGGER.debug(
-            "Current sun event: %s (%s), next: %s (%s), transition progress: %s, seconds since midnight: %s",
+        _LOGGER.info(
+            "Current sun event: %s (%s), next: %s (%s), transition progress: %s%%, seconds since midnight: %s",
             current_sun_event.name,
             current_sun_event.scene["name"],
             next_sun_event.name,
             next_sun_event.scene["name"],
-            scene_transition_progress_percent,
-            self.seconds_since_midnight(transition),
+            round(scene_transition_progress_percent, 2),
+            final_time,
         )
 
         _LOGGER.debug(
@@ -447,7 +466,7 @@ class ExtrapolationScene(Scene):
         return (datetime - midnight).seconds
 
     def get_scene_transition_progress_percent(
-        self, current_sun_event, next_sun_event, transition_time
+        self, current_sun_event, next_sun_event, seconds_since_midnight
     ) -> int:
         """Get a percentage value for how far into the transitioning between the from and to scene
         we currently are.
@@ -456,6 +475,9 @@ class ExtrapolationScene(Scene):
         # Account for passing midnight
         seconds_between_current_and_next_sun_events = None
         seconds_till_next_sun_event = None
+
+        # Clamp to max 24 hours
+        seconds_since_midnight = seconds_since_midnight % 86400
 
         # If midnight is between the current and next sun events, do some special handling
         if current_sun_event.start_time > next_sun_event.start_time:
@@ -470,15 +492,13 @@ class ExtrapolationScene(Scene):
                 next_sun_event.start_time - current_sun_event.start_time
             )
 
-        if self.seconds_since_midnight(transition_time) > next_sun_event.start_time:
+        if seconds_since_midnight > next_sun_event.start_time:
             seconds_till_next_sun_event = (
-                86400
-                - self.seconds_since_midnight(transition_time)
-                + next_sun_event.start_time
+                86400 - seconds_since_midnight + next_sun_event.start_time
             )
         else:
             seconds_till_next_sun_event = (
-                next_sun_event.start_time - self.seconds_since_midnight(transition_time)
+                next_sun_event.start_time - seconds_since_midnight
             )
 
         return (
@@ -490,8 +510,8 @@ class ExtrapolationScene(Scene):
             )
         )
 
-    def seconds_since_midnight(self, transition_time) -> float:
-        """Returns the number of seconds since midnight, adjusted for transition time."""
+    def seconds_since_midnight(self, offset_seconds: int) -> float:
+        """Returns the number of seconds since midnight, can be adjusted with an offset."""
         now = datetime.now(tz=ZoneInfo(self.hass.config.time_zone))
         seconds_since_midnight = (
             now - now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -501,11 +521,11 @@ class ExtrapolationScene(Scene):
         # the transition is finished.
         # 86400 is 24 hours in seconds. % so that if the time overshoots 24 hours, the surplus is
         # shaved off.
-        seconds_since_midnight_adjusted_for_transition = (
-            seconds_since_midnight + transition_time
+        seconds_since_midnight_adjusted_for_offset = (
+            seconds_since_midnight + offset_seconds
         ) % 86400
 
-        return seconds_since_midnight_adjusted_for_transition  # noqa: RET504
+        return seconds_since_midnight_adjusted_for_offset  # noqa: RET504
 
     def get_sun_event(self, sun_events, seconds_since_midnight, offset=0) -> SunEvent:
         """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead."""
@@ -533,6 +553,61 @@ class ExtrapolationScene(Scene):
 
         # The % strips away any overshooting of the list length
         return sorted_sun_events[offset_index % len(sorted_sun_events)]
+
+    def _calculate_time_shift_from_transition_modifier(self, transition_modifier):
+        """Calculate time shift from transition modifier percentage."""
+        if transition_modifier == 0:
+            return 0
+
+        current_time = self.seconds_since_midnight(0)  # Current time without any shift
+        solar_events = sun(
+            self.city.observer, date=datetime.now(tz=ZoneInfo(self.time_zone))
+        )
+        noon_time = self.datetime_to_seconds_since_midnight(solar_events["noon"])
+
+        if transition_modifier > 0:
+            # Positive modifier: shift towards noon (brighter)
+            if current_time < noon_time:
+                # Before noon: shift towards today's noon
+                target_time = noon_time
+                target_name = "today's noon"
+            else:
+                # After noon: shift towards tomorrow's noon (add 24 hours)
+                target_time = noon_time + 86400
+                target_name = "tomorrow's noon"
+        else:
+            # Negative modifier: shift towards closest low-light scene (dimmer)
+            if current_time < noon_time:
+                # Before noon: shift towards dawn
+                target_time = self.datetime_to_seconds_since_midnight(
+                    solar_events["dawn"]
+                )
+                target_name = "dawn"
+            else:
+                # After noon: shift towards dusk
+                target_time = self.datetime_to_seconds_since_midnight(
+                    solar_events["dusk"]
+                )
+                target_name = "dusk"
+
+        # Time difference between current time and target scene
+        time_difference = target_time - current_time
+
+        # transition_modifier is a percentage of this time difference
+        # Use absolute value since we already determined direction above
+        time_shift = int(time_difference * abs(transition_modifier) / 100)
+
+        _LOGGER.debug(
+            "Transition modifier calculation: current_time=%s, target_time=%s (%s), time_difference=%s, modifier=%s%%, time_shift=%s",
+            current_time,
+            target_time,
+            target_name,
+            time_difference,
+            transition_modifier,
+            time_shift,
+        )
+
+        return time_shift
 
 
 async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):

@@ -1,6 +1,6 @@
 turn_on:
   name: Turn on extrapolation scene
-  description: Activate one or more extrapolation scenes with optional brightness modification and transition time
+  description: Activate one or more extrapolation scenes with optional brightness modification, transition time, and brightness adjustment
   fields:
     entity_id:
       name: Scene entities
@@ -33,4 +33,16 @@ turn_on:
           max: 1000
           step: 1
           unit_of_measurement: "s"
+          mode: slider
+    transition_modifier:
+      name: Transition modifier
+      description: Adjust scene timing - positive values shift towards noon (brighter), negative values shift towards low-light scenes (dimmer)
+      required: false
+      default: 0
+      selector:
+        number:
+          min: -100
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
           mode: slider

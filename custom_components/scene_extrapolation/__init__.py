@@ -24,6 +24,7 @@ PLATFORMS: list[Platform] = [Platform.SCENE]
 SERVICE_TURN_ON = "turn_on"
 ATTR_BRIGHTNESS_MODIFIER = "brightness_modifier"
 ATTR_TRANSITION = "transition"
+ATTR_TRANSITION_MODIFIER = "transition_modifier"
 
 
 async def async_setup(hass, config):
@@ -34,6 +35,7 @@ async def async_setup(hass, config):
         entity_ids = call.data.get("entity_id", [])
         brightness_modifier = call.data.get(ATTR_BRIGHTNESS_MODIFIER, 0)
         transition = call.data.get(ATTR_TRANSITION, 0)
+        transition_modifier = call.data.get(ATTR_TRANSITION_MODIFIER, 0)
 
         # Validate brightness modifier range
         if not -100 <= brightness_modifier <= 100:
@@ -51,14 +53,23 @@ async def async_setup(hass, config):
             )
             return
 
-        # Activate each extrapolation scene with brightness modifier
+        # Validate transition modifier range
+        if not -100 <= transition_modifier <= 100:
+            _LOGGER.error(
+                "Transition modifier must be between -100 and 100, got %s",
+                transition_modifier,
+            )
+            return
+
+        # Activate each extrapolation scene with brightness modifier and transition modifier
         for entity_id in entity_ids:
             if entity_id.startswith("scene."):
                 _LOGGER.debug(
-                    "Activating scene %s with brightness modifier %s and transition %s",
+                    "Activating scene %s with brightness modifier %s, transition %s, and transition modifier %s",
                     entity_id,
                     brightness_modifier,
                     transition,
+                    transition_modifier,
                 )
 
                 # Get the scene entity and call its async_activate method directly
@@ -72,6 +83,7 @@ async def async_setup(hass, config):
                                 await scene.async_activate(
                                     transition=transition,
                                     brightness_modifier=brightness_modifier,
+                                    transition_modifier=transition_modifier,
                                 )
                                 break
                         else:
@@ -111,6 +123,17 @@ async def async_setup(hass, config):
                         max=6553,
                         step=1,
                         unit_of_measurement="s",
+                        mode="slider",
+                    )
+                ),
+                vol.Optional(
+                    ATTR_TRANSITION_MODIFIER, default=0
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=-100,
+                        max=100,
+                        step=1,
+                        unit_of_measurement="%",
                         mode="slider",
                     )
                 ),

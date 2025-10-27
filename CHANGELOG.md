@@ -18,6 +18,7 @@ This release's focus is on improving the UX and minimize the time it takes to se
 ### Added
 
 - 🚨 Add noon scene option
+- ⭐ Modify transition progress - ie. move the transition towards or further away from the noon scene (to increase/decrease the brightness)
 - Add support for extrapolating effects!
 
 ### Changed
