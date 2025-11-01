@@ -103,6 +103,7 @@ async def async_setup(hass, config):
                 vol.Required("entity_id"): selector.EntitySelector(
                     selector.EntitySelectorConfig(
                         domain="scene",
+                        integration="scene_extrapolation",
                         multiple=True,
                     )
                 ),

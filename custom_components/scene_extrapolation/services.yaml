@@ -4,11 +4,12 @@ turn_on:
   fields:
     entity_id:
       name: Scene entities
-      description: Select one or more scenes to activate (supports area/entity filtering)
+      description: Select one or more extrapolation scenes to activate (supports area/entity filtering)
       required: true
       selector:
         entity:
           domain: scene
+          integration: scene_extrapolation
           multiple: true
     brightness_modifier:
       name: Brightness modifier
