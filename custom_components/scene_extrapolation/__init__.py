@@ -25,6 +25,7 @@ SERVICE_TURN_ON = "turn_on"
 ATTR_BRIGHTNESS_MODIFIER = "brightness_modifier"
 ATTR_TRANSITION = "transition"
 ATTR_TRANSITION_MODIFIER = "transition_modifier"
+ATTR_TARGET_DATE_TIME = "target_date_time"
 
 
 async def async_setup(hass, config):
@@ -36,6 +37,7 @@ async def async_setup(hass, config):
         brightness_modifier = call.data.get(ATTR_BRIGHTNESS_MODIFIER, 0)
         transition = call.data.get(ATTR_TRANSITION, 0)
         transition_modifier = call.data.get(ATTR_TRANSITION_MODIFIER, 0)
+        target_date_time = call.data.get(ATTR_TARGET_DATE_TIME)
 
         # Validate brightness modifier range
         if not -100 <= brightness_modifier <= 100:
@@ -84,6 +86,7 @@ async def async_setup(hass, config):
                                     transition=transition,
                                     brightness_modifier=brightness_modifier,
                                     transition_modifier=transition_modifier,
+                                    target_date_time=target_date_time,
                                 )
                                 break
                         else:
@@ -137,6 +140,9 @@ async def async_setup(hass, config):
                         unit_of_measurement="%",
                         mode="slider",
                     )
+                ),
+                vol.Optional(ATTR_TARGET_DATE_TIME): selector.DateTimeSelector(
+                    selector.DateTimeSelectorConfig()
                 ),
             }
         ),

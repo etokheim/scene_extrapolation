@@ -11,18 +11,6 @@ turn_on:
           domain: scene
           integration: scene_extrapolation
           multiple: true
-    brightness_modifier:
-      name: Brightness modifier
-      description: Brightness modifier from -100 to +100 percent
-      required: false
-      default: 0
-      selector:
-        number:
-          min: -100
-          max: 100
-          step: 1
-          unit_of_measurement: "%"
-          mode: slider
     transition:
       name: Transition time
       description: Transition time from 0 to 1000 seconds
@@ -35,9 +23,9 @@ turn_on:
           step: 1
           unit_of_measurement: "s"
           mode: slider
-    transition_modifier:
-      name: Transition modifier
-      description: Adjust scene timing - positive values shift towards noon (brighter), negative values shift towards low-light scenes (dimmer)
+    brightness_modifier:
+      name: Brightness modifier
+      description: Brightness modifier from -100 to +100 percent
       required: false
       default: 0
       selector:
@@ -47,3 +35,21 @@ turn_on:
           step: 1
           unit_of_measurement: "%"
           mode: slider
+    transition_modifier:
+      name: Transition modifier (Another, more dynamic, way to change the brightness)
+      description: Shift the extrapolation towards noon or dusk/dawn (whichever is closer). Positive values shift towards noon (brighter), negative values shift towards low-light scenes (dimmer)
+      required: false
+      default: 0
+      selector:
+        number:
+          min: -100
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    target_date_time:
+      name: Change the time (for testing)
+      description: "Preview the scene at a different time. Eg. pretend it's summer (defaults to current time)"
+      required: false
+      selector:
+        datetime:

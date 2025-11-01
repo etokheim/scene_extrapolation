@@ -118,6 +118,7 @@ class ExtrapolationScene(Scene):
         self._attr_integration = "scene_extrapolation"
         self._brightness_modifier = 0
         self._transition_modifier = 0
+        self._target_date_time = None
 
         # Get area_id from the scene entity itself (not stored in integration data)
         # The area_id is set during initial config flow and stored on the scene entity
@@ -206,19 +207,43 @@ class ExtrapolationScene(Scene):
     @property
     def extra_state_attributes(self):
         """Return the state attributes."""
-        return {
+        attrs = {
             "brightness_modifier": self._brightness_modifier,
             "transition_modifier": self._transition_modifier,
             "integration": self._attr_integration,
         }
+        if self._target_date_time is not None:
+            attrs["target_date_time"] = self._target_date_time.isoformat()
+        return attrs
 
     async def async_activate(
-        self, transition=0, brightness_modifier=0, transition_modifier=0
+        self,
+        transition=0,
+        brightness_modifier=0,
+        transition_modifier=0,
+        target_date_time=None,
     ):
-        """Activate the scene."""
+        """Activate the scene.
+
+        Args:
+            transition: Transition time in seconds
+            brightness_modifier: Brightness modifier percentage (-100 to 100)
+            transition_modifier: Transition modifier percentage (-100 to 100)
+            target_date_time: Optional datetime to base extrapolation on (defaults to current time)
+        """
         # Store the brightness modifier and transition modifier as attributes
         self._brightness_modifier = brightness_modifier
         self._transition_modifier = transition_modifier
+
+        # Use target_date_time if provided, otherwise use current time
+        if target_date_time is None:
+            target_date_time = datetime.now(tz=ZoneInfo(self.time_zone))
+        elif target_date_time.tzinfo is None:
+            # Ensure target_date_time has timezone info
+            target_date_time = target_date_time.replace(tzinfo=ZoneInfo(self.time_zone))
+
+        # Store target_date_time for use in calculations
+        self._target_date_time = target_date_time
 
         start_time = time.time()  # Used for performance monitoring
 
@@ -284,14 +309,12 @@ class ExtrapolationScene(Scene):
         start_time_calculate_solar_events = time.time()
 
         # TODO: Consider renaming the variable, as it's easy to mistake for the sun_events variable
-        solar_events = sun(
-            self.city.observer, date=datetime.now(tz=ZoneInfo(self.time_zone))
-        )
+        solar_events = sun(self.city.observer, date=target_date_time)
 
         # midnight event isn't part of the default events and is therefor appended:
         solar_events["midnight"] = midnight(
             self.city.observer,
-            date=datetime.now(tz=ZoneInfo(self.time_zone)),
+            date=target_date_time,
         )
 
         # Spoiler: Calculating the solar event takes no time at all! Under half a millisecond.
@@ -407,7 +430,20 @@ class ExtrapolationScene(Scene):
             _LOGGER.info("=" * 60)
             _LOGGER.info("Scene Activation Details")
             _LOGGER.info("=" * 60)
-            _LOGGER.info("Current time:    %s", current_time_str)
+            if (
+                hasattr(self, "_target_date_time")
+                and self._target_date_time is not None
+            ):
+                target_datetime_str = self._target_date_time.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                _LOGGER.info(
+                    "Target datetime: %s (extrapolation based on this date/time)",
+                    target_datetime_str,
+                )
+                _LOGGER.info("Base time:       %s", current_time_str)
+            else:
+                _LOGGER.info("Current time:    %s", current_time_str)
             if transition_modifier != 0:
                 _LOGGER.info(
                     "Modified time:   %s (Transition modifier: %s%s%% | %s%s hours and %s minutes)",
@@ -555,9 +591,14 @@ class ExtrapolationScene(Scene):
 
     def seconds_since_midnight(self, offset_seconds: int) -> float:
         """Returns the number of seconds since midnight, can be adjusted with an offset."""
-        now = datetime.now(tz=ZoneInfo(self.hass.config.time_zone))
+        # Use target_date_time if set (from async_activate), otherwise use current time
+        if hasattr(self, "_target_date_time") and self._target_date_time is not None:
+            target_time = self._target_date_time
+        else:
+            target_time = datetime.now(tz=ZoneInfo(self.hass.config.time_zone))
+
         seconds_since_midnight = (
-            now - now.replace(hour=0, minute=0, second=0, microsecond=0)
+            target_time - target_time.replace(hour=0, minute=0, second=0, microsecond=0)
         ).total_seconds()
 
         # Current time + the transition time - as we should calculate the lights as they should be when
