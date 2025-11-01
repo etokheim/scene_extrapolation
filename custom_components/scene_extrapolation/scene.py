@@ -610,8 +610,24 @@ class ExtrapolationScene(Scene):
         return time_shift
 
 
-async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
-    """Applies the entities states."""
+async def apply_entities_parallel(entities, hass: HomeAssistant, transition_time=0):
+    """Apply multiple entity states in parallel for better performance."""
+    _LOGGER.debug("Starting parallel processing of %d entities", len(entities))
+
+    # Create tasks for all entities
+    tasks = []
+    for entity in entities:
+        task = asyncio.create_task(apply_single_entity(entity, hass, transition_time))
+        tasks.append(task)
+
+    # Wait for all entities to complete
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+        _LOGGER.debug("Completed parallel processing of %d entities", len(entities))
+
+
+async def apply_single_entity(entity, hass: HomeAssistant, transition_time=0):
+    """Apply a single entity state."""
     domain = entity[ATTR_ENTITY_ID].split(".")[0]
     state = entity["state"]
 
@@ -620,7 +636,6 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
             "The entity provided is missing a state property. Can't apply entity state (skipping). Entity: %s",
             entity,
         )
-
         return None
     elif state in (STATE_UNAVAILABLE, STATE_UNKNOWN, STATE_PROBLEM, LockState.JAMMED):
         _LOGGER.error("Entity state is %s", entity["state"])
@@ -641,12 +656,10 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
         service_type = SERVICE_TURN_ON
     elif state == "off":
         service_type = SERVICE_TURN_OFF
-
     elif state in (LockState.LOCKED, LockState.LOCKING):
         service_type = SERVICE_LOCK
     elif state in (LockState.UNLOCKED, LockState.UNLOCKING):
         service_type = SERVICE_UNLOCK
-
     elif state in (STATE_OPEN, STATE_OPENING):
         # Use domain-specific services for open/close where applicable
         if domain == "cover":
@@ -664,9 +677,6 @@ async def apply_entity_state(entity, hass: HomeAssistant, transition_time=0):
             service_type = SERVICE_TURN_OFF
 
     del entity_applied["state"]
-
-    # TODO: Find a better way
-    # entity.pop("state")
 
     _LOGGER.debug("%s.%s: %s", domain, service_type, entity_applied)
 
@@ -699,7 +709,6 @@ def get_scene_by_uuid(scenes, uuid):
     )
 
 
-# TODO: Support extrapolating effects (colorloop, fire etc)
 async def extrapolate_entities(
     from_scene,
     to_scene,
@@ -731,7 +740,11 @@ async def extrapolate_entities(
 
             from_scene["entities"][to_entity_id] = from_entity
 
-    for from_entity_id in from_scene["entities"]:
+    # Collect all entity changes first, then apply them in parallel
+    entity_changes = []
+
+    # Process entity extrapolation in parallel for better performance
+    async def process_entity_extrapolation(from_entity_id):
         final_entity = {ATTR_ENTITY_ID: from_entity_id}
         from_entity = from_scene["entities"][from_entity_id]
 
@@ -754,7 +767,7 @@ async def extrapolate_entities(
             "state" in to_entity and to_entity["state"] == STATE_UNAVAILABLE
         ):
             _LOGGER.warning("%s is unavailable and therefor skipped", from_entity_id)
-            continue
+            return None
 
         # Handle state
         if "state" in from_entity and "state" in to_entity:
@@ -764,14 +777,13 @@ async def extrapolate_entities(
                 final_entity,
                 scene_transition_progress_percent,
             )
-
-            await apply_entity_state(final_entity, hass, transition_time)
         else:
             _LOGGER.error(
                 "From or to entity does not have a state and is therefor skipped. from_entity: %s, to_entity: %s",
                 from_entity,
                 to_entity,
             )
+            return None
 
         # Let's make sure that if one of from/to_entities has a color mode, the other one has got one too.
         # If from_entity or to_entity is missing a color mode, we'll set it to the other's color mode
@@ -831,10 +843,51 @@ async def extrapolate_entities(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
 
-        # Apply all changes at once
-        await apply_entity_state(final_entity, hass, transition_time)
-
+        # Add to batch instead of applying immediately
         _LOGGER.debug("final_entity: %s", final_entity)
+
+        # Log specific attributes for lights to help debug color issues
+        if final_entity[ATTR_ENTITY_ID].startswith("light."):
+            _LOGGER.debug(
+                "Light %s: state=%s, brightness=%s, color_temp=%s, rgb_color=%s, hs_color=%s",
+                final_entity[ATTR_ENTITY_ID],
+                final_entity.get("state"),
+                final_entity.get(ATTR_BRIGHTNESS),
+                final_entity.get(ATTR_COLOR_TEMP_KELVIN),
+                final_entity.get(ATTR_RGB_COLOR),
+                final_entity.get(ATTR_HS_COLOR),
+            )
+
+        return final_entity
+
+    # Process all entities in parallel
+    extrapolation_start_time = time.time()
+    tasks = []
+    for from_entity_id in from_scene["entities"]:
+        task = asyncio.create_task(process_entity_extrapolation(from_entity_id))
+        tasks.append(task)
+
+    # Wait for all extrapolation tasks to complete
+    if tasks:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Filter out None results (unavailable entities)
+        entity_changes = [result for result in results if result is not None]
+
+    _LOGGER.debug(
+        "Time extrapolating %d entities in parallel: %sms",
+        len(entity_changes),
+        (time.time() - extrapolation_start_time) * 1000,
+    )
+
+    # Apply all entity changes in parallel for better performance
+    if entity_changes:
+        batch_start_time = time.time()
+        await apply_entities_parallel(entity_changes, hass, transition_time)
+        _LOGGER.debug(
+            "Time applying %d entities in parallel: %sms",
+            len(entity_changes),
+            (time.time() - batch_start_time) * 1000,
+        )
 
     return True
 
