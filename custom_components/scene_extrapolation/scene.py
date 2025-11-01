@@ -27,6 +27,7 @@ from homeassistant.components.light import (
     DOMAIN as LIGHT_DOMAIN,
     ColorMode,
 )
+from homeassistant.util import dt as dt_util
 from homeassistant.components.lock import LockState
 from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN, Scene
 from homeassistant.config_entries import ConfigEntry
@@ -222,6 +223,7 @@ class ExtrapolationScene(Scene):
         brightness_modifier=0,
         transition_modifier=0,
         target_date_time=None,
+        location=None,
     ):
         """Activate the scene.
 
@@ -230,6 +232,8 @@ class ExtrapolationScene(Scene):
             brightness_modifier: Brightness modifier percentage (-100 to 100)
             transition_modifier: Transition modifier percentage (-100 to 100)
             target_date_time: Optional datetime to base extrapolation on (defaults to current time)
+            location: Optional dict with 'latitude' and 'longitude' keys to override location
+                     (defaults to Home Assistant's configured location)
         """
         # Store the brightness modifier and transition modifier as attributes
         self._brightness_modifier = brightness_modifier
@@ -238,9 +242,23 @@ class ExtrapolationScene(Scene):
         # Use target_date_time if provided, otherwise use current time
         if target_date_time is None:
             target_date_time = datetime.now(tz=ZoneInfo(self.time_zone))
-        elif target_date_time.tzinfo is None:
-            # Ensure target_date_time has timezone info
-            target_date_time = target_date_time.replace(tzinfo=ZoneInfo(self.time_zone))
+        elif isinstance(target_date_time, str):
+            # Parse string to datetime if needed
+            parsed_datetime = dt_util.parse_datetime(target_date_time)
+            if parsed_datetime is None:
+                raise ValueError(f"Invalid datetime string: {target_date_time}")
+            target_date_time = parsed_datetime
+            # Ensure target_date_time has timezone info if it doesn't
+            if target_date_time.tzinfo is None:
+                target_date_time = target_date_time.replace(
+                    tzinfo=ZoneInfo(self.time_zone)
+                )
+        elif isinstance(target_date_time, datetime):
+            # Ensure target_date_time has timezone info if it doesn't
+            if target_date_time.tzinfo is None:
+                target_date_time = target_date_time.replace(
+                    tzinfo=ZoneInfo(self.time_zone)
+                )
 
         # Store target_date_time for use in calculations
         self._target_date_time = target_date_time
@@ -308,12 +326,28 @@ class ExtrapolationScene(Scene):
         ##############################################
         start_time_calculate_solar_events = time.time()
 
+        # Use provided location if specified, otherwise use default from hass.config
+        if location is not None:
+            location_latitude = location.get("latitude", self.latitude)
+            location_longitude = location.get("longitude", self.longitude)
+        else:
+            location_latitude = self.latitude
+            location_longitude = self.longitude
+        location_timezone = self.time_zone
+
+        # Create a LocationInfo object for solar event calculations
+        location_info = LocationInfo(
+            timezone=location_timezone,
+            latitude=location_latitude,
+            longitude=location_longitude,
+        )
+
         # TODO: Consider renaming the variable, as it's easy to mistake for the sun_events variable
-        solar_events = sun(self.city.observer, date=target_date_time)
+        solar_events = sun(location_info.observer, date=target_date_time)
 
         # midnight event isn't part of the default events and is therefor appended:
         solar_events["midnight"] = midnight(
-            self.city.observer,
+            location_info.observer,
             date=target_date_time,
         )
 

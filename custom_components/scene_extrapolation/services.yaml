@@ -53,3 +53,9 @@ turn_on:
       required: false
       selector:
         datetime:
+    location:
+      name: Location
+      description: "Override the location for solar event calculations (defaults to Home Assistant's configured location)"
+      required: false
+      selector:
+        location:
