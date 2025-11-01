@@ -316,9 +316,9 @@ class ExtrapolationScene(Scene):
             "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
         )
 
-        sun_events = [
-            SunEvent(
-                name=SCENE_DAWN_NAME,
+        sun_events = {
+            "dawn": SunEvent(
+                name="Dawn",
                 scene=get_scene_by_uuid(
                     scenes,
                     self.config_entry.options.get(SCENE_DAWN_ID)
@@ -328,8 +328,8 @@ class ExtrapolationScene(Scene):
                     solar_events["dawn"]
                 ),
             ),
-            SunEvent(
-                name=SCENE_SUNRISE_NAME,
+            "sunrise": SunEvent(
+                name="Sunrise",
                 scene=get_scene_by_uuid(
                     scenes,
                     self.config_entry.options.get(SCENE_SUNRISE_ID)
@@ -339,8 +339,8 @@ class ExtrapolationScene(Scene):
                     solar_events["sunrise"]
                 ),
             ),
-            SunEvent(
-                name=SCENE_NOON_NAME,
+            "noon": SunEvent(
+                name="Noon",
                 scene=get_scene_by_uuid(
                     scenes,
                     self.config_entry.options.get(SCENE_NOON_ID)
@@ -350,8 +350,8 @@ class ExtrapolationScene(Scene):
                     solar_events["noon"]
                 ),
             ),
-            SunEvent(
-                name=SCENE_SUNSET_NAME,
+            "sunset": SunEvent(
+                name="Sunset",
                 scene=get_scene_by_uuid(
                     scenes,
                     self.config_entry.options.get(SCENE_SUNSET_ID)
@@ -361,8 +361,8 @@ class ExtrapolationScene(Scene):
                     solar_events["sunset"]
                 ),
             ),
-            SunEvent(
-                name=SCENE_DUSK_NAME,
+            "dusk": SunEvent(
+                name="Dusk",
                 scene=get_scene_by_uuid(
                     scenes,
                     self.config_entry.options.get(SCENE_DUSK_ID)
@@ -373,11 +373,11 @@ class ExtrapolationScene(Scene):
                     scene_dusk_minimum_time_of_day,
                 ),
             ),
-        ]
+        }
 
         start_time_sun_events = time.time()
 
-        for sun_event in sun_events:
+        for sun_event in sun_events.values():
             _LOGGER.debug(
                 "%s starting at: %s seconds after midnight",
                 sun_event.name,
@@ -386,24 +386,61 @@ class ExtrapolationScene(Scene):
 
         # Calculate time shift based on transition modifier
         time_shift = self._calculate_time_shift_from_transition_modifier(
-            transition_modifier
+            transition_modifier, sun_events
         )
 
-        _LOGGER.info(
-            "Transition modifier: %s%%, calculated time shift: %s seconds (%s minutes)",
-            transition_modifier,
-            time_shift,
-            round(time_shift / 60, 1) if time_shift != 0 else 0,
-        )
-
+        current_seconds = self.seconds_since_midnight(0)
         final_time = self.seconds_since_midnight(transition + time_shift)
-        _LOGGER.debug(
-            "Time since midnight: %s seconds (after time shift)",
-            final_time,
-        )
-        _LOGGER.debug(
-            "Time now: %s", datetime.now(tz=ZoneInfo(self.hass.config.time_zone))
-        )
+
+        # Only run logging code if log level is info or higher
+        if _LOGGER.isEnabledFor(logging.INFO):
+            # Format current time
+            current_time_str = self._format_seconds_to_time(current_seconds)
+            modified_time_str = self._format_seconds_to_time(final_time)
+
+            # Calculate hours and minutes for time shift
+            shift_hours = abs(time_shift) // 3600
+            shift_minutes = (abs(time_shift) % 3600) // 60
+            shift_direction = "+" if time_shift >= 0 else "-"
+
+            # Log comprehensive scene activation info
+            _LOGGER.info("=" * 60)
+            _LOGGER.info("Scene Activation Details")
+            _LOGGER.info("=" * 60)
+            _LOGGER.info("Current time:    %s", current_time_str)
+            if transition_modifier != 0:
+                _LOGGER.info(
+                    "Modified time:   %s (Transition modifier: %s%s%% | %s%s hours and %s minutes)",
+                    modified_time_str,
+                    "+" if transition_modifier > 0 else "",
+                    transition_modifier,
+                    shift_direction,
+                    shift_hours,
+                    shift_minutes,
+                )
+            else:
+                _LOGGER.info(
+                    "Modified time:   %s (No transition modifier)", modified_time_str
+                )
+
+            _LOGGER.info("")
+            _LOGGER.info("Solar Events:")
+
+            # Sort solar events by time and log them
+            sorted_sun_events = sorted(sun_events.values(), key=lambda x: x.start_time)
+            for sun_event in sorted_sun_events:
+                event_time_str = self._format_seconds_to_time(sun_event.start_time)
+                scene_entity_id = sun_event.scene.get("entity_id", "N/A")
+                # For dusk, show min time if available
+                if sun_event.name.lower() == "dusk" and hasattr(sun_event, "min_time"):
+                    dusk_min_str = self._format_seconds_to_time(sun_event.min_time)
+                    event_time_str = f"{event_time_str} (min: {dusk_min_str})"
+                _LOGGER.info(
+                    "  %s %s - %s",
+                    (sun_event.name + ":").ljust(14),
+                    event_time_str,
+                    scene_entity_id,
+                )
 
         current_sun_event = self.get_sun_event(
             offset=0,
@@ -421,15 +458,14 @@ class ExtrapolationScene(Scene):
             current_sun_event, next_sun_event, final_time
         )
 
+        _LOGGER.info("")
         _LOGGER.info(
-            "Current sun event: %s (%s), next: %s (%s), transition progress: %s%%, seconds since midnight: %s",
+            "Current state:   %s%% transitioned from %s to %s",
+            round(scene_transition_progress_percent, 1),
             current_sun_event.name,
-            current_sun_event.scene["name"],
             next_sun_event.name,
-            next_sun_event.scene["name"],
-            round(scene_transition_progress_percent, 2),
-            final_time,
         )
+        _LOGGER.info("=" * 60)
 
         _LOGGER.debug(
             "Time getting sun events (precalculated): %sms",
@@ -459,11 +495,11 @@ class ExtrapolationScene(Scene):
             "Time total applying scene: %sms", (time.time() - start_time) * 1000
         )
 
-    def datetime_to_seconds_since_midnight(self, datetime):
+    def datetime_to_seconds_since_midnight(self, datetime_obj):
         """Convert a datetime object to seconds since midnight."""
-        now = datetime.now(tz=ZoneInfo(self.hass.config.time_zone))
-        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        return (datetime - midnight).seconds
+        # Calculate midnight for the date of the datetime object, not today
+        midnight = datetime_obj.replace(hour=0, minute=0, second=0, microsecond=0)
+        return (datetime_obj - midnight).total_seconds()
 
     def get_scene_transition_progress_percent(
         self, current_sun_event, next_sun_event, seconds_since_midnight
@@ -501,14 +537,21 @@ class ExtrapolationScene(Scene):
                 next_sun_event.start_time - seconds_since_midnight
             )
 
-        return (
-            100
-            / seconds_between_current_and_next_sun_events
-            * (
-                seconds_between_current_and_next_sun_events
-                - seconds_till_next_sun_event
+        # Calculate transition progress percentage
+        if seconds_between_current_and_next_sun_events == 0:
+            # Edge case: current and next events are at the same time
+            transition_progress = 0
+        else:
+            transition_progress = (
+                100
+                / seconds_between_current_and_next_sun_events
+                * (
+                    seconds_between_current_and_next_sun_events
+                    - seconds_till_next_sun_event
+                )
             )
-        )
+
+        return transition_progress
 
     def seconds_since_midnight(self, offset_seconds: int) -> float:
         """Returns the number of seconds since midnight, can be adjusted with an offset."""
@@ -527,9 +570,16 @@ class ExtrapolationScene(Scene):
 
         return seconds_since_midnight_adjusted_for_offset  # noqa: RET504
 
+    def _format_seconds_to_time(self, seconds_since_midnight: float) -> str:
+        """Format seconds since midnight to HH:MM format."""
+        seconds = int(seconds_since_midnight) % 86400  # Ensure within 24 hours
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        return f"{hours:02d}:{minutes:02d}"
+
     def get_sun_event(self, sun_events, seconds_since_midnight, offset=0) -> SunEvent:
         """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead."""
-        sorted_sun_events = sorted(sun_events, key=lambda x: x.start_time)
+        sorted_sun_events = sorted(sun_events.values(), key=lambda x: x.start_time)
 
         # Find the event closest, but still in the future
         closest_match_index = None
@@ -554,58 +604,59 @@ class ExtrapolationScene(Scene):
         # The % strips away any overshooting of the list length
         return sorted_sun_events[offset_index % len(sorted_sun_events)]
 
-    def _calculate_time_shift_from_transition_modifier(self, transition_modifier):
-        """Calculate time shift from transition modifier percentage."""
+    def _calculate_time_shift_from_transition_modifier(
+        self, transition_modifier, sun_events
+    ):
+        """Calculate time shift from transition modifier percentage.
+
+        -100%: Shift time to dawn (before noon) or dusk (after noon) - full low-light scene
+        +100%: Shift time to noon - full bright scene
+        +50%: Shift time halfway between current time and noon
+        """
         if transition_modifier == 0:
             return 0
 
         current_time = self.seconds_since_midnight(0)  # Current time without any shift
-        solar_events = sun(
-            self.city.observer, date=datetime.now(tz=ZoneInfo(self.time_zone))
-        )
-        noon_time = self.datetime_to_seconds_since_midnight(solar_events["noon"])
+
+        # Get noon, dawn, and dusk from the sun_events dictionary
+        noon_event = sun_events.get("noon")
+        dawn_event = sun_events.get("dawn")
+        dusk_event = sun_events.get("dusk")
+
+        if not noon_event or not dawn_event or not dusk_event:
+            _LOGGER.error(
+                "Could not find required solar events in sun_events dictionary"
+            )
+            return 0
+
+        noon_time = noon_event.start_time
 
         if transition_modifier > 0:
             # Positive modifier: shift towards noon (brighter)
-            if current_time < noon_time:
-                # Before noon: shift towards today's noon
-                target_time = noon_time
-                target_name = "today's noon"
-            else:
-                # After noon: shift towards tomorrow's noon (add 24 hours)
-                target_time = noon_time + 86400
-                target_name = "tomorrow's noon"
+            target_time = noon_time
+
         else:
             # Negative modifier: shift towards closest low-light scene (dimmer)
             if current_time < noon_time:
                 # Before noon: shift towards dawn
-                target_time = self.datetime_to_seconds_since_midnight(
-                    solar_events["dawn"]
-                )
-                target_name = "dawn"
+                target_time = dawn_event.start_time
             else:
                 # After noon: shift towards dusk
-                target_time = self.datetime_to_seconds_since_midnight(
-                    solar_events["dusk"]
-                )
-                target_name = "dusk"
+                target_time = dusk_event.start_time
 
-        # Time difference between current time and target scene
+        # Calculate time difference (can be negative)
+        # For positive modifiers after noon: time_difference is negative (going backwards to today's noon)
+        # For positive modifiers before noon: time_difference is positive (going forwards to today's noon)
+        # For negative modifiers: time_difference direction depends on current time vs target
         time_difference = target_time - current_time
 
         # transition_modifier is a percentage of this time difference
-        # Use absolute value since we already determined direction above
-        time_shift = int(time_difference * abs(transition_modifier) / 100)
-
-        _LOGGER.debug(
-            "Transition modifier calculation: current_time=%s, target_time=%s (%s), time_difference=%s, modifier=%s%%, time_shift=%s",
-            current_time,
-            target_time,
-            target_name,
-            time_difference,
-            transition_modifier,
-            time_shift,
-        )
+        # -100% means shift fully to dawn/dusk (time_difference * 100 / 100)
+        # +100% means shift fully to noon (time_difference * 100 / 100)
+        # +50% means shift halfway (time_difference * 50 / 100)
+        # transition_modifier comes in as a float like -99.0, 75.0, etc.
+        modifier_percent = abs(transition_modifier)
+        time_shift = int(time_difference * modifier_percent / 100)
 
         return time_shift
 
@@ -1025,7 +1076,7 @@ def extrapolate_temp_kelvin(
     )
 
     if from_color_temp_kelvin is None:
-        _LOGGER.warning(
+        _LOGGER.debug(
             "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information",
         )
 
@@ -1037,7 +1088,7 @@ def extrapolate_temp_kelvin(
 
         from_color_temp_kelvin = to_color_temp_kelvin
     elif to_color_temp_kelvin is None:
-        _LOGGER.warning(
+        _LOGGER.debug(
             "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information",
         )
 
