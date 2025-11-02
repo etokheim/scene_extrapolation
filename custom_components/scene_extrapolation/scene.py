@@ -1023,11 +1023,9 @@ async def extrapolate_entities(
 
 def extrapolate_value(from_value, to_value, scene_transition_progress_percent):
     """Extrapolate a value."""
-    # TODO: Should this abs be here? I just quick fixed an error with negative hs values
-    return abs(
-        from_value
-        - abs(from_value - to_value) * scene_transition_progress_percent / 100
-    )
+    difference = to_value - from_value
+    current_transition_difference = difference * scene_transition_progress_percent / 100
+    return from_value + current_transition_difference
 
 
 def extrapolate_number(
