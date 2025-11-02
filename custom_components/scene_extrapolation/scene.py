@@ -804,6 +804,14 @@ async def apply_single_entity(entity, hass: HomeAssistant, transition_time=0):
 
     del entity_applied["state"]
 
+    # When turning off lights, create a simple object with only entity_id and transition
+    # since turn_off doesn't accept lighting attributes
+    if domain == LIGHT_DOMAIN and service_type == SERVICE_TURN_OFF:
+        entity_applied = {
+            ATTR_ENTITY_ID: entity_applied[ATTR_ENTITY_ID],
+            ATTR_TRANSITION: transition_time,
+        }
+
     _LOGGER.debug("%s.%s: %s", domain, service_type, entity_applied)
 
     try:
