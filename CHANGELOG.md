@@ -21,11 +21,15 @@ This release's focus is on improving the UX and minimize the time it takes to se
 - ⭐ Modify transition progress - ie. move the transition towards or further away from the noon scene (to increase/decrease the brightness)
 - Drastically improved extrapolation speed by running calculations in parallel
 - Add support for extrapolating effects!
+- Added testing tools in the service. Select:
+  - **Time and date** - Test how the lighting would look at a specific time of day - or year (winter/summer)
+  - **Location** - Test the lighting as if you are at a different place in the world
 
 ### Changed
 
 - 🚨 Removed night rising and night setting options
 - 🚨 Renamed sun setting and sun rising to sunset and sunrise
+- 🚨 Renamed all entity variables, meaning the only user (me), has to reconfigure all the integration entries - wohoo!
 - Simplify configuration by optionally combining dawn/dusk and sunrise/sunset scenes
 - New default scene name: Extrapolation scene -> Automatic Lighting
 - Updated integration name: Scene Extrapolation -> Scene Extrapolation (Circadian Rythm)
