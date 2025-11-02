@@ -12,12 +12,12 @@
         "description": "Creates a scene which, when activated, lights your room based on the sun elevation. The scene is best matched with an automation that triggers the scene every 5 minutes or so.\n\n**Only supports native Home Assistant Scenes** (Ie. not scenes from the Hue integration).\n\n_All settings can be changed later._",
         "data": {
           "scene_name": "Scene Name*",
-          "area_id": "Area (Optional)",
+          "area": "Area (Optional)",
           "display_scenes_combined": "Combine dawn/dusk and sunrise/sunset scenes?"
         },
         "data_description": {
           "scene_name": "Name for your extrapolation scene",
-          "area_id": "Which area the scene will be assigned to",
+          "area": "Which area the scene will be assigned to",
           "display_scenes_combined": "If on, configure 3 scenes in the next step. If off, configure 5"
         }
       },
@@ -25,19 +25,19 @@
         "title": "2/3 Scenes Configuration",
         "description": "Match solar events with a scene. At the time of the event the scene will be fully activated, then transition towards the scene matched with the next event.\n\n_Selectors only show **native Home Assistant scenes** assigned to the selected area._",
         "data": {
-          "scene_dawn_name": "Dawn scene*",
-          "scene_sunrise_name": "Sunrise scene*",
-          "scene_noon_name": "Noon scene*",
-          "scene_sunset_name": "Sunset scene*",
-          "scene_dusk_name": "Dusk scene*",
+          "scene_dawn": "Dawn scene*",
+          "scene_sunrise": "Sunrise scene*",
+          "scene_noon": "Noon scene*",
+          "scene_sunset": "Sunset scene*",
+          "scene_dusk": "Dusk scene*",
           "scene_dawn_and_dusk": "Dawn and dusk scene*",
           "scene_sunrise_and_sunset": "Sunrise and sunset scene*",
           "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene"
         },
         "data_description": {
-          "scene_dawn_name": "First light",
-          "scene_noon_name": "When the sun is at its highest point",
-          "scene_dusk_name": "Last light",
+          "scene_dawn": "First light",
+          "scene_noon": "When the sun is at its highest point",
+          "scene_dusk": "Last light",
           "scene_dawn_and_dusk": "First and last light",
           "scene_dusk_minimum_time_of_day": "To avoid lights dimming too much, too early"
         }
@@ -46,12 +46,12 @@
         "title": "3/3 Nightlights Configuration",
         "description": "If you want to configure a dedicated nightlights scene, you can do that here. This is completely optional - you can skip this step if you don't need nightlights functionality.\n\n**Note:** Due to limitations in Home Assistant, it's not possible to clear values once stored.",
         "data": {
-          "nightlights_boolean_name": "Nightlights trigger (Optional)",
-          "nightlights_scene_name": "Nightlights scene (Optional)"
+          "nightlights_boolean": "Nightlights trigger (Optional)",
+          "nightlights_scene": "Nightlights scene (Optional)"
         },
         "data_description": {
-          "nightlights_boolean_name": "Input boolean that triggers nightlights mode instead of normal extrapolation",
-          "nightlights_scene_name": "Scene to activate when nightlights mode is triggered"
+          "nightlights_boolean": "Input boolean that triggers nightlights mode instead of normal extrapolation",
+          "nightlights_scene": "Scene to activate when nightlights mode is triggered"
         }
       }
     }
@@ -75,19 +75,19 @@
         "title": "2/3 Scene Configuration",
         "description": "Match solar events with a scene. At the time of the event the scene will be fully activated, then transition towards the scene matched with the next event.\n\n_Selectors only show **native Home Assistant scenes** assigned to the selected area._",
         "data": {
-          "scene_dawn_name": "Dawn scene*",
-          "scene_sunrise_name": "Sunrise scene*",
-          "scene_noon_name": "Noon scene*",
-          "scene_sunset_name": "Sunset scene*",
-          "scene_dusk_name": "Dusk scene*",
+          "scene_dawn": "Dawn scene*",
+          "scene_sunrise": "Sunrise scene*",
+          "scene_noon": "Noon scene*",
+          "scene_sunset": "Sunset scene*",
+          "scene_dusk": "Dusk scene*",
           "scene_dawn_and_dusk": "Dawn and dusk scene*",
           "scene_sunrise_and_sunset": "Sunrise and sunset scene*",
           "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene"
         },
         "data_description": {
-          "scene_dawn_name": "First light",
-          "scene_noon_name": "When the sun is at its highest point",
-          "scene_dusk_name": "Last light",
+          "scene_dawn": "First light",
+          "scene_noon": "When the sun is at its highest point",
+          "scene_dusk": "Last light",
           "scene_dawn_and_dusk": "First and last light",
           "scene_dusk_minimum_time_of_day": "To avoid lights dimming too much, too early"
         }
@@ -96,12 +96,12 @@
         "title": "3/3 Nightlights Configuration",
         "description": "If you want to configure a dedicated nightlights scene, you can do that here. This is completely optional - you can skip this step if you don't need nightlights functionality.\n\n**Note:** Due to limitations in Home Assistant, it's not possible to clear values once stored.",
         "data": {
-          "nightlights_boolean_name": "Nightlights trigger (Optional)",
-          "nightlights_scene_name": "Nightlights scene (Optional)"
+          "nightlights_boolean": "Nightlights trigger (Optional)",
+          "nightlights_scene": "Nightlights scene (Optional)"
         },
         "data_description": {
-          "nightlights_boolean_name": "Input boolean that triggers nightlights mode instead of normal extrapolation",
-          "nightlights_scene_name": "Scene to activate when nightlights mode is triggered"
+          "nightlights_boolean": "Input boolean that triggers nightlights mode instead of normal extrapolation",
+          "nightlights_scene": "Scene to activate when nightlights mode is triggered"
         }
       }
     }

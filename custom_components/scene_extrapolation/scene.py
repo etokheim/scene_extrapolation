@@ -55,19 +55,14 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry
 
 from .const import (
-    NIGHTLIGHTS_BOOLEAN_ID,
-    NIGHTLIGHTS_SCENE_ID,
-    SCENE_DAWN_ID,
-    SCENE_DAWN_NAME,
-    SCENE_DUSK_ID,
+    NIGHTLIGHTS_BOOLEAN,
+    NIGHTLIGHTS_SCENE,
+    SCENE_DAWN,
+    SCENE_DUSK,
     SCENE_DUSK_MINIMUM_TIME_OF_DAY,
-    SCENE_DUSK_NAME,
-    SCENE_NOON_ID,
-    SCENE_NOON_NAME,
-    SCENE_SUNRISE_ID,
-    SCENE_SUNRISE_NAME,
-    SCENE_SUNSET_ID,
-    SCENE_SUNSET_NAME,
+    SCENE_NOON,
+    SCENE_SUNRISE,
+    SCENE_SUNSET,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -277,7 +272,7 @@ class ExtrapolationScene(Scene):
         ##############################################
         #             Handle nightlights             #
         ##############################################
-        nightlights_boolean_id = self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
+        nightlights_boolean_id = self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN)
         nightlights_boolean = False
 
         if nightlights_boolean_id:
@@ -291,7 +286,7 @@ class ExtrapolationScene(Scene):
                 "nightlights_boolean is on. Turning on nightlights instead of default behavior"
             )
 
-            nightlights_scene_id = self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID)
+            nightlights_scene_id = self.config_entry.options.get(NIGHTLIGHTS_SCENE)
 
             try:
                 await self.hass.services.async_call(
@@ -378,8 +373,8 @@ class ExtrapolationScene(Scene):
                 name="Dawn",
                 scene=get_scene_by_uuid(
                     scenes,
-                    self.config_entry.options.get(SCENE_DAWN_ID)
-                    or self.config_entry.data.get(SCENE_DAWN_ID),
+                    self.config_entry.options.get(SCENE_DAWN)
+                    or self.config_entry.data.get(SCENE_DAWN),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["dawn"]
@@ -389,8 +384,8 @@ class ExtrapolationScene(Scene):
                 name="Sunrise",
                 scene=get_scene_by_uuid(
                     scenes,
-                    self.config_entry.options.get(SCENE_SUNRISE_ID)
-                    or self.config_entry.data.get(SCENE_SUNRISE_ID),
+                    self.config_entry.options.get(SCENE_SUNRISE)
+                    or self.config_entry.data.get(SCENE_SUNRISE),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["sunrise"]
@@ -400,8 +395,8 @@ class ExtrapolationScene(Scene):
                 name="Noon",
                 scene=get_scene_by_uuid(
                     scenes,
-                    self.config_entry.options.get(SCENE_NOON_ID)
-                    or self.config_entry.data.get(SCENE_NOON_ID),
+                    self.config_entry.options.get(SCENE_NOON)
+                    or self.config_entry.data.get(SCENE_NOON),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["noon"]
@@ -411,8 +406,8 @@ class ExtrapolationScene(Scene):
                 name="Sunset",
                 scene=get_scene_by_uuid(
                     scenes,
-                    self.config_entry.options.get(SCENE_SUNSET_ID)
-                    or self.config_entry.data.get(SCENE_SUNSET_ID),
+                    self.config_entry.options.get(SCENE_SUNSET)
+                    or self.config_entry.data.get(SCENE_SUNSET),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["sunset"]
@@ -422,8 +417,8 @@ class ExtrapolationScene(Scene):
                 name="Dusk",
                 scene=get_scene_by_uuid(
                     scenes,
-                    self.config_entry.options.get(SCENE_DUSK_ID)
-                    or self.config_entry.data.get(SCENE_DUSK_ID),
+                    self.config_entry.options.get(SCENE_DUSK)
+                    or self.config_entry.data.get(SCENE_DUSK),
                 ),
                 start_time=max(
                     self.datetime_to_seconds_since_midnight(solar_events["dusk"]),

@@ -25,22 +25,15 @@ from homeassistant.const import (
 from .const import (
     DOMAIN,
     SCENE_NAME,
-    SCENE_DAWN_NAME,
-    SCENE_DAWN_ID,
-    SCENE_SUNRISE_NAME,
-    SCENE_SUNRISE_ID,
-    SCENE_NOON_NAME,
-    SCENE_NOON_ID,
-    SCENE_SUNSET_NAME,
-    SCENE_SUNSET_ID,
-    SCENE_DUSK_NAME,
-    SCENE_DUSK_ID,
+    SCENE_DAWN,
+    SCENE_SUNRISE,
+    SCENE_NOON,
+    SCENE_SUNSET,
+    SCENE_DUSK,
     SCENE_DUSK_MINIMUM_TIME_OF_DAY,
-    AREA_ID,
-    NIGHTLIGHTS_BOOLEAN_NAME,
-    NIGHTLIGHTS_BOOLEAN_ID,
-    NIGHTLIGHTS_SCENE_NAME,
-    NIGHTLIGHTS_SCENE_ID,
+    AREA,
+    NIGHTLIGHTS_BOOLEAN,
+    NIGHTLIGHTS_SCENE,
     DISPLAY_SCENES_COMBINED,
 )
 
@@ -49,17 +42,17 @@ _LOGGER = logging.getLogger(__name__)
 
 def _infer_display_scenes_combined(config_entry: config_entries.ConfigEntry) -> bool:
     """Infer whether scenes should be displayed in combined mode based on stored scene IDs."""
-    stored_dawn = config_entry.options.get(SCENE_DAWN_ID) or config_entry.data.get(
-        SCENE_DAWN_ID
+    stored_dawn = config_entry.options.get(SCENE_DAWN) or config_entry.data.get(
+        SCENE_DAWN
     )
-    stored_dusk = config_entry.options.get(SCENE_DUSK_ID) or config_entry.data.get(
-        SCENE_DUSK_ID
+    stored_dusk = config_entry.options.get(SCENE_DUSK) or config_entry.data.get(
+        SCENE_DUSK
     )
     stored_sunrise = config_entry.options.get(
-        SCENE_SUNRISE_ID
-    ) or config_entry.data.get(SCENE_SUNRISE_ID)
-    stored_sunset = config_entry.options.get(SCENE_SUNSET_ID) or config_entry.data.get(
-        SCENE_SUNSET_ID
+        SCENE_SUNRISE
+    ) or config_entry.data.get(SCENE_SUNRISE)
+    stored_sunset = config_entry.options.get(SCENE_SUNSET) or config_entry.data.get(
+        SCENE_SUNSET
     )
 
     if stored_dawn and stored_dusk and stored_sunrise and stored_sunset:
@@ -98,8 +91,8 @@ async def validate_combined_input(
     }
 
     # Store area_id if provided
-    if AREA_ID in combined_input:
-        data_to_store[AREA_ID] = combined_input[AREA_ID]
+    if AREA in combined_input:
+        data_to_store[AREA] = combined_input[AREA]
 
     # Use the passed display_scenes_combined parameter
     _LOGGER.info("Display scenes combined: %s", display_scenes_combined)
@@ -107,22 +100,21 @@ async def validate_combined_input(
     if not display_scenes_combined:
         # Separate mode - handle each scene individually
         _LOGGER.info("Processing SEPARATE mode")
-        scene_name_to_id_mapping = {
-            SCENE_DAWN_NAME: SCENE_DAWN_ID,
-            SCENE_SUNRISE_NAME: SCENE_SUNRISE_ID,
-            SCENE_NOON_NAME: SCENE_NOON_ID,
-            SCENE_SUNSET_NAME: SCENE_SUNSET_ID,
-            SCENE_DUSK_NAME: SCENE_DUSK_ID,
-        }
+        scene_keys = [
+            SCENE_DAWN,
+            SCENE_SUNRISE,
+            SCENE_NOON,
+            SCENE_SUNSET,
+            SCENE_DUSK,
+        ]
 
-        for scene_name_key, scene_id_key in scene_name_to_id_mapping.items():
-            if scene_name_key in combined_input:
-                data_to_store[scene_id_key] = combined_input[scene_name_key]
+        for scene_key in scene_keys:
+            if scene_key in combined_input:
+                data_to_store[scene_key] = combined_input[scene_key]
                 _LOGGER.info(
-                    "Stored %s -> %s: %s",
-                    scene_name_key,
-                    scene_id_key,
-                    combined_input[scene_name_key],
+                    "Stored %s: %s",
+                    scene_key,
+                    combined_input[scene_key],
                 )
     else:
         # Combined mode - duplicate selections
@@ -130,35 +122,35 @@ async def validate_combined_input(
         # Dawn and dusk scene (combined)
         dawn_and_dusk_scene = combined_input.get("scene_dawn_and_dusk")
         if dawn_and_dusk_scene:
-            data_to_store[SCENE_DAWN_ID] = dawn_and_dusk_scene
-            data_to_store[SCENE_DUSK_ID] = dawn_and_dusk_scene
+            data_to_store[SCENE_DAWN] = dawn_and_dusk_scene
+            data_to_store[SCENE_DUSK] = dawn_and_dusk_scene
             _LOGGER.info("Stored dawn/dusk scene: %s", dawn_and_dusk_scene)
 
         # Noon scene
-        noon_scene = combined_input.get(SCENE_NOON_NAME)
+        noon_scene = combined_input.get(SCENE_NOON)
         if noon_scene:
-            data_to_store[SCENE_NOON_ID] = noon_scene
+            data_to_store[SCENE_NOON] = noon_scene
             _LOGGER.info("Stored noon scene: %s", noon_scene)
 
         # Sunrise and sunset scene (combined)
         sunrise_and_sunset_scene = combined_input.get("scene_sunrise_and_sunset")
         if sunrise_and_sunset_scene:
-            data_to_store[SCENE_SUNRISE_ID] = sunrise_and_sunset_scene
-            data_to_store[SCENE_SUNSET_ID] = sunrise_and_sunset_scene
+            data_to_store[SCENE_SUNRISE] = sunrise_and_sunset_scene
+            data_to_store[SCENE_SUNSET] = sunrise_and_sunset_scene
             _LOGGER.info("Stored sunrise/sunset scene: %s", sunrise_and_sunset_scene)
 
     # Handle nightlights configuration
-    nightlights_boolean = combined_input.get(NIGHTLIGHTS_BOOLEAN_NAME)
-    nightlights_scene = combined_input.get(NIGHTLIGHTS_SCENE_NAME)
+    nightlights_boolean = combined_input.get(NIGHTLIGHTS_BOOLEAN)
+    nightlights_scene = combined_input.get(NIGHTLIGHTS_SCENE)
 
     # Handle nightlights scene separately (only if boolean is provided)
     if nightlights_scene:
-        data_to_store[NIGHTLIGHTS_SCENE_ID] = nightlights_scene
+        data_to_store[NIGHTLIGHTS_SCENE] = nightlights_scene
 
     # Handle boolean configuration
     if nightlights_boolean:
         # The selector now returns the entity ID directly
-        data_to_store[NIGHTLIGHTS_BOOLEAN_ID] = nightlights_boolean
+        data_to_store[NIGHTLIGHTS_BOOLEAN] = nightlights_boolean
 
         # If nightlights boolean is provided, nightlights scene is required
         if not nightlights_scene:
@@ -218,7 +210,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Get the combined mode setting from basic config
 
             # Store for use in subsequent steps
-            self.area_id = self.basic_config.get(AREA_ID) or None
+            self.area_id = self.basic_config.get(AREA) or None
             self.display_scenes_combined = self.basic_config[DISPLAY_SCENES_COMBINED]
 
             # Create scenes configuration schema
@@ -272,13 +264,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if hasattr(self, "config_entry") and self.config_entry:
                     # Options flow - get current values from config entry
                     current_values = {
-                        NIGHTLIGHTS_BOOLEAN_ID: (
-                            self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
-                            or self.config_entry.data.get(NIGHTLIGHTS_BOOLEAN_ID)
+                        NIGHTLIGHTS_BOOLEAN: (
+                            self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN)
+                            or self.config_entry.data.get(NIGHTLIGHTS_BOOLEAN)
                         ),
-                        NIGHTLIGHTS_SCENE_ID: (
-                            self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID)
-                            or self.config_entry.data.get(NIGHTLIGHTS_SCENE_ID)
+                        NIGHTLIGHTS_SCENE: (
+                            self.config_entry.options.get(NIGHTLIGHTS_SCENE)
+                            or self.config_entry.data.get(NIGHTLIGHTS_SCENE)
                         ),
                     }
 
@@ -352,13 +344,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         current_values = None
         if hasattr(self, "config_entry") and self.config_entry:
             current_values = {
-                NIGHTLIGHTS_BOOLEAN_ID: (
-                    self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
-                    or self.config_entry.data.get(NIGHTLIGHTS_BOOLEAN_ID)
+                NIGHTLIGHTS_BOOLEAN: (
+                    self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN)
+                    or self.config_entry.data.get(NIGHTLIGHTS_BOOLEAN)
                 ),
-                NIGHTLIGHTS_SCENE_ID: (
-                    self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID)
-                    or self.config_entry.data.get(NIGHTLIGHTS_SCENE_ID)
+                NIGHTLIGHTS_SCENE: (
+                    self.config_entry.options.get(NIGHTLIGHTS_SCENE)
+                    or self.config_entry.data.get(NIGHTLIGHTS_SCENE)
                 ),
             }
 
@@ -531,37 +523,37 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             # Get current values from config entry for pre-population
             # Check both data and options fields since initial config stores in data
             current_values = {
-                SCENE_DAWN_ID: (
-                    self.config_entry.options.get(SCENE_DAWN_ID)
-                    or self.config_entry.data.get(SCENE_DAWN_ID)
+                SCENE_DAWN: (
+                    self.config_entry.options.get(SCENE_DAWN)
+                    or self.config_entry.data.get(SCENE_DAWN)
                 ),
-                SCENE_SUNRISE_ID: (
-                    self.config_entry.options.get(SCENE_SUNRISE_ID)
-                    or self.config_entry.data.get(SCENE_SUNRISE_ID)
+                SCENE_SUNRISE: (
+                    self.config_entry.options.get(SCENE_SUNRISE)
+                    or self.config_entry.data.get(SCENE_SUNRISE)
                 ),
-                SCENE_NOON_ID: (
-                    self.config_entry.options.get(SCENE_NOON_ID)
-                    or self.config_entry.data.get(SCENE_NOON_ID)
+                SCENE_NOON: (
+                    self.config_entry.options.get(SCENE_NOON)
+                    or self.config_entry.data.get(SCENE_NOON)
                 ),
-                SCENE_SUNSET_ID: (
-                    self.config_entry.options.get(SCENE_SUNSET_ID)
-                    or self.config_entry.data.get(SCENE_SUNSET_ID)
+                SCENE_SUNSET: (
+                    self.config_entry.options.get(SCENE_SUNSET)
+                    or self.config_entry.data.get(SCENE_SUNSET)
                 ),
-                SCENE_DUSK_ID: (
-                    self.config_entry.options.get(SCENE_DUSK_ID)
-                    or self.config_entry.data.get(SCENE_DUSK_ID)
+                SCENE_DUSK: (
+                    self.config_entry.options.get(SCENE_DUSK)
+                    or self.config_entry.data.get(SCENE_DUSK)
                 ),
                 SCENE_DUSK_MINIMUM_TIME_OF_DAY: self._convert_seconds_to_time_string(
                     self.config_entry.options.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
                     or self.config_entry.data.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
                 ),
-                NIGHTLIGHTS_BOOLEAN_ID: (
-                    self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
-                    or self.config_entry.data.get(NIGHTLIGHTS_BOOLEAN_ID)
+                NIGHTLIGHTS_BOOLEAN: (
+                    self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN)
+                    or self.config_entry.data.get(NIGHTLIGHTS_BOOLEAN)
                 ),
-                NIGHTLIGHTS_SCENE_ID: (
-                    self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID)
-                    or self.config_entry.data.get(NIGHTLIGHTS_SCENE_ID)
+                NIGHTLIGHTS_SCENE: (
+                    self.config_entry.options.get(NIGHTLIGHTS_SCENE)
+                    or self.config_entry.data.get(NIGHTLIGHTS_SCENE)
                 ),
             }
 
@@ -614,13 +606,13 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 _LOGGER.info("=== OPTIONS FLOW NIGHTLIGHTS STEP - SHOWING FORM ===")
                 # Create nightlights configuration schema with current values for options flow
                 current_values = {
-                    NIGHTLIGHTS_BOOLEAN_ID: (
-                        self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN_ID)
-                        or self.config_entry.data.get(NIGHTLIGHTS_BOOLEAN_ID)
+                    NIGHTLIGHTS_BOOLEAN: (
+                        self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN)
+                        or self.config_entry.data.get(NIGHTLIGHTS_BOOLEAN)
                     ),
-                    NIGHTLIGHTS_SCENE_ID: (
-                        self.config_entry.options.get(NIGHTLIGHTS_SCENE_ID)
-                        or self.config_entry.data.get(NIGHTLIGHTS_SCENE_ID)
+                    NIGHTLIGHTS_SCENE: (
+                        self.config_entry.options.get(NIGHTLIGHTS_SCENE)
+                        or self.config_entry.data.get(NIGHTLIGHTS_SCENE)
                     ),
                 }
                 _LOGGER.info("Current nightlights values: %s", current_values)
@@ -698,7 +690,7 @@ async def create_basic_config_schema(
                     "scene_name", default=current_scene_name or "Automatic Lighting"
                 ): str,
                 vol.Optional(
-                    AREA_ID,
+                    AREA,
                     default=current_area_id,
                 ): vol.Maybe(
                     selector.AreaSelector(
@@ -776,8 +768,8 @@ async def create_nightlights_config_schema(
     return vol.Schema(
         {
             vol.Optional(
-                NIGHTLIGHTS_BOOLEAN_NAME,
-                default=defaults.get(NIGHTLIGHTS_BOOLEAN_ID),
+                NIGHTLIGHTS_BOOLEAN,
+                default=defaults.get(NIGHTLIGHTS_BOOLEAN),
             ): vol.Maybe(
                 selector.EntitySelector(
                     selector.EntitySelectorConfig(
@@ -787,8 +779,8 @@ async def create_nightlights_config_schema(
                 ),
             ),
             vol.Optional(
-                NIGHTLIGHTS_SCENE_NAME,
-                default=defaults.get(NIGHTLIGHTS_SCENE_ID),
+                NIGHTLIGHTS_SCENE,
+                default=defaults.get(NIGHTLIGHTS_SCENE),
             ): vol.Maybe(
                 create_nightlights_scene_selector(hass, area_id),
             ),
@@ -839,24 +831,24 @@ async def create_scenes_config_schema(
         return vol.Schema(
             {
                 vol.Required(
-                    SCENE_DAWN_NAME,
-                    default=defaults.get(SCENE_DAWN_ID),
+                    SCENE_DAWN,
+                    default=defaults.get(SCENE_DAWN),
                 ): create_scene_selector(),
                 vol.Required(
-                    SCENE_SUNRISE_NAME,
-                    default=defaults.get(SCENE_SUNRISE_ID),
+                    SCENE_SUNRISE,
+                    default=defaults.get(SCENE_SUNRISE),
                 ): create_scene_selector(),
                 vol.Required(
-                    SCENE_NOON_NAME,
-                    default=defaults.get(SCENE_NOON_ID),
+                    SCENE_NOON,
+                    default=defaults.get(SCENE_NOON),
                 ): create_scene_selector(),
                 vol.Required(
-                    SCENE_SUNSET_NAME,
-                    default=defaults.get(SCENE_SUNSET_ID),
+                    SCENE_SUNSET,
+                    default=defaults.get(SCENE_SUNSET),
                 ): create_scene_selector(),
                 vol.Required(
-                    SCENE_DUSK_NAME,
-                    default=defaults.get(SCENE_DUSK_ID),
+                    SCENE_DUSK,
+                    default=defaults.get(SCENE_DUSK),
                 ): create_scene_selector(),
                 vol.Optional(
                     SCENE_DUSK_MINIMUM_TIME_OF_DAY,
@@ -870,15 +862,15 @@ async def create_scenes_config_schema(
             {
                 vol.Required(
                     "scene_dawn_and_dusk",  # Combined dawn/dusk scene
-                    default=defaults.get(SCENE_DAWN_ID),  # Use dawn as default
+                    default=defaults.get(SCENE_DAWN),  # Use dawn as default
                 ): create_scene_selector(),
                 vol.Required(
                     "scene_sunrise_and_sunset",  # Combined sunrise/sunset scene
-                    default=defaults.get(SCENE_SUNRISE_ID),  # Use sunrise as default
+                    default=defaults.get(SCENE_SUNRISE),  # Use sunrise as default
                 ): create_scene_selector(),
                 vol.Required(
-                    SCENE_NOON_NAME,
-                    default=defaults.get(SCENE_NOON_ID),
+                    SCENE_NOON,
+                    default=defaults.get(SCENE_NOON),
                 ): create_scene_selector(),
                 vol.Optional(
                     SCENE_DUSK_MINIMUM_TIME_OF_DAY,
