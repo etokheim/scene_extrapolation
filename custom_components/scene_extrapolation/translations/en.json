@@ -35,10 +35,10 @@
           "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene"
         },
         "data_description": {
-          "scene_dawn": "First light",
+          "scene_dawn": "First light (Sun is 6 degrees below the horizon)",
           "scene_noon": "When the sun is at its highest point",
-          "scene_dusk": "Last light",
-          "scene_dawn_and_dusk": "First and last light",
+          "scene_dusk": "Last light (Sun is 6 degrees below the horizon)",
+          "scene_dawn_and_dusk": "First and last light (Sun is 6 degrees below the horizon)",
           "scene_dusk_minimum_time_of_day": "To avoid lights dimming too much, too early"
         }
       },

@@ -66,6 +66,38 @@ Examples of functionality you can add:
 2. Motion activated lights matching the time of day?
    - Make an automation that simply activates the scene when motion is detected. I have a blueprint available for this!
 
+## Q&A
+
+<details>
+<summary><strong>What happens when the sun doesn't rise or set? (Polar regions, midnight sun, polar night)</strong></summary>
+
+In polar regions, there are periods when the sun never sets (midnight sun) or never rises (polar night). The integration handles these extreme cases by using **seasonal fallback times** instead of actual solar calculations.
+
+**How it works:**
+
+When solar calculations fail completely (e.g., during polar night when the sun never rises), the integration uses preset seasonal fallback times:
+
+- **Winter**: Dawn 8:45, Sunrise 10:30, Noon 12:00, Sunset 13:00, Dusk 22:00
+- **Summer**: Dawn 2:15, Sunrise 4:00, Noon 13:00, Sunset 22:00, Dusk 23:55
+
+**Partial failures (when only some events fail):**
+
+Sometimes only some solar events can't be calculated. For example, dawn might work but sunrise might fail. To keep events in the correct chronological order, the integration uses whichever time is **later**:
+
+- Previous event + 30 minutes (to ensure proper ordering), or
+- The seasonal fallback time for that event
+
+**Example:** If dawn is calculated as 6:00 AM but sunrise can't be calculated, the integration will use the later of:
+
+- Dawn + 30 minutes = 6:30 AM, or
+- Summer sunrise fallback = 4:00 AM
+
+In this case, it picks 6:30 AM to keep sunrise after dawn.
+
+This ensures your lighting transitions work smoothly even in locations where solar calculations are unreliable, while maintaining logical time progression throughout the day.
+
+</details>
+
 ---
 
 # TSDR? (Too short, didn't read?)

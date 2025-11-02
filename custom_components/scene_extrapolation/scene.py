@@ -3,14 +3,14 @@ Create a scene entity which when activated calculates the appropriate lighting b
 """  # noqa: D200, D212
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import numbers
 import time
 from zoneinfo import ZoneInfo
 
 from astral import LocationInfo
-from astral.sun import midnight, sun  # TODO: Play with time_at_elevation
+from astral.sun import sun
 
 from homeassistant.components.fan import DOMAIN as FAN_DOMAIN
 from homeassistant.components.homeassistant.scene import HomeAssistantScene
@@ -338,13 +338,128 @@ class ExtrapolationScene(Scene):
         )
 
         # TODO: Consider renaming the variable, as it's easy to mistake for the sun_events variable
-        solar_events = sun(location_info.observer, date=target_date_time)
+        # Handle polar regions where individual solar events may fail
+        # Determine hemisphere (Northern = positive latitude, Southern = negative)
+        is_northern_hemisphere = location_latitude >= 0
 
-        # midnight event isn't part of the default events and is therefor appended:
-        solar_events["midnight"] = midnight(
-            location_info.observer,
-            date=target_date_time,
-        )
+        # Determine if it's winter or summer based on month and hemisphere
+        month = target_date_time.month
+        if is_northern_hemisphere:
+            # Northern hemisphere: winter = Oct-Mar, summer = Apr-Sep
+            is_winter = month in (10, 11, 12, 1, 2, 3)
+        else:
+            # Southern hemisphere: winter = Apr-Sep, summer = Oct-Mar (opposite)
+            is_winter = month in (4, 5, 6, 7, 8, 9)
+
+        # Define fallback times based on season
+        if is_winter:
+            fallback_times = {
+                "dawn": (8, 45),
+                "sunrise": (10, 30),
+                "noon": (12, 0),
+                "sunset": (13, 0),
+                "dusk": (22, 0),
+            }
+        else:  # summer
+            fallback_times = {
+                "dawn": (2, 15),
+                "sunrise": (4, 0),
+                "noon": (13, 0),
+                "sunset": (22, 0),
+                "dusk": (23, 55),
+            }
+
+        # Define event order and their previous events
+        event_order = ["dawn", "sunrise", "noon", "sunset", "dusk"]
+        previous_events = {
+            "sunrise": "dawn",
+            "noon": "sunrise",
+            "sunset": "noon",
+            "dusk": "sunset",
+        }
+
+        # Try to calculate solar events, with individual fallbacks
+        # Pass date object and ensure times are in local timezone
+        try:
+            solar_events_raw = sun(location_info.observer, date=target_date_time.date())
+            # Ensure all returned times are in the local timezone
+            solar_events = {}
+            for event_name, event_time in solar_events_raw.items():
+                # If the time is timezone-naive, assume it's in the location timezone
+                if event_time.tzinfo is None:
+                    solar_events[event_name] = event_time.replace(
+                        tzinfo=ZoneInfo(location_timezone)
+                    )
+                else:
+                    # Convert to local timezone if needed
+                    solar_events[event_name] = event_time.astimezone(
+                        ZoneInfo(location_timezone)
+                    )
+        except ValueError:
+            _LOGGER.info(
+                "Could not calculate solar events for %s (sun always below/above horizon). "
+                "Using seasonal fallback times",
+                target_date_time.date(),
+            )
+            solar_events = {}
+
+        # Process each event in order, using previous event + offset if available
+        for event_name in event_order:
+            if event_name not in solar_events:
+                # Get seasonal fallback time
+                hour, minute = fallback_times[event_name]
+                seasonal_fallback = target_date_time.replace(
+                    hour=hour, minute=minute, second=0, microsecond=0
+                )
+
+                # Check if previous event exists
+                fallback_time = seasonal_fallback
+                if event_name in previous_events:
+                    prev_event_name = previous_events[event_name]
+                    if prev_event_name in solar_events:
+                        prev_event_time = solar_events[prev_event_name]
+                        # Use whichever is later: previous event + 30min or seasonal fallback
+                        # This ensures chronological order is maintained
+                        previous_plus_offset = prev_event_time + timedelta(minutes=30)
+                        fallback_time = max(previous_plus_offset, seasonal_fallback)
+
+                        if fallback_time == previous_plus_offset:
+                            _LOGGER.info(
+                                "Could not calculate %s for %s. Using %s + 30min: %s",
+                                event_name,
+                                target_date_time.date(),
+                                prev_event_name,
+                                fallback_time.strftime("%H:%M"),
+                            )
+                        else:
+                            _LOGGER.info(
+                                "Could not calculate %s for %s. Using seasonal fallback (later than %s + 30min): %02d:%02d",
+                                event_name,
+                                target_date_time.date(),
+                                prev_event_name,
+                                hour,
+                                minute,
+                            )
+                    else:
+                        # Previous event doesn't exist, use seasonal fallback
+                        _LOGGER.info(
+                            "Could not calculate %s for %s. Using seasonal fallback: %02d:%02d",
+                            event_name,
+                            target_date_time.date(),
+                            hour,
+                            minute,
+                        )
+                else:
+                    # No previous event (e.g., dawn), use seasonal fallback
+                    _LOGGER.info(
+                        "Could not calculate %s for %s. Using seasonal fallback: %02d:%02d",
+                        event_name,
+                        target_date_time.date(),
+                        hour,
+                        minute,
+                    )
+
+                solar_events[event_name] = fallback_time
 
         # Spoiler: Calculating the solar event takes no time at all! Under half a millisecond.
         _LOGGER.debug(

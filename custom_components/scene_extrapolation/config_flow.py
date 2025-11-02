@@ -48,9 +48,9 @@ def _infer_display_scenes_combined(config_entry: config_entries.ConfigEntry) -> 
     stored_dusk = config_entry.options.get(SCENE_DUSK) or config_entry.data.get(
         SCENE_DUSK
     )
-    stored_sunrise = config_entry.options.get(
+    stored_sunrise = config_entry.options.get(SCENE_SUNRISE) or config_entry.data.get(
         SCENE_SUNRISE
-    ) or config_entry.data.get(SCENE_SUNRISE)
+    )
     stored_sunset = config_entry.options.get(SCENE_SUNSET) or config_entry.data.get(
         SCENE_SUNSET
     )
