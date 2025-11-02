@@ -1,10 +1,10 @@
 turn_on:
   name: Turn on extrapolation scene
-  description: Activate one or more extrapolation scenes with optional brightness modification, transition time, and brightness adjustment
+  description: 'Imroved, more advanced version of the native "Activate scene" action (scene.turn_on). Activate one or more extrapolation scenes with optional brightness modifications and other advanced options. With a brightness modification, the scene will turn on directly to that brightness (a weakness with the default service is that you first have to activate the scene, and then dim the lights afterwards - which makes for a jarring experience).'
   fields:
     entity_id:
-      name: Scene entities
-      description: Select one or more extrapolation scenes to activate (supports area/entity filtering)
+      name: Scenes
+      description: Select one or more extrapolation scenes to activate
       required: true
       selector:
         entity:
@@ -13,7 +13,7 @@ turn_on:
           multiple: true
     transition:
       name: Transition time
-      description: Transition time from 0 to 1000 seconds
+      description: Defaults to 0 seconds
       required: false
       default: 0
       selector:
@@ -25,7 +25,7 @@ turn_on:
           mode: slider
     brightness_modifier:
       name: Brightness modifier
-      description: Brightness modifier from -100 to +100 percent
+      description: Modifies the brightness percentage of each light after the extrapolation is calculated
       required: false
       default: 0
       selector:
@@ -36,7 +36,7 @@ turn_on:
           unit_of_measurement: "%"
           mode: slider
     transition_modifier:
-      name: Transition modifier (Another, more dynamic, way to change the brightness)
+      name: Transition modifier (More dynamic way to change the brightness)
       description: Shift the extrapolation towards noon or dusk/dawn (whichever is closer). Positive values shift towards noon (brighter), negative values shift towards low-light scenes (dimmer)
       required: false
       default: 0
@@ -47,15 +47,19 @@ turn_on:
           step: 1
           unit_of_measurement: "%"
           mode: slider
-    target_date_time:
-      name: Change the time (for testing)
-      description: "Preview the scene at a different time. Eg. pretend it's summer (defaults to current time)"
-      required: false
-      selector:
-        datetime:
-    location:
-      name: Location
-      description: "Override the location for solar event calculations (defaults to Home Assistant's configured location)"
-      required: false
-      selector:
+    advanced_options:
+      name: Advanced options (for testing purposes)
+      collapsed: true
+      fields:
+        target_date_time:
+          name: Change the time
+          description: "Preview the scene at a different time. Eg. pretend it's summer/winter (defaults to current time)"
+          required: false
+          selector:
+            datetime:
         location:
+          name: Location
+          description: "Override the location for solar event calculations (defaults to Home Assistant's configured location)"
+          required: false
+          selector:
+            location:
