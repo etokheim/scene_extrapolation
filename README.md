@@ -21,7 +21,7 @@ A typical result might look something like this:
 
 1. Simple to use and understand
 2. Supports any colors - not just white and warm white!
-3. Even support effects! Eg. turn on the `Fireplace` effect after sunset. It's also perfect for christmas lights - to make the effect adapt to the time of day!
+3. Even supports effects! Eg. turn on the `Fireplace` effect after sunset. It's also perfect for christmas lights - to make the effect adapt to the time of day!
 4. Can turn off that too bright undimmable light in the evening
 5. But can also turn ON that cozy low light lamp in the evening. (The one that doesn't need to be on during the day).
 6. Since it's just a scene, it can control all sorts of things! (Not that I'd reccommend it?)

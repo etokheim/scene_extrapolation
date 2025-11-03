@@ -3,10 +3,10 @@ Create a scene entity which when activated calculates the appropriate lighting b
 """  # noqa: D200, D212
 
 import asyncio
-from datetime import datetime, timedelta
 import logging
 import numbers
 import time
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from astral import LocationInfo
@@ -32,8 +32,7 @@ from homeassistant.components.lock import LockState
 from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN, Scene
 from homeassistant.config_entries import ConfigEntry
 
-from homeassistant.const import (  # noqa: E402
-    ATTR_AREA_ID,
+from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_STATE,
     CONF_UNIQUE_ID,
@@ -52,7 +51,7 @@ from homeassistant.const import (  # noqa: E402
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     NIGHTLIGHTS_BOOLEAN,
@@ -118,7 +117,7 @@ class ExtrapolationScene(Scene):
 
         # Get area_id from the scene entity itself (not stored in integration data)
         # The area_id is set during initial config flow and stored on the scene entity
-        entity_registry_instance = entity_registry.async_get(self.hass)
+        entity_registry_instance = er.async_get(self.hass)
         entity_entry = entity_registry_instance.async_get(self.entity_id)
         self._area_id = entity_entry.area_id if entity_entry else None
 
@@ -296,7 +295,7 @@ class ExtrapolationScene(Scene):
                     SERVICE_TURN_ON,
                 )
 
-            except Exception as error:
+            except Exception as error:  # noqa: BLE001
                 _LOGGER.error("Service call to turn on scene failed: %s", error)
 
             return
@@ -668,9 +667,7 @@ class ExtrapolationScene(Scene):
     def get_scene_transition_progress_percent(
         self, current_sun_event, next_sun_event, seconds_since_midnight
     ) -> int:
-        """Get a percentage value for how far into the transitioning between the from and to scene
-        we currently are.
-        """
+        """Get a percentage value for how far into the transitioning between the from and to scene we currently are."""
 
         # Account for passing midnight
         seconds_between_current_and_next_sun_events = None
@@ -803,15 +800,12 @@ class ExtrapolationScene(Scene):
         if transition_modifier > 0:
             # Positive modifier: shift towards noon (brighter)
             target_time = noon_time
-
+        elif current_time < noon_time:
+            # Negative modifier before noon: shift towards dawn
+            target_time = dawn_event.start_time
         else:
-            # Negative modifier: shift towards closest low-light scene (dimmer)
-            if current_time < noon_time:
-                # Before noon: shift towards dawn
-                target_time = dawn_event.start_time
-            else:
-                # After noon: shift towards dusk
-                target_time = dusk_event.start_time
+            # Negative modifier after noon: shift towards dusk
+            target_time = dusk_event.start_time
 
         # Calculate time difference (can be negative)
         # For positive modifiers after noon: time_difference is negative (going backwards to today's noon)
@@ -825,9 +819,7 @@ class ExtrapolationScene(Scene):
         # +50% means shift halfway (time_difference * 50 / 100)
         # transition_modifier comes in as a float like -99.0, 75.0, etc.
         modifier_percent = abs(transition_modifier)
-        time_shift = int(time_difference * modifier_percent / 100)
-
-        return time_shift
+        return int(time_difference * modifier_percent / 100)
 
 
 async def apply_entities_parallel(entities, hass: HomeAssistant, transition_time=0):
@@ -857,7 +849,7 @@ async def apply_single_entity(entity, hass: HomeAssistant, transition_time=0):
             entity,
         )
         return None
-    elif state in (STATE_UNAVAILABLE, STATE_UNKNOWN, STATE_PROBLEM, LockState.JAMMED):
+    if state in (STATE_UNAVAILABLE, STATE_UNKNOWN, STATE_PROBLEM, LockState.JAMMED):
         _LOGGER.error("Entity state is %s", entity["state"])
         return None
 
@@ -943,6 +935,7 @@ async def extrapolate_entities(
     brightness_modifier=0,
 ) -> list:
     """Takes in a from and to scene and returns a list of new entity states.
+
     The new states is the extrapolated state between the two scenes.
     """
 
@@ -958,9 +951,8 @@ async def extrapolate_entities(
     for to_entity_id in to_scene["entities"]:
         if to_entity_id not in from_scene["entities"]:
             _LOGGER.debug(
-                "Couldn't find "
-                + to_entity_id
-                + " in the scene we are extrapolating from. Assuming it should be turned off."
+                "Couldn't find %s in the scene we are extrapolating from. Assuming it should be turned off",
+                to_entity_id,
             )
             from_entity = {"state": STATE_OFF}
 
@@ -979,9 +971,8 @@ async def extrapolate_entities(
             to_entity = to_scene["entities"][from_entity_id]
         else:
             _LOGGER.debug(
-                "Couldn't find "
-                + from_entity_id
-                + " in the scene we are extrapolating to. Assuming it should be turned off."
+                "Couldn't find %s in the scene we are extrapolating to. Assuming it should be turned off",
+                from_entity_id,
             )
             to_entity = {"state": STATE_OFF}
 
@@ -1188,11 +1179,9 @@ def extrapolate_brightness(
 ):
     """Extrapolate brightness."""
     # There isn't always a brightness attribute in the to_entity (ie. if it's turned off or the like)
-    from_brightness = (
-        from_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in from_entity else 0
-    )
+    from_brightness = from_entity.get(ATTR_BRIGHTNESS, 0)
 
-    to_brightness = to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else 0
+    to_brightness = to_entity.get(ATTR_BRIGHTNESS, 0)
 
     final_brightness = extrapolate_number(
         from_brightness,

@@ -4,23 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 import uuid
+from typing import Any
 
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
-from homeassistant.core import callback
+from homeassistant.const import CONF_UNIQUE_ID
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import selector
-from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers import area_registry as ar
-
-from homeassistant.const import (
-    CONF_UNIQUE_ID,
-)
+from homeassistant.helpers import area_registry as ar, entity_registry as er, selector
 
 from .const import (
     DOMAIN,
@@ -391,7 +385,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 # which runs when the config is updated. This event handler should probably
 # reload the components configuration...
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle the options flow for Scene Extrapolation (configure button on integration card)"""
+    """Handle the options flow for Scene Extrapolation (configure button on integration card)."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
@@ -428,7 +422,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         entity_reg = er.async_get(self.hass)
         unique_id = self.config_entry.data.get(CONF_UNIQUE_ID)
         if unique_id:
-            for entity_id, entity_entry in entity_reg.entities.items():
+            for entity_entry in entity_reg.entities.values():
                 if (
                     entity_entry.unique_id == unique_id
                     and entity_entry.domain == "scene"
@@ -437,7 +431,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     self.area_id = entity_entry.area_id
                     break
 
-        _LOGGER.info("area_id: %s", self.area_id)
+        _LOGGER.debug("area_id: %s", self.area_id)
 
         display_scenes_combined = _infer_display_scenes_combined(self.config_entry)
         _LOGGER.info("Inferred display_scenes_combined: %s", display_scenes_combined)
@@ -475,7 +469,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         and entity_entry.domain == "scene"
                         and entity_entry.config_entry_id == self.config_entry.entry_id
                     ):
-                        _LOGGER.info("entity_entry: %s", entity_entry)
+                        _LOGGER.debug("entity_entry: %s", entity_entry)
                         scene_friendly_name = (
                             entity_entry.name or entity_entry.original_name or entity_id
                         )
@@ -507,7 +501,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             # Find the scene entity created by this integration using the unique_id
             unique_id = self.config_entry.data.get(CONF_UNIQUE_ID)
             if unique_id:
-                for entity_id, entity_entry in entity_reg.entities.items():
+                for entity_entry in entity_reg.entities.values():
                     if (
                         entity_entry.unique_id == unique_id
                         and entity_entry.domain == "scene"
