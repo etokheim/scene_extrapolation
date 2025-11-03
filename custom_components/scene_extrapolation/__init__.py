@@ -68,14 +68,6 @@ async def async_setup(hass, config):
         # Activate each extrapolation scene with brightness modifier and transition modifier
         for entity_id in entity_ids:
             if entity_id.startswith("scene."):
-                _LOGGER.debug(
-                    "Activating scene %s with brightness modifier %s, transition %s, and transition modifier %s",
-                    entity_id,
-                    brightness_modifier,
-                    transition,
-                    transition_modifier,
-                )
-
                 # Get the scene entity and call its async_activate method directly
                 scene_entity = hass.states.get(entity_id)
                 if scene_entity:

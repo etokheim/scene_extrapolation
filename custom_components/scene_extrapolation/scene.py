@@ -176,11 +176,6 @@ class ExtrapolationScene(Scene):
                     "entities": entities_dict,
                 }
                 scenes.append(scene_data)
-                _LOGGER.debug(
-                    "Found scene entity: %s with %d entities",
-                    entity.entity_id,
-                    len(scene_config.states),
-                )
 
         _LOGGER.debug("Loaded %d scenes from in-memory entities", len(scenes))
         return scenes
@@ -312,9 +307,7 @@ class ExtrapolationScene(Scene):
         # Get scenes from in-memory scene entities (no file I/O)
         scenes = await self.async_get_in_memory_scenes()
 
-        _LOGGER.debug(
-            "Time getting native scenes: %sms", (time.time() - start_time) * 1000
-        )
+        _LOGGER.debug("Time getting native scenes: %.3fs", time.time() - start_time)
 
         ##############################################
         #          Calculate solar events            #
@@ -461,20 +454,6 @@ class ExtrapolationScene(Scene):
 
                 solar_events[event_name] = fallback_time
 
-        # Spoiler: Calculating the solar event takes no time at all! Under half a millisecond.
-        _LOGGER.debug(
-            "Time calculating solar events: %sms",
-            (time.time() - start_time_calculate_solar_events) * 1000,
-        )
-
-        # Crashes when the sun doesn't reach 10 degrees
-        # time_at_10deg = time_at_elevation(
-        #     city.observer,
-        #     elevation=10,
-        #     direction=SunDirection.RISING,
-        #     date=datetime.now(tz=pytz.timezone(time_zone)),
-        # )
-
         scene_dusk_minimum_time_of_day = self.config_entry.options.get(
             SCENE_DUSK_MINIMUM_TIME_OF_DAY
         ) or self.config_entry.data.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
@@ -542,14 +521,13 @@ class ExtrapolationScene(Scene):
             ),
         }
 
-        start_time_sun_events = time.time()
-
-        for sun_event in sun_events.values():
-            _LOGGER.debug(
-                "%s starting at: %s seconds after midnight",
-                sun_event.name,
-                sun_event.start_time,
-            )
+        # Check if dusk was overridden by minimum time
+        dusk_calculated_time = self.datetime_to_seconds_since_midnight(
+            solar_events["dusk"]
+        )
+        dusk_final_time = sun_events["dusk"].start_time
+        dusk_was_overridden = dusk_final_time > dusk_calculated_time
+        dusk_original_time = dusk_calculated_time if dusk_was_overridden else None
 
         # Calculate time shift based on transition modifier
         time_shift = self._calculate_time_shift_from_transition_modifier(
@@ -574,6 +552,12 @@ class ExtrapolationScene(Scene):
             _LOGGER.info("=" * 60)
             _LOGGER.info("Scene Activation Details")
             _LOGGER.info("=" * 60)
+            _LOGGER.info(
+                "Brightness modifier %s, transition time %ss",
+                brightness_modifier,
+                transition,
+            )
+            _LOGGER.info("")
             if (
                 hasattr(self, "_target_date_time")
                 and self._target_date_time is not None
@@ -611,10 +595,12 @@ class ExtrapolationScene(Scene):
             for sun_event in sorted_sun_events:
                 event_time_str = self._format_seconds_to_time(sun_event.start_time)
                 scene_entity_id = sun_event.scene.get("entity_id", "N/A")
-                # For dusk, show min time if available
-                if sun_event.name.lower() == "dusk" and hasattr(sun_event, "min_time"):
-                    dusk_min_str = self._format_seconds_to_time(sun_event.min_time)
-                    event_time_str = f"{event_time_str} (min: {dusk_min_str})"
+                # For dusk, show if time was overridden by minimum
+                if sun_event.name.lower() == "dusk" and dusk_was_overridden:
+                    dusk_original_str = self._format_seconds_to_time(dusk_original_time)
+                    event_time_str = (
+                        f"{event_time_str} ({dusk_original_str} was overridden)"
+                    )
                 _LOGGER.info(
                     "  %s %s - %s",
                     (sun_event.name + ":").ljust(14),
@@ -648,8 +634,8 @@ class ExtrapolationScene(Scene):
         _LOGGER.info("=" * 60)
 
         _LOGGER.debug(
-            "Time getting sun events (precalculated): %sms",
-            (time.time() - start_time_sun_events) * 1000,
+            "Time calculating solar events: %.3fs",
+            time.time() - start_time_calculate_solar_events,
         )
 
         ##############################################
@@ -667,13 +653,11 @@ class ExtrapolationScene(Scene):
         )
 
         _LOGGER.debug(
-            "Time extrapolating: %sms",
-            (time.time() - start_time_extrapolation) * 1000,
+            "Time extrapolating: %.3fs",
+            time.time() - start_time_extrapolation,
         )
 
-        _LOGGER.debug(
-            "Time total applying scene: %sms", (time.time() - start_time) * 1000
-        )
+        _LOGGER.debug("Time total applying scene: %.3fs", time.time() - start_time)
 
     def datetime_to_seconds_since_midnight(self, datetime_obj):
         """Convert a datetime object to seconds since midnight."""
@@ -928,9 +912,6 @@ async def apply_single_entity(entity, hass: HomeAssistant, transition_time=0):
         await hass.services.async_call(
             domain=domain, service=service_type, service_data=entity_applied
         )
-        _LOGGER.debug(
-            "Service call (%s.%s) has been sent successfully", domain, service_type
-        )
     except Exception as error:  # noqa: BLE001
         _LOGGER.error("Service call to turn on light failed: %s", error)
 
@@ -965,10 +946,11 @@ async def extrapolate_entities(
     The new states is the extrapolated state between the two scenes.
     """
 
-    _LOGGER.debug("from_scene: %s", from_scene)
-    _LOGGER.debug("to_scene: %s", to_scene)
     _LOGGER.debug(
-        "scene_transition_progress_percent: %s", scene_transition_progress_percent
+        "Extrapolating: %s → %s (%.1f%%)",
+        from_scene.get("name", from_scene.get("entity_id", "unknown")),
+        to_scene.get("name", to_scene.get("entity_id", "unknown")),
+        scene_transition_progress_percent,
     )
 
     # Add any entities that are present in to_scene, but is missing from from_scene to the from_scene list.
@@ -1003,8 +985,12 @@ async def extrapolate_entities(
             )
             to_entity = {"state": STATE_OFF}
 
-        _LOGGER.debug("from_entity: %s", from_entity)
-        _LOGGER.debug("to_entity: %s", to_entity)
+        _LOGGER.debug(
+            "  %s: %s → %s",
+            from_entity_id,
+            from_entity.get("state", "?"),
+            to_entity.get("state", "?"),
+        )
 
         # Log a warning if the device is unavailable
         if ("state" in from_entity and from_entity["state"] == STATE_UNAVAILABLE) or (
@@ -1038,13 +1024,21 @@ async def extrapolate_entities(
 
         # Set the color mode we're actually going to extrapolate
         final_color_mode = None
+        from_color_mode = from_entity.get(ATTR_COLOR_MODE)
+        to_color_mode = to_entity.get(ATTR_COLOR_MODE)
         if ATTR_COLOR_MODE in from_entity or ATTR_COLOR_MODE in to_entity:
             if scene_transition_progress_percent >= 50:
-                final_color_mode = to_entity.get(ATTR_COLOR_MODE)
+                final_color_mode = to_color_mode
             else:
-                final_color_mode = from_entity.get(ATTR_COLOR_MODE)
+                final_color_mode = from_color_mode
 
-        _LOGGER.debug("final_color_mode: %s", final_color_mode)
+        if final_color_mode or from_color_mode or to_color_mode:
+            _LOGGER.debug(
+                "    Color mode: %s → %s → %s",
+                from_color_mode or "?",
+                final_color_mode or "?",
+                to_color_mode or "?",
+            )
 
         # Collect all changes first, then apply once
         if ATTR_BRIGHTNESS in from_entity or ATTR_BRIGHTNESS in to_entity:
@@ -1087,20 +1081,15 @@ async def extrapolate_entities(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
 
-        # Add to batch instead of applying immediately
-        _LOGGER.debug("final_entity: %s", final_entity)
-
-        # Log specific attributes for lights to help debug color issues
-        if final_entity[ATTR_ENTITY_ID].startswith("light."):
-            _LOGGER.debug(
-                "Light %s: state=%s, brightness=%s, color_temp=%s, rgb_color=%s, hs_color=%s",
-                final_entity[ATTR_ENTITY_ID],
-                final_entity.get("state"),
-                final_entity.get(ATTR_BRIGHTNESS),
-                final_entity.get(ATTR_COLOR_TEMP_KELVIN),
-                final_entity.get(ATTR_RGB_COLOR),
-                final_entity.get(ATTR_HS_COLOR),
-            )
+        # Log summary for non-light entities (light details already logged above)
+        if not final_entity[ATTR_ENTITY_ID].startswith("light."):
+            attrs_summary = {
+                k: v
+                for k, v in final_entity.items()
+                if k not in (ATTR_ENTITY_ID, "state")
+            }
+            if attrs_summary:
+                _LOGGER.debug("    Attributes: %s", attrs_summary)
 
         return final_entity
 
@@ -1118,9 +1107,9 @@ async def extrapolate_entities(
         entity_changes = [result for result in results if result is not None]
 
     _LOGGER.debug(
-        "Time extrapolating %d entities in parallel: %sms",
+        "Time extrapolating %d entities in parallel: %.3fs",
         len(entity_changes),
-        (time.time() - extrapolation_start_time) * 1000,
+        time.time() - extrapolation_start_time,
     )
 
     # Apply all entity changes in parallel for better performance
@@ -1128,9 +1117,9 @@ async def extrapolate_entities(
         batch_start_time = time.time()
         await apply_entities_parallel(entity_changes, hass, transition_time)
         _LOGGER.debug(
-            "Time applying %d entities in parallel: %sms",
+            "Time applying %d entities in parallel: %.3fs",
             len(entity_changes),
-            (time.time() - batch_start_time) * 1000,
+            time.time() - batch_start_time,
         )
 
     return True
@@ -1140,7 +1129,7 @@ def extrapolate_value(from_value, to_value, scene_transition_progress_percent):
     """Extrapolate a value."""
     difference = to_value - from_value
     current_transition_difference = difference * scene_transition_progress_percent / 100
-    return from_value + current_transition_difference
+    return round(from_value + current_transition_difference)
 
 
 def extrapolate_number(
@@ -1239,9 +1228,9 @@ def extrapolate_state(
     elif scene_transition_progress_percent >= 50:
         final_state = to_state
 
-    _LOGGER.debug("From state:  %s", from_state)
-    _LOGGER.debug("Final state: %s", final_state)
-    _LOGGER.debug("To state:    %s", to_state)
+    _LOGGER.debug(
+        "    From state %s → now: %s → to: %s", from_state, final_state, to_state
+    )
 
     return final_state
 
@@ -1268,27 +1257,19 @@ def extrapolate_temp_kelvin(
 
     if from_color_temp_kelvin is None:
         _LOGGER.debug(
-            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information",
-        )
-
-        _LOGGER.debug(
-            "We only support extrapolating between color modes that already have a value in the scene entities. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating to. (Extrapolating from: %s, to: %s)",
+            "    Color mode: %s → %s → %s (limited: missing color_temp in 'from', using 'to')",
             from_entity[ATTR_COLOR_MODE],
             to_entity[ATTR_COLOR_MODE],
+            to_entity[ATTR_COLOR_MODE],
         )
-
         from_color_temp_kelvin = to_color_temp_kelvin
     elif to_color_temp_kelvin is None:
         _LOGGER.debug(
-            "Extrapolation between color modes have limited support. In this case we're falling back to the other entity's color mode. Set log level to debug for more information",
-        )
-
-        _LOGGER.debug(
-            "We only support extrapolating between color modes that already have a value in the scene entities. This entity didn't have any values present. Falling back to using the same color temp as we are extrapolating from. (Extrapolating from: %s, to: %s)",
+            "    Color mode: %s → %s → %s (limited: missing color_temp in 'to', using 'from')",
+            from_entity[ATTR_COLOR_MODE],
             from_entity[ATTR_COLOR_MODE],
             to_entity[ATTR_COLOR_MODE],
         )
-
         to_color_temp_kelvin = from_color_temp_kelvin
 
     final_color_temp_kelvin = extrapolate_number(
@@ -1298,19 +1279,13 @@ def extrapolate_temp_kelvin(
     )
 
     _LOGGER.debug(
-        "From color_temp_kelvin:  %s / %s",
+        "    From color temp: %s → now: %s → to: %s K (from brightness: %s → now: %s → to: %s)",
         from_color_temp_kelvin,
-        from_entity.get(ATTR_BRIGHTNESS, None),
-    )
-    _LOGGER.debug(
-        "Final color_temp_kelvin: %s / %s",
         final_color_temp_kelvin,
-        final_entity[ATTR_BRIGHTNESS],
-    )
-    _LOGGER.debug(
-        "To color_temp_kelvin:    %s / %s",
         to_color_temp_kelvin,
-        to_entity.get(ATTR_BRIGHTNESS, None),
+        from_entity.get(ATTR_BRIGHTNESS, "?"),
+        final_entity[ATTR_BRIGHTNESS],
+        to_entity.get(ATTR_BRIGHTNESS, "?"),
     )
 
     return final_color_temp_kelvin
@@ -1343,15 +1318,13 @@ def extrapolate_rgb(
     ]
 
     _LOGGER.debug(
-        "From:  %s / %s",
+        "    From RGB: %s → now: %s → to: %s (from brightness: %s → now: %s → to: %s)",
         from_rgb,
-        from_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in from_entity else None,
-    )
-    _LOGGER.debug("Final: %s / %s", rgb_extrapolated, final_entity[ATTR_BRIGHTNESS])
-    _LOGGER.debug(
-        "To:    %s / %s",
+        rgb_extrapolated,
         to_rgb,
-        to_entity[ATTR_BRIGHTNESS] if ATTR_BRIGHTNESS in to_entity else None,
+        from_entity.get(ATTR_BRIGHTNESS, "?"),
+        final_entity[ATTR_BRIGHTNESS],
+        to_entity.get(ATTR_BRIGHTNESS, "?"),
     )
 
     return rgb_extrapolated
@@ -1387,15 +1360,13 @@ def extrapolate_hs(
     ]
 
     _LOGGER.debug(
-        "From HS:  %s / %s",
+        "    Frmo HS: %s → now: %s → to: %s (from brightness: %s → now: %s → to: %s)",
         from_hs,
-        from_entity.get(ATTR_BRIGHTNESS, None),
-    )
-    _LOGGER.debug("Final HS: %s / %s", final_hs, final_entity[ATTR_BRIGHTNESS])
-    _LOGGER.debug(
-        "To HS:    %s / %s",
+        final_hs,
         to_hs,
-        to_entity.get(ATTR_BRIGHTNESS, None),
+        from_entity.get(ATTR_BRIGHTNESS, "?"),
+        final_entity[ATTR_BRIGHTNESS],
+        to_entity.get(ATTR_BRIGHTNESS, "?"),
     )
 
     return final_hs
@@ -1425,17 +1396,13 @@ def extrapolate_rgbw(
     ]
 
     _LOGGER.debug(
-        "From RGBW:  %s / %s",
+        "    From RGBW: %s → now: %s → to: %s (from brightness: %s → now: %s → to: %s)",
         from_rgbw,
-        from_entity.get(ATTR_BRIGHTNESS, None),
-    )
-    _LOGGER.debug(
-        "Final RGBW: %s / %s", rgbw_extrapolated, final_entity[ATTR_BRIGHTNESS]
-    )
-    _LOGGER.debug(
-        "To RGBW:    %s / %s",
+        rgbw_extrapolated,
         to_rgbw,
-        to_entity.get(ATTR_BRIGHTNESS, None),
+        from_entity.get(ATTR_BRIGHTNESS, "?"),
+        final_entity[ATTR_BRIGHTNESS],
+        to_entity.get(ATTR_BRIGHTNESS, "?"),
     )
 
     return rgbw_extrapolated
@@ -1476,17 +1443,13 @@ def extrapolate_rgbww(
     ]
 
     _LOGGER.debug(
-        "From RGBWW:  %s / %s",
+        "    From RGBWW: %s → now: %s → to: %s (from brightness: %s → now: %s → to: %s)",
         from_rgbww,
-        from_entity.get(ATTR_BRIGHTNESS, None),
-    )
-    _LOGGER.debug(
-        "Final RGBWW: %s / %s", rgbww_extrapolated, final_entity[ATTR_BRIGHTNESS]
-    )
-    _LOGGER.debug(
-        "To RGBWW:    %s / %s",
+        rgbww_extrapolated,
         to_rgbww,
-        to_entity.get(ATTR_BRIGHTNESS, None),
+        from_entity.get(ATTR_BRIGHTNESS, "?"),
+        final_entity[ATTR_BRIGHTNESS],
+        to_entity.get(ATTR_BRIGHTNESS, "?"),
     )
 
     return rgbww_extrapolated
@@ -1514,16 +1477,7 @@ def extrapolate_effect(
         final_effect = to_effect
 
     _LOGGER.debug(
-        "From effect:  %s",
-        from_effect,
-    )
-    _LOGGER.debug(
-        "Final effect: %s",
-        final_effect,
-    )
-    _LOGGER.debug(
-        "To effect:    %s",
-        to_effect,
+        "    From effect: %s → now: %s → to: %s", from_effect, final_effect, to_effect
     )
 
     return final_effect
