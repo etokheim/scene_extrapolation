@@ -1,6 +1,6 @@
 ![Scene Extrapolation Hero](images/Hero.png)
 
-# Scene Extrapolation
+# Scene Extrapolation (Circadian Rhythm)
 
 _TLDR: Let's you easily create a circadian rythm like lighting experience! - Meaning lighting that adapts to the sun's cycle; cool at day, warm in the evening. The plugin creates a scene in your selected area which, when activated, lights your room just the way you want it - based on the sun's elevation. The scene is best matched with an automation that triggers the scene every 5 minutes or so (match the transition time for a silky smooth experience!)._
 
