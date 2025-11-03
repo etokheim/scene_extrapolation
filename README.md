@@ -1,3 +1,5 @@
+![Scene Extrapolation Hero](images/Hero.png)
+
 # Scene Extrapolation
 
 _TLDR: Let's you easily create a circadian rythm like lighting experience! - Meaning lighting that adapts to the sun's cycle; cool at day, warm in the evening. The plugin creates a scene in your selected area which, when activated, lights your room just the way you want it - based on the sun's elevation. The scene is best matched with an automation that triggers the scene every 5 minutes or so (match the transition time for a silky smooth experience!)._
@@ -6,9 +8,14 @@ _TLDR: Let's you easily create a circadian rythm like lighting experience! - Mea
 
 Super simple to set up! Create two (or more) scenes. One with how you want the lighting to be at day, and one for the evening.
 
-The integration automatically creates a transition between the scenes you configure - Lighting you room perfectly whenever you activate it!
+You might already have made some scenes that you prefer throughout the day. Maybe something like this:
+![Illustration - Scenes with hard transitions](images/Example%20-%20Fixed.png)
 
-[ Illustration ]
+This integration automatically blurs the lines between your scenes - Lighting you room perfectly whenever you activate it!
+![Illustration - Scenes with soft transitions](images/Example%20-%20Blurred.png)
+
+A typical result might look something like this:
+![Illustration of how the integration works in practice](images/Actual%20scene.png)
 
 ## Advantages (compared to other solutions)
 
