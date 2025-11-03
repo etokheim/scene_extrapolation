@@ -1,0 +1,110 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Eininga er allereie konfigurert"
+    },
+    "error": {
+      "unknown": "Uventa feil"
+    },
+    "step": {
+      "user": {
+        "title": "1/3 Grunnleggjande konfigurasjon",
+        "description": "Opprettar ei scene som, når ho vert aktivert, lyser opp rommet ditt basert på sola si høgd. Scena passar best med ein automasjon som utløyser scenen kvar 5. minutt eller så.\n\n**Støttar berre native Home Assistant-scener** (dvs. ikkje scener frå Hue-integrasjonen).\n\n_Alle innstillingar kan endrast seinare._",
+        "data": {
+          "scene_name": "Scenens namn*",
+          "area": "Område (Valfritt)",
+          "display_scenes_combined": "Kombinere daggry/skumring og soloppgang/solnedgang scener?"
+        },
+        "data_description": {
+          "scene_name": "Namn på din ekstrapoleringsscene",
+          "area": "Kva område scenen skal tilordnast",
+          "display_scenes_combined": "Viss på, konfigurer 3 scener i neste steg. Viss av, konfigurer 5"
+        }
+      },
+      "scenes": {
+        "title": "2/3 Scenekonfigurasjon",
+        "description": "Kople solhendingar med ei scene. Ved tidspunktet for hendinga vil scenen vere fullt aktivert, deretter overgå til scenen koplet til neste hending.\n\n_Selectorar viser berre **native Home Assistant-scener** tilordna det valde området._",
+        "data": {
+          "scene_dawn": "Daggry-scene*",
+          "scene_sunrise": "Soloppgang-scene*",
+          "scene_noon": "Middag-scene*",
+          "scene_sunset": "Solnedgang-scene*",
+          "scene_dusk": "Skumring-scene*",
+          "scene_dawn_and_dusk": "Daggry og skumring-scene*",
+          "scene_sunrise_and_sunset": "Soloppgang og solnedgang-scene*",
+          "scene_dusk_minimum_time_of_day": "Tidlegaste tidspunkt for å utløysa skumring-scena"
+        },
+        "data_description": {
+          "scene_dawn": "Første lys (Sola er 6 grader under horisonten)",
+          "scene_noon": "Når sola er på sitt høgaste punkt",
+          "scene_dusk": "Siste lys (Sola er 6 grader under horisonten)",
+          "scene_dawn_and_dusk": "Første og siste lys (Sola er 6 grader under horisonten)",
+          "scene_dusk_minimum_time_of_day": "For å unngå at lyset vert demt for mykje, for tidleg"
+        }
+      },
+      "nightlights": {
+        "title": "3/3 Nattlys-konfigurasjon",
+        "description": "Viss du vil konfigurera ei dedikert nattlys-scene, kan du gjera det her. Dette er heilt valfritt - du kan hoppa over dette steget viss du ikkje treng nattlys-funksjonalitet.\n\n**Merk:** På grunn av avgrensingar i Home Assistant, er det ikkje mogleg å fjerna verdiar når dei er lagra.",
+        "data": {
+          "nightlights_boolean": "Nattlys-utløysar (Valfritt)",
+          "nightlights_scene": "Nattlys-scene (Valfritt)"
+        },
+        "data_description": {
+          "nightlights_boolean": "Input boolean som utløyser nattlys-modus i staden for normal ekstrapolering",
+          "nightlights_scene": "Scene som skal aktiverast når nattlys-modus vert utløyst"
+        }
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "unknown": "Uventa feil"
+    },
+    "step": {
+      "init": {
+        "title": "1/3 Rediger {scene_name}",
+        "description": "## {scene_name}\nTilordna område: **{area_name}**\n\n_For å endra scenens namn eller det tilordna området, berre oppdater scene-eininga direkte._",
+        "data": {
+          "display_scenes_combined": "Kombinere daggry/skumring og soloppgang/solnedgang scener?"
+        },
+        "data_description": {
+          "display_scenes_combined": "Viss på, konfigurer 3 scener i neste steg. Viss av, konfigurer 5"
+        }
+      },
+      "scenes": {
+        "title": "2/3 Scenekonfigurasjon",
+        "description": "Kople solhendingar med ei scene. Ved tidspunktet for hendinga vil scenen vere fullt aktivert, deretter overgå til scenen koplet til neste hending.\n\n_Selectorar viser berre **native Home Assistant-scener** tilordna det valde området._",
+        "data": {
+          "scene_dawn": "Daggry-scene*",
+          "scene_sunrise": "Soloppgang-scene*",
+          "scene_noon": "Middag-scene*",
+          "scene_sunset": "Solnedgang-scene*",
+          "scene_dusk": "Skumring-scene*",
+          "scene_dawn_and_dusk": "Daggry og skumring-scene*",
+          "scene_sunrise_and_sunset": "Soloppgang og solnedgang-scene*",
+          "scene_dusk_minimum_time_of_day": "Tidlegaste tidspunkt for å utløysa skumring-scena"
+        },
+        "data_description": {
+          "scene_dawn": "Første lys",
+          "scene_noon": "Når sola er på sitt høgaste punkt",
+          "scene_dusk": "Siste lys",
+          "scene_dawn_and_dusk": "Første og siste lys",
+          "scene_dusk_minimum_time_of_day": "For å unngå at lyset vert demt for mykje, for tidleg"
+        }
+      },
+      "nightlights": {
+        "title": "3/3 Nattlys-konfigurasjon",
+        "description": "Viss du vil konfigurera ei dedikert nattlys-scene, kan du gjera det her. Dette er heilt valfritt - du kan hoppa over dette steget viss du ikkje treng nattlys-funksjonalitet.\n\n**Merk:** På grunn av avgrensingar i Home Assistant, er det ikkje mogleg å fjerna verdiar når dei er lagra.",
+        "data": {
+          "nightlights_boolean": "Nattlys-utløysar (Valfritt)",
+          "nightlights_scene": "Nattlys-scene (Valfritt)"
+        },
+        "data_description": {
+          "nightlights_boolean": "Input boolean som utløyser nattlys-modus i staden for normal ekstrapolering",
+          "nightlights_scene": "Scene som skal aktiverast når nattlys-modus vert utløyst"
+        }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,110 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Gerät ist bereits konfiguriert"
+    },
+    "error": {
+      "unknown": "Unerwarteter Fehler"
+    },
+    "step": {
+      "user": {
+        "title": "1/3 Grundkonfiguration",
+        "description": "Erstellt eine Szene, die beim Aktivieren Ihren Raum basierend auf der Sonnenhöhe beleuchtet. Die Szene passt am besten zu einer Automatisierung, die die Szene etwa alle 5 Minuten auslöst.\n\n**Unterstützt nur native Home Assistant-Szenen** (d. h. keine Szenen aus der Hue-Integration).\n\n_Alle Einstellungen können später geändert werden._",
+        "data": {
+          "scene_name": "Szenenname*",
+          "area": "Bereich (Optional)",
+          "display_scenes_combined": "Dämmerung und Sonnenaufgang/Sonnenuntergang-Szenen kombinieren?"
+        },
+        "data_description": {
+          "scene_name": "Name für Ihre Extrapolationsszene",
+          "area": "Welchem Bereich die Szene zugewiesen wird",
+          "display_scenes_combined": "Wenn aktiviert, konfigurieren Sie im nächsten Schritt 3 Szenen. Wenn deaktiviert, konfigurieren Sie 5"
+        }
+      },
+      "scenes": {
+        "title": "2/3 Szenenkonfiguration",
+        "description": "Verknüpfen Sie Sonnenereignisse mit einer Szene. Zum Zeitpunkt des Ereignisses wird die Szene vollständig aktiviert und dann zur Szene übergehen, die dem nächsten Ereignis zugeordnet ist.\n\n_Selektoren zeigen nur **native Home Assistant-Szenen** an, die dem ausgewählten Bereich zugewiesen sind._",
+        "data": {
+          "scene_dawn": "Dämmerungsszene*",
+          "scene_sunrise": "Sonnenaufgangsszene*",
+          "scene_noon": "Mittagsszene*",
+          "scene_sunset": "Sonnenuntergangsszene*",
+          "scene_dusk": "Abenddämmerungsszene*",
+          "scene_dawn_and_dusk": "Dämmerungs- und Abenddämmerungsszene*",
+          "scene_sunrise_and_sunset": "Sonnenaufgangs- und Sonnenuntergangsszene*",
+          "scene_dusk_minimum_time_of_day": "Früheste Zeit zum Auslösen der Abenddämmerungsszene"
+        },
+        "data_description": {
+          "scene_dawn": "Erstes Licht (Die Sonne steht 6 Grad unter dem Horizont)",
+          "scene_noon": "Wenn die Sonne am höchsten Punkt steht",
+          "scene_dusk": "Letztes Licht (Die Sonne steht 6 Grad unter dem Horizont)",
+          "scene_dawn_and_dusk": "Erstes und letztes Licht (Die Sonne steht 6 Grad unter dem Horizont)",
+          "scene_dusk_minimum_time_of_day": "Um zu vermeiden, dass das Licht zu früh zu stark gedimmt wird"
+        }
+      },
+      "nightlights": {
+        "title": "3/3 Nachtlicht-Konfiguration",
+        "description": "Wenn Sie eine dedizierte Nachtlichtszene konfigurieren möchten, können Sie dies hier tun. Dies ist vollständig optional - Sie können diesen Schritt überspringen, wenn Sie keine Nachtlicht-Funktionalität benötigen.\n\n**Hinweis:** Aufgrund von Einschränkungen in Home Assistant ist es nicht möglich, gespeicherte Werte zu löschen.",
+        "data": {
+          "nightlights_boolean": "Nachtlicht-Auslöser (Optional)",
+          "nightlights_scene": "Nachtlichtszene (Optional)"
+        },
+        "data_description": {
+          "nightlights_boolean": "Eingabe-Boolean, der den Nachtlichtmodus anstelle der normalen Extrapolation auslöst",
+          "nightlights_scene": "Szene, die aktiviert werden soll, wenn der Nachtlichtmodus ausgelöst wird"
+        }
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "unknown": "Unerwarteter Fehler"
+    },
+    "step": {
+      "init": {
+        "title": "1/3 {scene_name} bearbeiten",
+        "description": "## {scene_name}\nZugewiesener Bereich: **{area_name}**\n\n_Um den Szenennamen oder den zugewiesenen Bereich zu ändern, aktualisieren Sie einfach die Szenen-Entität direkt._",
+        "data": {
+          "display_scenes_combined": "Dämmerung und Sonnenaufgang/Sonnenuntergang-Szenen kombinieren?"
+        },
+        "data_description": {
+          "display_scenes_combined": "Wenn aktiviert, konfigurieren Sie im nächsten Schritt 3 Szenen. Wenn deaktiviert, konfigurieren Sie 5"
+        }
+      },
+      "scenes": {
+        "title": "2/3 Szenenkonfiguration",
+        "description": "Verknüpfen Sie Sonnenereignisse mit einer Szene. Zum Zeitpunkt des Ereignisses wird die Szene vollständig aktiviert und dann zur Szene übergehen, die dem nächsten Ereignis zugeordnet ist.\n\n_Selektoren zeigen nur **native Home Assistant-Szenen** an, die dem ausgewählten Bereich zugewiesen sind._",
+        "data": {
+          "scene_dawn": "Dämmerungsszene*",
+          "scene_sunrise": "Sonnenaufgangsszene*",
+          "scene_noon": "Mittagsszene*",
+          "scene_sunset": "Sonnenuntergangsszene*",
+          "scene_dusk": "Abenddämmerungsszene*",
+          "scene_dawn_and_dusk": "Dämmerungs- und Abenddämmerungsszene*",
+          "scene_sunrise_and_sunset": "Sonnenaufgangs- und Sonnenuntergangsszene*",
+          "scene_dusk_minimum_time_of_day": "Früheste Zeit zum Auslösen der Abenddämmerungsszene"
+        },
+        "data_description": {
+          "scene_dawn": "Erstes Licht",
+          "scene_noon": "Wenn die Sonne am höchsten Punkt steht",
+          "scene_dusk": "Letztes Licht",
+          "scene_dawn_and_dusk": "Erstes und letztes Licht",
+          "scene_dusk_minimum_time_of_day": "Um zu vermeiden, dass das Licht zu früh zu stark gedimmt wird"
+        }
+      },
+      "nightlights": {
+        "title": "3/3 Nachtlicht-Konfiguration",
+        "description": "Wenn Sie eine dedizierte Nachtlichtszene konfigurieren möchten, können Sie dies hier tun. Dies ist vollständig optional - Sie können diesen Schritt überspringen, wenn Sie keine Nachtlicht-Funktionalität benötigen.\n\n**Hinweis:** Aufgrund von Einschränkungen in Home Assistant ist es nicht möglich, gespeicherte Werte zu löschen.",
+        "data": {
+          "nightlights_boolean": "Nachtlicht-Auslöser (Optional)",
+          "nightlights_scene": "Nachtlichtszene (Optional)"
+        },
+        "data_description": {
+          "nightlights_boolean": "Eingabe-Boolean, der den Nachtlichtmodus anstelle der normalen Extrapolation auslöst",
+          "nightlights_scene": "Szene, die aktiviert werden soll, wenn der Nachtlichtmodus ausgelöst wird"
+        }
+      }
+    }
+  }
+}
+
