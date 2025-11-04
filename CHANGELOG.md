@@ -47,6 +47,7 @@ This release's focus is on improving the UX and minimize the time it takes to se
 - Updated issue and documentation URLs
 - Stopped using the soon to be deprecated `color_temp` argument in `turn_on` service
 - Inaccurate extrapolation calculation
+- Transitions crossing midnight was wrongly calculated or outright failed
 
 ## [1.0.0] - 2025-10-17
 

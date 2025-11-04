@@ -673,27 +673,38 @@ class ExtrapolationScene(Scene):
         seconds_between_current_and_next_sun_events = None
         seconds_till_next_sun_event = None
 
-        # Clamp to max 24 hours
+        # Clamp to max 24 hours (to handle manipulation of seconds since midnight by transition modifier)
         seconds_since_midnight = seconds_since_midnight % 86400
 
-        # If midnight is between the current and next sun events, do some special handling
-        if current_sun_event.start_time > next_sun_event.start_time:
-            # 86400 = 24 hours
-            # Takes the time left of the day + the time to the first sun_event the next day to
-            # calculate how many seconds it is between them.
+        # Determine if we're crossing midnight between events
+        # This happens when current event time > next event time (wrapping around midnight)
+        crossing_midnight = current_sun_event.start_time > next_sun_event.start_time
+
+        if crossing_midnight:
+            # Wrapping around midnight: current event is before midnight, next is after
+            # Calculate total time between events (wrapping around midnight)
             seconds_between_current_and_next_sun_events = (
                 86400 - current_sun_event.start_time + next_sun_event.start_time
             )
+            # Calculate time remaining until next event
+            # If we're already past midnight (seconds_since_midnight < next_sun_event.start_time),
+            # then we just need time from now to the next event today
+            if seconds_since_midnight < next_sun_event.start_time:
+                # We're after midnight but before the next event today
+                seconds_till_next_sun_event = (
+                    next_sun_event.start_time - seconds_since_midnight
+                )
+            else:
+                # We're before midnight, so we need: time to midnight + time to next event
+                seconds_till_next_sun_event = (
+                    86400 - seconds_since_midnight + next_sun_event.start_time
+                )
         else:
+            # Normal case: events are on the same day and we're between them
             seconds_between_current_and_next_sun_events = (
                 next_sun_event.start_time - current_sun_event.start_time
             )
-
-        if seconds_since_midnight > next_sun_event.start_time:
-            seconds_till_next_sun_event = (
-                86400 - seconds_since_midnight + next_sun_event.start_time
-            )
-        else:
+            # Calculate time until next event (same day)
             seconds_till_next_sun_event = (
                 next_sun_event.start_time - seconds_since_midnight
             )
@@ -703,13 +714,15 @@ class ExtrapolationScene(Scene):
             # Edge case: current and next events are at the same time
             transition_progress = 0
         else:
+            # Calculate how much of the transition has elapsed
+            # elapsed = total_time - time_remaining
+            elapsed_time = (
+                seconds_between_current_and_next_sun_events
+                - seconds_till_next_sun_event
+            )
             transition_progress = (
-                100
-                / seconds_between_current_and_next_sun_events
-                * (
-                    seconds_between_current_and_next_sun_events
-                    - seconds_till_next_sun_event
-                )
+                100 * elapsed_time / seconds_between_current_and_next_sun_events
+            )
             )
 
         return transition_progress
@@ -755,15 +768,11 @@ class ExtrapolationScene(Scene):
                 closest_match_index = index - 1  # -1 to get current sun_event index
                 break
 
-        # If we couldn't find a match for today, then we either return the (next) day's first event
-        # or the current day's last event (depending on whether the next day's first event is in the past.
-        # ie. if the time is 300 past midnight, but the day's first event is 2300 seconds past midnight, we
-        # need to return the previous day's event)
+        # If we couldn't find a match for today, we're past the last event
+        # Return the last event of the day (which will wrap to next day's events)
         if closest_match_index is None:
-            if sorted_sun_events[0].start_time > seconds_since_midnight:
-                closest_match_index = -1
-            else:
-                closest_match_index = 0
+            # We're past all events today, so current event is the last one
+            closest_match_index = len(sorted_sun_events) - 1
 
         offset_index = closest_match_index + offset
 
