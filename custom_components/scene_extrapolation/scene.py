@@ -1232,8 +1232,7 @@ def extrapolate_state(
 
     if scene_transition_progress_percent <= 50:
         final_state = from_state
-
-    elif scene_transition_progress_percent >= 50:
+    else:
         final_state = to_state
 
     _LOGGER.debug(
