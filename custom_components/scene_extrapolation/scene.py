@@ -916,6 +916,12 @@ async def apply_single_entity(entity, hass: HomeAssistant, transition_time=0):
             ATTR_ENTITY_ID: entity_applied[ATTR_ENTITY_ID],
             ATTR_TRANSITION: transition_time,
         }
+    else:
+        # Filter out None values to avoid service call errors
+        # Home Assistant doesn't accept None values for attributes like 'effect'
+        entity_applied = {
+            key: value for key, value in entity_applied.items() if value is not None
+        }
 
     _LOGGER.debug("%s.%s: %s", domain, service_type, entity_applied)
 
