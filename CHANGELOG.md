@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- 
+
+### Changed
+- 
+
+### Fixed
+- 
+
+## [2.0.0] - 2025-11-04
+
+
 ### 🚨 Breaking changes
 
 Breaking changes are marked with an emergency light emoji: 🚨
@@ -48,6 +60,7 @@ This release's focus is on improving the UX and minimize the time it takes to se
 - Stopped using the soon to be deprecated `color_temp` argument in `turn_on` service
 - Inaccurate extrapolation calculation
 - Transitions crossing midnight was wrongly calculated or outright failed
+
 
 ## [1.0.0] - 2025-10-17
 
