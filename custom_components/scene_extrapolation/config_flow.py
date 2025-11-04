@@ -200,6 +200,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle the scene configuration step."""
         errors = {}
+        scenes_flow_schema = None
         try:
             # Get the combined mode setting from basic config
 
@@ -240,6 +241,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = "unknown"
 
         # Show the form again, just with the errors
+        # If scenes_flow_schema wasn't created due to an error, create a default one
+        if scenes_flow_schema is None:
+            scenes_flow_schema = await create_scenes_config_schema(
+                self.hass,
+                getattr(self, "area_id", None),
+                None,
+                display_scenes_combined=getattr(self, "display_scenes_combined", False),
+            )
         return self.async_show_form(
             step_id="scenes", data_schema=scenes_flow_schema, errors=errors
         )
@@ -400,6 +409,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             # Already a time string, return as is
             return seconds
 
+        # Convert to int to handle float values
+        seconds = int(seconds)
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
         secs = seconds % 60
@@ -494,6 +505,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Handle the scene configuration step."""
         errors = {}
+        scenes_flow_schema = None
         try:
             # Get area_id from the scene entity created by this integration
             entity_reg = er.async_get(self.hass)
@@ -585,6 +597,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             errors["base"] = "unknown"
 
         # Show the form again, just with the errors
+        # If scenes_flow_schema wasn't created due to an error, create a default one
+        if scenes_flow_schema is None:
+            scenes_flow_schema = await create_scenes_config_schema(
+                self.hass,
+                getattr(self, "area_id", None),
+                None,
+                display_scenes_combined=getattr(self, "display_scenes_combined", False),
+            )
         return self.async_show_form(
             step_id="scenes", data_schema=scenes_flow_schema, errors=errors
         )
