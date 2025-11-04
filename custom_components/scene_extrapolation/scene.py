@@ -723,6 +723,16 @@ class ExtrapolationScene(Scene):
             transition_progress = (
                 100 * elapsed_time / seconds_between_current_and_next_sun_events
             )
+
+        # Validate that transition progress is within valid range [0, 100]
+        if transition_progress < 0 or transition_progress > 100:
+            raise HomeAssistantError(
+                f"Invalid transition progress: {transition_progress:.1f}% "
+                f"(expected 0-100%). This is a calculation error. "
+                f"Please open an issue at https://github.com/etokheim/scene_extrapolation/issues "
+                f"with the following details: Current event: {current_sun_event.name} "
+                f"({current_sun_event.start_time}s), Next event: {next_sun_event.name} "
+                f"({next_sun_event.start_time}s), Time: {seconds_since_midnight}s"
             )
 
         return transition_progress
