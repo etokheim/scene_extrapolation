@@ -204,6 +204,38 @@ class ExtrapolationScene(Scene):
         }
         if self._target_date_time is not None:
             attrs["target_date_time"] = self._target_date_time.isoformat()
+
+        # Expose scene entity_ids as attributes
+        dawn_scene = self.config_entry.options.get(
+            SCENE_DAWN
+        ) or self.config_entry.data.get(SCENE_DAWN)
+        if dawn_scene:
+            attrs["dawn_scene"] = dawn_scene
+
+        sunrise_scene = self.config_entry.options.get(
+            SCENE_SUNRISE
+        ) or self.config_entry.data.get(SCENE_SUNRISE)
+        if sunrise_scene:
+            attrs["sunrise_scene"] = sunrise_scene
+
+        noon_scene = self.config_entry.options.get(
+            SCENE_NOON
+        ) or self.config_entry.data.get(SCENE_NOON)
+        if noon_scene:
+            attrs["noon_scene"] = noon_scene
+
+        sunset_scene = self.config_entry.options.get(
+            SCENE_SUNSET
+        ) or self.config_entry.data.get(SCENE_SUNSET)
+        if sunset_scene:
+            attrs["sunset_scene"] = sunset_scene
+
+        dusk_scene = self.config_entry.options.get(
+            SCENE_DUSK
+        ) or self.config_entry.data.get(SCENE_DUSK)
+        if dusk_scene:
+            attrs["dusk_scene"] = dusk_scene
+
         return attrs
 
     async def async_activate(
