@@ -8,16 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- 
+
+- Expose scenes the extrapolation scene consumes as attributes
 
 ### Changed
-- 
+
+- Combine Dawn/sunrise/sunset instead of dawn/dusk and sunrise/sunset (makes more sense in real-life)
 
 ### Fixed
-- 
+
+- Opening options flow with legacy data causes error that hinders fixing legacy data
+- Remove none values from service calls. Eg. effect: none is not supported
 
 ## [2.0.0] - 2025-11-04
-
 
 ### 🚨 Breaking changes
 
@@ -60,7 +63,6 @@ This release's focus is on improving the UX and minimize the time it takes to se
 - Stopped using the soon to be deprecated `color_temp` argument in `turn_on` service
 - Inaccurate extrapolation calculation
 - Transitions crossing midnight was wrongly calculated or outright failed
-
 
 ## [1.0.0] - 2025-10-17
 

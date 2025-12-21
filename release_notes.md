@@ -1,6 +1,5 @@
 # Scene Extrapolation 2.0.0
 
-
 ### 🚨 Breaking changes
 
 Breaking changes are marked with an emergency light emoji: 🚨
@@ -42,4 +41,3 @@ This release's focus is on improving the UX and minimize the time it takes to se
 - Stopped using the soon to be deprecated `color_temp` argument in `turn_on` service
 - Inaccurate extrapolation calculation
 - Transitions crossing midnight was wrongly calculated or outright failed
-
