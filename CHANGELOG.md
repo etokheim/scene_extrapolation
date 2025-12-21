@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- 
+
+### Changed
+- 
+
+### Fixed
+- 
+
+## [2.1.0] - 2025-12-21
+
+
+### Added
 
 - Expose scenes the extrapolation scene consumes as attributes
 
@@ -19,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Opening options flow with legacy data causes error that hinders fixing legacy data
 - Remove none values from service calls. Eg. effect: none is not supported
+
 
 ## [2.0.0] - 2025-11-04
 
