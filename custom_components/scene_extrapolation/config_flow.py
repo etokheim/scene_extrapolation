@@ -49,8 +49,8 @@ def _infer_display_scenes_combined(config_entry: config_entries.ConfigEntry) -> 
         SCENE_SUNSET
     )
 
-    if stored_dawn and stored_dusk and stored_sunrise and stored_sunset:
-        return stored_dawn == stored_dusk and stored_sunrise == stored_sunset
+    if stored_dawn and stored_sunrise and stored_sunset:
+        return stored_dawn == stored_sunrise == stored_sunset
     else:
         # Fallback: keep separate layout for safety
         return False
@@ -113,12 +113,13 @@ async def validate_combined_input(
     else:
         # Combined mode - duplicate selections
         _LOGGER.info("Processing COMBINED mode")
-        # Dawn and dusk scene (combined)
-        dawn_and_dusk_scene = combined_input.get("scene_dawn_and_dusk")
-        if dawn_and_dusk_scene:
-            data_to_store[SCENE_DAWN] = dawn_and_dusk_scene
-            data_to_store[SCENE_DUSK] = dawn_and_dusk_scene
-            _LOGGER.info("Stored dawn/dusk scene: %s", dawn_and_dusk_scene)
+        # Dawn, sunrise, and sunset scene (combined)
+        dawn_sunrise_sunset_scene = combined_input.get("scene_dawn_sunrise_sunset")
+        if dawn_sunrise_sunset_scene:
+            data_to_store[SCENE_DAWN] = dawn_sunrise_sunset_scene
+            data_to_store[SCENE_SUNRISE] = dawn_sunrise_sunset_scene
+            data_to_store[SCENE_SUNSET] = dawn_sunrise_sunset_scene
+            _LOGGER.info("Stored dawn/sunrise/sunset scene: %s", dawn_sunrise_sunset_scene)
 
         # Noon scene
         noon_scene = combined_input.get(SCENE_NOON)
@@ -126,12 +127,11 @@ async def validate_combined_input(
             data_to_store[SCENE_NOON] = noon_scene
             _LOGGER.info("Stored noon scene: %s", noon_scene)
 
-        # Sunrise and sunset scene (combined)
-        sunrise_and_sunset_scene = combined_input.get("scene_sunrise_and_sunset")
-        if sunrise_and_sunset_scene:
-            data_to_store[SCENE_SUNRISE] = sunrise_and_sunset_scene
-            data_to_store[SCENE_SUNSET] = sunrise_and_sunset_scene
-            _LOGGER.info("Stored sunrise/sunset scene: %s", sunrise_and_sunset_scene)
+        # Dusk scene (separate)
+        dusk_scene = combined_input.get(SCENE_DUSK)
+        if dusk_scene:
+            data_to_store[SCENE_DUSK] = dusk_scene
+            _LOGGER.info("Stored dusk scene: %s", dusk_scene)
 
     # Handle nightlights configuration
     nightlights_boolean = combined_input.get(NIGHTLIGHTS_BOOLEAN)
@@ -398,7 +398,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        # Note: config_entry is available as a property after initialization,
+        # not as an instance variable. Do not set self.config_entry here.
 
     def _convert_seconds_to_time_string(self, seconds):
         """Convert seconds since midnight to HH:MM:SS format."""
@@ -875,16 +876,16 @@ async def create_scenes_config_schema(
         return vol.Schema(
             {
                 vol.Required(
-                    "scene_dawn_and_dusk",  # Combined dawn/dusk scene
+                    "scene_dawn_sunrise_sunset",  # Combined dawn/sunrise/sunset scene
                     default=defaults.get(SCENE_DAWN),  # Use dawn as default
-                ): create_scene_selector(),
-                vol.Required(
-                    "scene_sunrise_and_sunset",  # Combined sunrise/sunset scene
-                    default=defaults.get(SCENE_SUNRISE),  # Use sunrise as default
                 ): create_scene_selector(),
                 vol.Required(
                     SCENE_NOON,
                     default=defaults.get(SCENE_NOON),
+                ): create_scene_selector(),
+                vol.Required(
+                    SCENE_DUSK,
+                    default=defaults.get(SCENE_DUSK),
                 ): create_scene_selector(),
                 vol.Optional(
                     SCENE_DUSK_MINIMUM_TIME_OF_DAY,

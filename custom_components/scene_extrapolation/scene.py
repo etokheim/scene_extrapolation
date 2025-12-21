@@ -100,7 +100,7 @@ class ExtrapolationScene(Scene):
 
     def __init__(self, name, hass: HomeAssistant, config_entry: ConfigEntry):
         """Initialize an ExtrapolationScene."""
-        # TODO: Setting the entity_id to an already existing entity_id throws no errors. Instead a number is
+        # Setting the entity_id to an already existing entity_id throws no errors. Instead a number is
         # appended to the expected entity_id. Ie. [entity_id]_2
         self.entity_id = "scene." + name.replace(" ", "_").casefold()
         self._scene_id = self.entity_id

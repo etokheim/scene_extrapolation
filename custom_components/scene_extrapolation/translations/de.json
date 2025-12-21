@@ -13,7 +13,7 @@
         "data": {
           "scene_name": "Szenenname*",
           "area": "Bereich (Optional)",
-          "display_scenes_combined": "Dämmerung und Sonnenaufgang/Sonnenuntergang-Szenen kombinieren?"
+          "display_scenes_combined": "Dämmerung/Sonnenaufgang/Sonnenuntergang-Szenen kombinieren?"
         },
         "data_description": {
           "scene_name": "Name für Ihre Extrapolationsszene",
@@ -30,15 +30,14 @@
           "scene_noon": "Mittagsszene*",
           "scene_sunset": "Sonnenuntergangsszene*",
           "scene_dusk": "Abenddämmerungsszene*",
-          "scene_dawn_and_dusk": "Dämmerungs- und Abenddämmerungsszene*",
-          "scene_sunrise_and_sunset": "Sonnenaufgangs- und Sonnenuntergangsszene*",
+          "scene_dawn_sunrise_sunset": "Dämmerungs-, Sonnenaufgangs- und Sonnenuntergangsszene*",
           "scene_dusk_minimum_time_of_day": "Früheste Zeit zum Auslösen der Abenddämmerungsszene"
         },
         "data_description": {
           "scene_dawn": "Erstes Licht (Die Sonne steht 6 Grad unter dem Horizont)",
           "scene_noon": "Wenn die Sonne am höchsten Punkt steht",
           "scene_dusk": "Letztes Licht (Die Sonne steht 6 Grad unter dem Horizont)",
-          "scene_dawn_and_dusk": "Erstes und letztes Licht (Die Sonne steht 6 Grad unter dem Horizont)",
+          "scene_dawn_sunrise_sunset": "Erstes Licht, Sonnenaufgang und Sonnenuntergang",
           "scene_dusk_minimum_time_of_day": "Um zu vermeiden, dass das Licht zu früh zu stark gedimmt wird"
         }
       },
@@ -65,7 +64,7 @@
         "title": "1/3 {scene_name} bearbeiten",
         "description": "## {scene_name}\nZugewiesener Bereich: **{area_name}**\n\n_Um den Szenennamen oder den zugewiesenen Bereich zu ändern, aktualisieren Sie einfach die Szenen-Entität direkt._",
         "data": {
-          "display_scenes_combined": "Dämmerung und Sonnenaufgang/Sonnenuntergang-Szenen kombinieren?"
+          "display_scenes_combined": "Dämmerung/Sonnenaufgang/Sonnenuntergang-Szenen kombinieren?"
         },
         "data_description": {
           "display_scenes_combined": "Wenn aktiviert, konfigurieren Sie im nächsten Schritt 3 Szenen. Wenn deaktiviert, konfigurieren Sie 5"
@@ -80,15 +79,14 @@
           "scene_noon": "Mittagsszene*",
           "scene_sunset": "Sonnenuntergangsszene*",
           "scene_dusk": "Abenddämmerungsszene*",
-          "scene_dawn_and_dusk": "Dämmerungs- und Abenddämmerungsszene*",
-          "scene_sunrise_and_sunset": "Sonnenaufgangs- und Sonnenuntergangsszene*",
+          "scene_dawn_sunrise_sunset": "Dämmerungs-, Sonnenaufgangs- und Sonnenuntergangsszene*",
           "scene_dusk_minimum_time_of_day": "Früheste Zeit zum Auslösen der Abenddämmerungsszene"
         },
         "data_description": {
           "scene_dawn": "Erstes Licht",
           "scene_noon": "Wenn die Sonne am höchsten Punkt steht",
           "scene_dusk": "Letztes Licht",
-          "scene_dawn_and_dusk": "Erstes und letztes Licht",
+          "scene_dawn_sunrise_sunset": "Erstes Licht, Sonnenaufgang und Sonnenuntergang",
           "scene_dusk_minimum_time_of_day": "Um zu vermeiden, dass das Licht zu früh zu stark gedimmt wird"
         }
       },

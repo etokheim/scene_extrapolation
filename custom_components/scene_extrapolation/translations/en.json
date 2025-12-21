@@ -13,7 +13,7 @@
         "data": {
           "scene_name": "Scene Name*",
           "area": "Area (Optional)",
-          "display_scenes_combined": "Combine dawn/dusk and sunrise/sunset scenes?"
+          "display_scenes_combined": "Combine dawn/sunrise/sunset scenes?"
         },
         "data_description": {
           "scene_name": "Name for your extrapolation scene",
@@ -30,15 +30,14 @@
           "scene_noon": "Noon scene*",
           "scene_sunset": "Sunset scene*",
           "scene_dusk": "Dusk scene*",
-          "scene_dawn_and_dusk": "Dawn and dusk scene*",
-          "scene_sunrise_and_sunset": "Sunrise and sunset scene*",
+          "scene_dawn_sunrise_sunset": "Dawn, sunrise, and sunset scene*",
           "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene"
         },
         "data_description": {
           "scene_dawn": "First light (Sun is 6 degrees below the horizon)",
           "scene_noon": "When the sun is at its highest point",
           "scene_dusk": "Last light (Sun is 6 degrees below the horizon)",
-          "scene_dawn_and_dusk": "First and last light (Sun is 6 degrees below the horizon)",
+          "scene_dawn_sunrise_sunset": "First light, sunrise, and sunset",
           "scene_dusk_minimum_time_of_day": "To avoid lights dimming too much, too early"
         }
       },
@@ -65,7 +64,7 @@
         "title": "1/3 Edit {scene_name}",
         "description": "## {scene_name}\nAssigned area: **{area_name}**\n\n_To change the scene name or the assigned area, just update the scene entity directly._",
         "data": {
-          "display_scenes_combined": "Combine dawn/dusk and sunrise/sunset scenes?"
+          "display_scenes_combined": "Combine dawn/sunrise/sunset scenes?"
         },
         "data_description": {
           "display_scenes_combined": "If on, configure 3 scenes in the next step. If off, configure 5"
@@ -80,15 +79,14 @@
           "scene_noon": "Noon scene*",
           "scene_sunset": "Sunset scene*",
           "scene_dusk": "Dusk scene*",
-          "scene_dawn_and_dusk": "Dawn and dusk scene*",
-          "scene_sunrise_and_sunset": "Sunrise and sunset scene*",
+          "scene_dawn_sunrise_sunset": "Dawn, sunrise, and sunset scene*",
           "scene_dusk_minimum_time_of_day": "Earliest time for triggering the dusk scene"
         },
         "data_description": {
           "scene_dawn": "First light",
           "scene_noon": "When the sun is at its highest point",
           "scene_dusk": "Last light",
-          "scene_dawn_and_dusk": "First and last light",
+          "scene_dawn_sunrise_sunset": "First light, sunrise, and sunset",
           "scene_dusk_minimum_time_of_day": "To avoid lights dimming too much, too early"
         }
       },
