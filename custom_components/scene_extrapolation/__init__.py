@@ -30,7 +30,7 @@ PLATFORMS: list[Platform] = [Platform.SCENE]
 SERVICE_TURN_ON = "turn_on"
 ATTR_BRIGHTNESS_MODIFIER = "brightness_modifier"
 ATTR_TRANSITION = "transition"
-ATTR_TRANSITION_MODIFIER = "transition_modifier"
+ATTR_TRANSITION_PERCENT = "transition_percent"
 ATTR_TARGET_DATE_TIME = "target_date_time"
 ATTR_LOCATION = "location"
 
@@ -43,7 +43,7 @@ async def async_setup(hass, config):
         entity_ids = call.data.get("entity_id", [])
         brightness_modifier = call.data.get(ATTR_BRIGHTNESS_MODIFIER, 0)
         transition = call.data.get(ATTR_TRANSITION, 0)
-        transition_modifier = call.data.get(ATTR_TRANSITION_MODIFIER, 0)
+        transition_percent = call.data.get(ATTR_TRANSITION_PERCENT)
         target_date_time = call.data.get(ATTR_TARGET_DATE_TIME)
         location = call.data.get(ATTR_LOCATION)
 
@@ -61,10 +61,10 @@ async def async_setup(hass, config):
             )
             return
 
-        if not -100 <= transition_modifier <= 100:
+        if transition_percent is not None and not 0 <= transition_percent <= 100:
             _LOGGER.error(
-                "Transition modifier must be between -100 and 100, got %s",
-                transition_modifier,
+                "Transition percent must be between 0 and 100, got %s",
+                transition_percent,
             )
             return
 
@@ -84,7 +84,7 @@ async def async_setup(hass, config):
                     await scene.async_activate(
                         transition=transition,
                         brightness_modifier=brightness_modifier,
-                        transition_modifier=transition_modifier,
+                        transition_percent=transition_percent,
                         target_date_time=target_date_time,
                         location=location,
                     )
@@ -125,11 +125,9 @@ async def async_setup(hass, config):
                         mode="slider",
                     )
                 ),
-                vol.Optional(
-                    ATTR_TRANSITION_MODIFIER, default=0
-                ): selector.NumberSelector(
+                vol.Optional(ATTR_TRANSITION_PERCENT): selector.NumberSelector(
                     selector.NumberSelectorConfig(
-                        min=-100,
+                        min=0,
                         max=100,
                         step=1,
                         unit_of_measurement="%",

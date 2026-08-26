@@ -78,6 +78,13 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Why:** A single line matches the sun chart and stays cheap to paint. Labels on the plot save vertical space; clicking through to the entity is the usual HA pattern. Missing entities are supported on purpose (e.g. a lamp that only exists in the evening scene).
 - **Do not reverse without user ask.**
 
+## Day transition percent is linear across the five scenes
+
+- **Date:** 2026-08-26
+- **Decision:** Replace `transition_modifier` (−100…100 clock shift toward noon/dawn/dusk) with `transition_percent` (0–100 along the day). Knots are equal 25% steps: dawn 0, sunrise 25, noon 50, sunset 75, dusk 100. Manual service values use that mapping directly (intra-segment blend is linear in percent, not in clock time). Auto follows the clock within each pair, then maps onto the same 0–100 scale. After dusk until the next dawn the attribute stays 100 (dusk is the last scene of the day); lights still interpolate dusk→dawn on the clock. A second attribute `transition_percent_manual` is true only when the last `scene_extrapolation.turn_on` included `transition_percent`. Omitting the field (or using native `scene.turn_on`) returns to auto.
+- **Why:** A relative time shift was not a readable “where in the day” control. Equal percent steps make 50% always noon regardless of season.
+- **Do not reverse without user ask.**
+
 ## Solar event row is the scene picker
 
 - **Date:** 2026-08-26

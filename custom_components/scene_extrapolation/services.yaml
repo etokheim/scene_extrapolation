@@ -35,14 +35,13 @@ turn_on:
           step: 1
           unit_of_measurement: "%"
           mode: slider
-    transition_modifier:
-      name: Transition modifier (More dynamic way to change the brightness)
-      description: Shift the extrapolation towards noon or dusk/dawn (whichever is closer). Positive values shift towards noon (brighter), negative values shift towards low-light scenes (dimmer)
+    transition_percent:
+      name: Transition percent
+      description: "Absolute position along the day, equally spaced between the five scenes: 0% dawn, 25% sunrise, 50% noon, 75% sunset, 100% dusk. Omit to follow the clock. When set, the scene attribute transition_percent_manual is true until the next activate without this field."
       required: false
-      default: 0
       selector:
         number:
-          min: -100
+          min: 0
           max: 100
           step: 1
           unit_of_measurement: "%"

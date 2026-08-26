@@ -6,7 +6,7 @@ import asyncio
 import logging
 import numbers
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -52,6 +52,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -72,7 +73,9 @@ from .const import (
     SCENE_SUNRISE,
     SCENE_SUNSET,
 )
-from .solar import resolve_solar_events
+from .solar import EVENT_ORDER, resolve_solar_events
+
+DAY_PERCENT_STEP = 100.0 / (len(EVENT_ORDER) - 1)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -125,9 +128,10 @@ async def async_remove_entity(entities: dict, scene_id: str) -> None:
 class SunEvent:
     """Creates a sun event."""
 
-    def __init__(self, name, start_time, scene) -> None:
+    def __init__(self, name, start_time, scene, key) -> None:
         """Initialize a SunEvent."""
         self.name = name
+        self.key = key
         self.start_time = start_time
         self.scene = scene
 
@@ -183,6 +187,57 @@ def transition_progress_percent(
     return progress
 
 
+def day_transition_percent(
+    current_key: str, next_key: str, intra_progress: float
+) -> float:
+    """0–100 along dawn → sunrise → noon → sunset → dusk.
+
+    Each named scene is an equal 25% step so a manual set is predictable
+    (0 dawn, 25 sunrise, 50 noon, 75 sunset, 100 dusk). Intra-progress is
+    0–100 of the clock transition between current and next. After dusk
+    (wrapping toward dawn) this stays 100 — the day's last scene.
+    """
+    if current_key == "dusk" and next_key == "dawn":
+        return 100.0
+    try:
+        index = EVENT_ORDER.index(current_key)
+    except ValueError as err:
+        raise HomeAssistantError(
+            f"Unknown solar event {current_key!r} for day transition percent"
+        ) from err
+    percent = (index + intra_progress / 100.0) * DAY_PERCENT_STEP
+    if percent < 0 or percent > 100:
+        raise HomeAssistantError(
+            f"Invalid day transition percent: {percent:.1f}% "
+            f"(expected 0-100%). This is a calculation error. "
+            f"Please open an issue at https://github.com/etokheim/scene_extrapolation/issues "
+            f"with the following details: current={current_key}, next={next_key}, "
+            f"intra={intra_progress}"
+        )
+    return percent
+
+
+def scene_keys_from_day_percent(percent: float) -> tuple[str, str, float]:
+    """Map 0–100 onto an event pair and intra-pair progress (0–100).
+
+    100% is dusk fully activated (0% into dusk → dawn).
+    """
+    if percent < 0 or percent > 100:
+        raise HomeAssistantError(
+            f"Invalid day transition percent: {percent:.1f}% (expected 0-100%). "
+            f"This is a calculation error. "
+            f"Please open an issue at https://github.com/etokheim/scene_extrapolation/issues "
+            f"with the following details: percent={percent}"
+        )
+    last = len(EVENT_ORDER) - 1
+    t = percent / DAY_PERCENT_STEP
+    if t >= last:
+        return EVENT_ORDER[-1], EVENT_ORDER[0], 0.0
+    index = int(t)
+    frac = t - index
+    return EVENT_ORDER[index], EVENT_ORDER[index + 1], frac * 100.0
+
+
 class ExtrapolationScene(Scene):
     """Representation the ExtrapolationScene."""
 
@@ -204,7 +259,9 @@ class ExtrapolationScene(Scene):
         self._attr_unique_id = scene_config["id"]
         self._attr_integration = "scene_extrapolation"
         self._brightness_modifier = 0
-        self._transition_modifier = 0
+        self._transition_percent_manual = False
+        self._manual_transition_percent = None
+        self._unsub_interval = None
         self._target_date_time = None
         self._area_id = scene_config.get(AREA)
 
@@ -227,6 +284,22 @@ class ExtrapolationScene(Scene):
         """Assign the configured area once the entity is registered."""
         await super().async_added_to_hass()
         await self._async_sync_registry()
+        self._unsub_interval = async_track_time_interval(
+            self.hass, self._async_refresh_transition_percent, timedelta(minutes=1)
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Stop the transition-percent refresh when the entity is removed."""
+        if self._unsub_interval:
+            self._unsub_interval()
+            self._unsub_interval = None
+        await super().async_will_remove_from_hass()
+
+    async def _async_refresh_transition_percent(self, _now) -> None:
+        """Rewrite state so auto transition_percent tracks the clock."""
+        if self._transition_percent_manual:
+            return
+        self.async_write_ha_state()
 
     async def async_update_config(self, scene_config: dict) -> None:
         """Apply an updated store item."""
@@ -312,7 +385,8 @@ class ExtrapolationScene(Scene):
         """Return the state attributes."""
         attrs = {
             "brightness_modifier": self._brightness_modifier,
-            "transition_modifier": self._transition_modifier,
+            "transition_percent": round(self._current_day_transition_percent(), 1),
+            "transition_percent_manual": self._transition_percent_manual,
             "integration": self._attr_integration,
         }
         if self._target_date_time is not None:
@@ -336,7 +410,7 @@ class ExtrapolationScene(Scene):
         self,
         transition=0,
         brightness_modifier=0,
-        transition_modifier=0,
+        transition_percent=None,
         target_date_time=None,
         location=None,
     ):
@@ -345,14 +419,20 @@ class ExtrapolationScene(Scene):
         Args:
             transition: Transition time in seconds
             brightness_modifier: Brightness modifier percentage (-100 to 100)
-            transition_modifier: Transition modifier percentage (-100 to 100)
+            transition_percent: Absolute 0–100 position along the day (dawn 0,
+                sunrise 25, noon 50, sunset 75, dusk 100). None uses the clock.
             target_date_time: Optional datetime to base extrapolation on (defaults to current time)
             location: Optional dict with 'latitude' and 'longitude' keys to override location
                      (defaults to Home Assistant's configured location)
         """
-        # Store the brightness modifier and transition modifier as attributes
+        # Store the brightness modifier and optional manual day percent
         self._brightness_modifier = brightness_modifier
-        self._transition_modifier = transition_modifier
+        if transition_percent is None:
+            self._transition_percent_manual = False
+            self._manual_transition_percent = None
+        else:
+            self._transition_percent_manual = True
+            self._manual_transition_percent = transition_percent
 
         # Use target_date_time if provided, otherwise use current time
         if target_date_time is None:
@@ -464,6 +544,7 @@ class ExtrapolationScene(Scene):
         sun_events = {
             "dawn": SunEvent(
                 name="Dawn",
+                key="dawn",
                 scene=get_scene_by_uuid(
                     scenes,
                     self._cfg(SCENE_DAWN),
@@ -474,6 +555,7 @@ class ExtrapolationScene(Scene):
             ),
             "sunrise": SunEvent(
                 name="Sunrise",
+                key="sunrise",
                 scene=get_scene_by_uuid(
                     scenes,
                     self._cfg(SCENE_SUNRISE),
@@ -484,6 +566,7 @@ class ExtrapolationScene(Scene):
             ),
             "noon": SunEvent(
                 name="Noon",
+                key="noon",
                 scene=get_scene_by_uuid(
                     scenes,
                     self._cfg(SCENE_NOON),
@@ -494,6 +577,7 @@ class ExtrapolationScene(Scene):
             ),
             "sunset": SunEvent(
                 name="Sunset",
+                key="sunset",
                 scene=get_scene_by_uuid(
                     scenes,
                     self._cfg(SCENE_SUNSET),
@@ -504,6 +588,7 @@ class ExtrapolationScene(Scene):
             ),
             "dusk": SunEvent(
                 name="Dusk",
+                key="dusk",
                 scene=get_scene_by_uuid(
                     scenes,
                     self._cfg(SCENE_DUSK),
@@ -523,26 +608,43 @@ class ExtrapolationScene(Scene):
         dusk_was_overridden = dusk_final_time > dusk_calculated_time
         dusk_original_time = dusk_calculated_time if dusk_was_overridden else None
 
-        # Calculate time shift based on transition modifier
-        time_shift = self._calculate_time_shift_from_transition_modifier(
-            transition_modifier, sun_events
-        )
-
         current_seconds = self.seconds_since_midnight(0)
-        final_time = self.seconds_since_midnight(transition + time_shift)
+        final_time = self.seconds_since_midnight(transition)
+
+        if self._transition_percent_manual:
+            current_key, next_key, scene_transition_progress_percent = (
+                scene_keys_from_day_percent(self._manual_transition_percent)
+            )
+            current_sun_event = sun_events[current_key]
+            next_sun_event = sun_events[next_key]
+            day_percent = self._manual_transition_percent
+        else:
+            current_sun_event = self.get_sun_event(
+                offset=0,
+                sun_events=sun_events,
+                seconds_since_midnight=final_time,
+            )
+            next_sun_event = self.get_sun_event(
+                offset=1,
+                sun_events=sun_events,
+                seconds_since_midnight=final_time,
+            )
+            scene_transition_progress_percent = (
+                self.get_scene_transition_progress_percent(
+                    current_sun_event, next_sun_event, final_time
+                )
+            )
+            day_percent = day_transition_percent(
+                current_sun_event.key,
+                next_sun_event.key,
+                scene_transition_progress_percent,
+            )
 
         # Only run logging code if log level is info or higher
         if _LOGGER.isEnabledFor(logging.INFO):
-            # Format current time
             current_time_str = self._format_seconds_to_time(current_seconds)
-            modified_time_str = self._format_seconds_to_time(final_time)
+            final_time_str = self._format_seconds_to_time(final_time)
 
-            # Calculate hours and minutes for time shift
-            shift_hours = abs(time_shift) // 3600
-            shift_minutes = (abs(time_shift) % 3600) // 60
-            shift_direction = "+" if time_shift >= 0 else "-"
-
-            # Log comprehensive scene activation info
             _LOGGER.info("=" * 60)
             _LOGGER.info("Scene Activation Details")
             _LOGGER.info("=" * 60)
@@ -566,31 +668,21 @@ class ExtrapolationScene(Scene):
                 _LOGGER.info("Base time:       %s", current_time_str)
             else:
                 _LOGGER.info("Current time:    %s", current_time_str)
-            if transition_modifier != 0:
-                _LOGGER.info(
-                    "Modified time:   %s (Transition modifier: %s%s%% | %s%s hours and %s minutes)",
-                    modified_time_str,
-                    "+" if transition_modifier > 0 else "",
-                    transition_modifier,
-                    shift_direction,
-                    shift_hours,
-                    shift_minutes,
-                )
-            else:
-                _LOGGER.info(
-                    "Modified time:   %s (No transition modifier)", modified_time_str
-                )
+            _LOGGER.info("Apply as of:     %s", final_time_str)
+            _LOGGER.info(
+                "Day transition:  %s%% (%s)",
+                round(day_percent, 1),
+                "manual" if self._transition_percent_manual else "auto",
+            )
 
             _LOGGER.info("")
             _LOGGER.info("Solar Events:")
 
-            # Sort solar events by time and log them
             sorted_sun_events = sorted(sun_events.values(), key=lambda x: x.start_time)
             for sun_event in sorted_sun_events:
                 event_time_str = self._format_seconds_to_time(sun_event.start_time)
                 scene_entity_id = sun_event.scene.get("entity_id", "N/A")
-                # For dusk, show if time was overridden by minimum
-                if sun_event.name.lower() == "dusk" and dusk_was_overridden:
+                if sun_event.key == "dusk" and dusk_was_overridden:
                     dusk_original_str = self._format_seconds_to_time(dusk_original_time)
                     event_time_str = (
                         f"{event_time_str} ({dusk_original_str} was overridden)"
@@ -602,30 +694,14 @@ class ExtrapolationScene(Scene):
                     scene_entity_id,
                 )
 
-        current_sun_event = self.get_sun_event(
-            offset=0,
-            sun_events=sun_events,
-            seconds_since_midnight=final_time,
-        )
-
-        next_sun_event = self.get_sun_event(
-            offset=1,
-            sun_events=sun_events,
-            seconds_since_midnight=final_time,
-        )
-
-        scene_transition_progress_percent = self.get_scene_transition_progress_percent(
-            current_sun_event, next_sun_event, final_time
-        )
-
-        _LOGGER.info("")
-        _LOGGER.info(
-            "Current state:   %s%% transitioned from %s to %s",
-            round(scene_transition_progress_percent, 1),
-            current_sun_event.name,
-            next_sun_event.name,
-        )
-        _LOGGER.info("=" * 60)
+            _LOGGER.info("")
+            _LOGGER.info(
+                "Current state:   %s%% transitioned from %s to %s",
+                round(scene_transition_progress_percent, 1),
+                current_sun_event.name,
+                next_sun_event.name,
+            )
+            _LOGGER.info("=" * 60)
 
         _LOGGER.debug(
             "Time calculating solar events: %.3fs",
@@ -708,56 +784,44 @@ class ExtrapolationScene(Scene):
         offset_index = closest_match_index + offset
         return sorted_sun_events[offset_index % len(sorted_sun_events)]
 
-    def _calculate_time_shift_from_transition_modifier(
-        self, transition_modifier, sun_events
-    ):
-        """Calculate time shift from transition modifier percentage.
-
-        -100%: Shift time to dawn (before noon) or dusk (after noon) - full low-light scene
-        +100%: Shift time to noon - full bright scene
-        +50%: Shift time halfway between current time and noon
-        """
-        if transition_modifier == 0:
-            return 0
-
-        current_time = self.seconds_since_midnight(0)  # Current time without any shift
-
-        # Get noon, dawn, and dusk from the sun_events dictionary
-        noon_event = sun_events.get("noon")
-        dawn_event = sun_events.get("dawn")
-        dusk_event = sun_events.get("dusk")
-
-        if not noon_event or not dawn_event or not dusk_event:
-            _LOGGER.error(
-                "Could not find required solar events in sun_events dictionary"
-            )
-            return 0
-
-        noon_time = noon_event.start_time
-
-        if transition_modifier > 0:
-            # Positive modifier: shift towards noon (brighter)
-            target_time = noon_time
-        elif current_time < noon_time:
-            # Negative modifier before noon: shift towards dawn
-            target_time = dawn_event.start_time
-        else:
-            # Negative modifier after noon: shift towards dusk
-            target_time = dusk_event.start_time
-
-        # Calculate time difference (can be negative)
-        # For positive modifiers after noon: time_difference is negative (going backwards to today's noon)
-        # For positive modifiers before noon: time_difference is positive (going forwards to today's noon)
-        # For negative modifiers: time_difference direction depends on current time vs target
-        time_difference = target_time - current_time
-
-        # transition_modifier is a percentage of this time difference
-        # -100% means shift fully to dawn/dusk (time_difference * 100 / 100)
-        # +100% means shift fully to noon (time_difference * 100 / 100)
-        # +50% means shift halfway (time_difference * 50 / 100)
-        # transition_modifier comes in as a float like -99.0, 75.0, etc.
-        modifier_percent = abs(transition_modifier)
-        return int(time_difference * modifier_percent / 100)
+    def _current_day_transition_percent(self) -> float:
+        """Day position for the state attribute: stored if manual, else from the clock."""
+        if self._transition_percent_manual:
+            return self._manual_transition_percent
+        target = (
+            self._target_date_time
+            if self._target_date_time is not None
+            else datetime.now(tz=ZoneInfo(self.time_zone))
+        )
+        solar_events, _fallbacks = resolve_solar_events(
+            latitude=self.latitude,
+            longitude=self.longitude,
+            time_zone=self.time_zone,
+            target=target,
+        )
+        dusk_minimum = self._cfg(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
+        assert isinstance(
+            dusk_minimum, numbers.Number
+        ), "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
+        starts = {
+            key: self.datetime_to_seconds_since_midnight(solar_events[key])
+            for key in EVENT_ORDER
+            if key != "dusk"
+        }
+        starts["dusk"] = max(
+            self.datetime_to_seconds_since_midnight(solar_events["dusk"]),
+            dusk_minimum,
+        )
+        seconds = self.seconds_since_midnight(0)
+        ordered = sorted(EVENT_ORDER, key=lambda key: starts[key])
+        times = [starts[key] for key in ordered]
+        index = current_sun_event_index(times, seconds % 86400)
+        current_key = ordered[index]
+        next_key = ordered[(index + 1) % len(ordered)]
+        intra = transition_progress_percent(
+            starts[current_key], starts[next_key], seconds
+        )
+        return day_transition_percent(current_key, next_key, intra)
 
 
 async def apply_entities_parallel(entities, hass: HomeAssistant, transition_time=0):
