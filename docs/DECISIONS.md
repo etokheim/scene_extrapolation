@@ -64,6 +64,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 
 - **Date:** 2026-08-26
 - **Superseded in part:** 2026-08-26 — area is chosen before create and again on save; dusk minimum lives on the dusk event dialog; only nightlights stay on `ha-form`.
+- **Superseded in part:** 2026-08-26 — event and light editors use the automation-style sidebar, not a centered `ha-dialog`.
 - **Decision:** Dawn / sunrise / noon / sunset / dusk above the chart are the scene inputs. Clicking one opens a dialog with a native scene picker. Dawn, sunrise, and sunset can share one scene via “Same scene for dawn, sunrise, and sunset”; linked events get a shared outline. Scene entity pickers and the combine boolean are not on `ha-form`.
 - **Why:** The chart already lists those events. Duplicate pickers below the graph were the same decision twice. Linking lives on the event you are assigning, not a separate toggle.
 - **Do not reverse without user ask.**
@@ -71,8 +72,16 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Edit a light at a solar event; write the native scene
 
 - **Date:** 2026-08-26
+- **Superseded in part:** 2026-08-26 — the editor is an automation-style sidebar, not a centered modal.
 - **Decision:** Each light timeline has a pencil per solar event. The dialog edits that lamp’s **stored** state in the native YAML scene for that event (via `scenes.yaml`, same as HA’s scene editor), not the live entity. Optional **Live edit** applies the draft to the lamp only while the dialog is open; save and cancel both restore the lamp to the snapshot taken on open. After save, scenes reload and the preview refreshes.
 - **Why:** Tuning a circadian scene by watching the interpolated chart is faster than opening five HA scene editors. Live edit is opt-in so walking around the house is not required. Restoring on close avoids leaving the room stuck in a draft.
+- **Do not reverse without user ask.**
+
+## Scene editors use the automation sidebar / bottom sheet
+
+- **Date:** 2026-08-26
+- **Decision:** Pencil (light at a solar event) and solar-event scene assignment open an automation-style editor: a right-hand outlined `ha-card` with `ha-dialog-header` on wide viewports (375px, 2px `--primary-color` border, content/FAB shift left), and `ha-bottom-sheet` when `narrow` or `(max-width: 870px), (max-height: 500px)`. Do not use `ha-automation-sidebar` / `ha-automation-sidebar-card` / `ha-resizable-bottom-sheet` — those stay unregistered until the automation editor chunk loads. Save / Rename / area / delete stay centered `ha-dialog`s.
+- **Why:** The chart should stay visible while tuning a lamp or assigning a scene, the same split as Settings → Automations. Custom panels cannot import the automation-only elements.
 - **Do not reverse without user ask.**
 
 ## Legacy per-room entries migrate; this is not a breaking reconfigure

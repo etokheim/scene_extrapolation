@@ -114,6 +114,7 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._closeSceneSidebar();
     window.removeEventListener("hashchange", this._onHashChange);
     if (this._previewTimer) {
       window.clearTimeout(this._previewTimer);
@@ -320,9 +321,64 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-dialog ha-selector,
         .light-dialog ha-switch,
         .event-dialog ha-selector,
-        .event-dialog ha-switch {
+        .event-dialog ha-switch,
+        .scene-sidebar-body ha-selector,
+        .scene-sidebar-body ha-switch {
           display: block;
           margin-top: 16px;
+        }
+        .scene-sidebar.desktop {
+          --ha-card-border-radius: var(
+            --ha-dialog-border-radius,
+            var(--ha-border-radius-2xl, 28px)
+          );
+          position: absolute;
+          z-index: 7;
+          top: calc(var(--header-height, 64px) + 16px);
+          right: calc(16px + var(--safe-area-inset-right, 0px));
+          width: var(--scene-sidebar-width, 375px);
+          height: calc(
+            100% - var(--header-height, 64px) - 32px -
+              var(--safe-area-inset-bottom, 0px)
+          );
+          outline: none;
+        }
+        .scene-sidebar.mobile {
+          --ha-bottom-sheet-surface-background: var(--card-background-color);
+          --ha-card-border-radius: var(
+            --ha-dialog-border-radius,
+            var(--ha-border-radius-2xl, 28px)
+          );
+        }
+        .scene-sidebar-card {
+          height: 100%;
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          border-color: var(--primary-color);
+          border-width: 2px;
+          --ha-card-border-width: 2px;
+          --ha-card-border-color: var(--primary-color);
+        }
+        .scene-sidebar-card ha-dialog-header {
+          border-radius: var(--ha-card-border-radius);
+          border-bottom-left-radius: 0;
+          border-bottom-right-radius: 0;
+        }
+        .scene-sidebar-body {
+          flex: 1 1 auto;
+          min-height: 0;
+          overflow: auto;
+          padding: 0 24px 16px;
+        }
+        .scene-sidebar-footer {
+          display: flex;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 12px;
+          padding: 12px 16px 16px;
+          flex-shrink: 0;
         }
         .dialog-row {
           display: flex;
@@ -523,6 +579,18 @@ class SceneExtrapolationPanel extends HTMLElement {
         .fab[hidden] {
           display: none;
         }
+        :host(.has-scene-sidebar) .sun-path {
+          padding-inline-end: calc(var(--scene-sidebar-width, 375px) + 16px);
+        }
+        :host(.has-scene-sidebar) .content.wide {
+          margin-inline-end: calc(var(--scene-sidebar-width, 375px) + 16px);
+        }
+        :host(.has-scene-sidebar) .fab {
+          right: calc(
+            16px + var(--safe-area-inset-right, 0px) +
+              var(--scene-sidebar-width, 375px) + 16px
+          );
+        }
         .save-dialog ha-input,
         .save-dialog ha-textarea,
         .save-dialog ha-labels-picker,
@@ -663,6 +731,7 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _renderList() {
+    this._closeSceneSidebar();
     this._form = undefined;
     this._headerEl.textContent = "Scene Extrapolation";
     this._setNavigationIcon(this._menuButton());
@@ -917,6 +986,99 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._go("new");
   }
 
+  _isEditorNarrow() {
+    return (
+      Boolean(this._narrow) ||
+      window.matchMedia("(max-width: 870px), (max-height: 500px)").matches
+    );
+  }
+
+  _closeSceneSidebar() {
+    const el = this.shadowRoot?.querySelector(".scene-sidebar");
+    if (!el) {
+      return;
+    }
+    el.dispatchEvent(new Event("closed"));
+    el.remove();
+    this.classList.remove("has-scene-sidebar");
+  }
+
+  _requestCloseSceneSidebar(el) {
+    if (el?.localName === "ha-bottom-sheet") {
+      el.open = false;
+      return;
+    }
+    this._closeSceneSidebar();
+  }
+
+  _openSceneSidebar({ title, subtitle, className }) {
+    this._closeSceneSidebar();
+    const useSheet =
+      this._isEditorNarrow() &&
+      customElements.get("ha-bottom-sheet") !== undefined;
+    const host = useSheet
+      ? document.createElement("ha-bottom-sheet")
+      : document.createElement("div");
+    host.className = `scene-sidebar ${className} ${useSheet ? "mobile" : "desktop"}`;
+    host.tabIndex = -1;
+
+    const header = document.createElement("ha-dialog-header");
+    const closeBtn = document.createElement("ha-icon-button");
+    closeBtn.slot = "navigationIcon";
+    closeBtn.label = this._loc("ui.dialogs.generic.close", "Close");
+    const closeIcon = document.createElement("ha-icon");
+    closeIcon.setAttribute("icon", "mdi:close");
+    closeBtn.appendChild(closeIcon);
+    closeBtn.addEventListener("click", () => this._requestCloseSceneSidebar(host));
+    const titleEl = document.createElement("span");
+    titleEl.slot = "title";
+    titleEl.textContent = title;
+    header.append(closeBtn, titleEl);
+    if (subtitle) {
+      const sub = document.createElement("span");
+      sub.slot = "subtitle";
+      sub.textContent = subtitle;
+      header.appendChild(sub);
+    }
+
+    const body = document.createElement("div");
+    body.className = "scene-sidebar-body";
+    const footer = document.createElement("div");
+    footer.className = "scene-sidebar-footer";
+
+    if (useSheet) {
+      host.flexContent = true;
+      header.slot = "header";
+      footer.slot = "footer";
+      host.append(header, body, footer);
+    } else {
+      const card = document.createElement("ha-card");
+      card.className = "scene-sidebar-card";
+      card.outlined = true;
+      card.append(header, body, footer);
+      host.appendChild(card);
+      host.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape") {
+          ev.stopPropagation();
+          this._requestCloseSceneSidebar(host);
+        }
+      });
+    }
+
+    host.addEventListener("closed", () => {
+      this.classList.remove("has-scene-sidebar");
+      host.remove();
+    });
+    this.shadowRoot.appendChild(host);
+    if (useSheet) {
+      host.open = true;
+    } else {
+      this.classList.add("has-scene-sidebar");
+      host.focus();
+    }
+    return { host, body, footer };
+  }
+
   _renderEditor() {
     this._headerEl.textContent = this._editId
       ? this._formData.scene_name || "Edit scene"
@@ -1073,16 +1235,15 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _openEventSceneDialog(event) {
-    this.shadowRoot.querySelector("ha-dialog.event-dialog")?.remove();
     const canLink = LINKED_EVENTS.includes(event.id);
     const data = {
       scene: this._eventSceneId(event.id),
       linked: Boolean(canLink && this._formData.display_scenes_combined),
     };
-    const dialog = document.createElement("ha-dialog");
-    dialog.className = "event-dialog";
-    dialog.setAttribute("header-title", event.name);
-    dialog.open = true;
+    const { host, body, footer } = this._openSceneSidebar({
+      title: event.name,
+      className: "event-dialog",
+    });
 
     const picker = document.createElement("ha-selector");
     picker.hass = this._hass;
@@ -1098,7 +1259,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       ev.stopPropagation();
       data.scene = ev.detail?.value || null;
     });
-    dialog.appendChild(picker);
+    body.appendChild(picker);
 
     if (event.id === "dusk") {
       data.duskMinimum = this._formData.scene_dusk_minimum_time_of_day;
@@ -1112,7 +1273,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         ev.stopPropagation();
         data.duskMinimum = ev.detail?.value;
       });
-      dialog.appendChild(timePicker);
+      body.appendChild(timePicker);
     }
 
     if (canLink) {
@@ -1126,20 +1287,14 @@ class SceneExtrapolationPanel extends HTMLElement {
         data.linked = Boolean(toggle.checked);
       });
       row.append(text, toggle);
-      dialog.appendChild(row);
+      body.appendChild(row);
     }
 
-    const footer = document.createElement("ha-dialog-footer");
-    footer.slot = "footer";
     const cancel = document.createElement("ha-button");
-    cancel.slot = "secondaryAction";
     cancel.appearance = "plain";
     cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => {
-      dialog.open = false;
-    });
+    cancel.addEventListener("click", () => this._requestCloseSceneSidebar(host));
     const done = document.createElement("ha-button");
-    done.slot = "primaryAction";
     done.variant = "brand";
     done.textContent = "Done";
     done.addEventListener("click", () => {
@@ -1147,12 +1302,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._formData.scene_dusk_minimum_time_of_day = data.duskMinimum;
       }
       this._setEventScene(event.id, data.scene, canLink ? data.linked : false);
-      dialog.open = false;
+      this._requestCloseSceneSidebar(host);
     });
     footer.append(cancel, done);
-    dialog.appendChild(footer);
-    dialog.addEventListener("closed", () => dialog.remove());
-    this.shadowRoot.appendChild(dialog);
   }
 
   _lightServicePayload(entityId, stored) {
@@ -1205,7 +1357,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._openEventSceneDialog(event);
       return;
     }
-    this.shadowRoot.querySelector("ha-dialog.light-dialog")?.remove();
     const eventState = (light.event_states || []).find(
       (item) => item.event === event.id
     );
@@ -1216,16 +1367,17 @@ class SceneExtrapolationPanel extends HTMLElement {
     const supported =
       this._hass.states[light.entity_id]?.attributes?.supported_color_modes || [];
 
-    const dialog = document.createElement("ha-dialog");
-    dialog.className = "light-dialog";
-    dialog.setAttribute("header-title", `${light.name} · ${event.name}`);
-    dialog.open = true;
+    const { host, body, footer } = this._openSceneSidebar({
+      title: light.name,
+      subtitle: event.name,
+      className: "light-dialog",
+    });
 
     const sceneLine = document.createElement("p");
     sceneLine.className = "sun-fallback-note";
     sceneLine.style.margin = "0 0 8px";
     sceneLine.textContent = `Saved to ${this._sceneName(sceneEntityId)}`;
-    dialog.appendChild(sceneLine);
+    body.appendChild(sceneLine);
 
     const applyLive = async () => {
       if (!liveEdit) {
@@ -1251,7 +1403,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     });
     liveRow.append(liveLabel, liveSwitch);
-    dialog.appendChild(liveRow);
+    body.appendChild(liveRow);
 
     const onField = document.createElement("ha-selector");
     onField.hass = this._hass;
@@ -1263,7 +1415,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       draft.state = ev.detail.value ? "on" : "off";
       await applyLive();
     });
-    dialog.appendChild(onField);
+    body.appendChild(onField);
 
     const brightness = document.createElement("ha-selector");
     brightness.hass = this._hass;
@@ -1286,7 +1438,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       await applyLive();
     });
-    dialog.appendChild(brightness);
+    body.appendChild(brightness);
 
     const hasTemp = supported.includes("color_temp");
     const hasColor = supported.some((mode) =>
@@ -1313,7 +1465,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         draft.state = "on";
         await applyLive();
       });
-      dialog.appendChild(temp);
+      body.appendChild(temp);
     }
     if (hasColor) {
       const color = document.createElement("ha-selector");
@@ -1328,7 +1480,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         draft.state = "on";
         await applyLive();
       });
-      dialog.appendChild(color);
+      body.appendChild(color);
     }
 
     const restoreLive = async () => {
@@ -1338,18 +1490,11 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     };
 
-    const footer = document.createElement("ha-dialog-footer");
-    footer.slot = "footer";
     const cancel = document.createElement("ha-button");
-    cancel.slot = "secondaryAction";
     cancel.appearance = "plain";
     cancel.textContent = "Cancel";
-    cancel.addEventListener("click", async () => {
-      await restoreLive();
-      dialog.open = false;
-    });
+    cancel.addEventListener("click", () => this._requestCloseSceneSidebar(host));
     const save = document.createElement("ha-button");
-    save.slot = "primaryAction";
     save.variant = "brand";
     save.textContent = "Save";
     save.addEventListener("click", async () => {
@@ -1361,23 +1506,20 @@ class SceneExtrapolationPanel extends HTMLElement {
           entity_state: draft,
         });
         await restoreLive();
-        dialog.open = false;
+        this._requestCloseSceneSidebar(host);
         this._sunPathKey = undefined;
         this._ensureSunPath();
       } catch (err) {
         this._error = err.message || String(err);
         await restoreLive();
-        dialog.open = false;
+        this._requestCloseSceneSidebar(host);
         this._renderEditor();
       }
     });
     footer.append(cancel, save);
-    dialog.appendChild(footer);
-    dialog.addEventListener("closed", () => {
+    host.addEventListener("closed", () => {
       restoreLive();
-      dialog.remove();
     });
-    this.shadowRoot.appendChild(dialog);
   }
 
   async _openSaveDialog({ rename = false, focus } = {}) {

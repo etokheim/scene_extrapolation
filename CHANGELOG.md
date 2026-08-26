@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Create/save use a sticky native HA button (New extrapolation scene / Save) instead of inline form actions
 - Preview day uses HA’s date selector instead of a raw browser date input
 - Light graphs fill the area under the brightness line opaquely, with a 50% opacity color wash behind the whole row
+- Scene light and event editors use Home Assistant’s automation-style right sidebar (bottom sheet on narrow screens)
 - Scene pickers moved onto the solar event row; the form keeps nightlights
 
 ### Fixed
