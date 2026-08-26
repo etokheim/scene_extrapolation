@@ -6,9 +6,17 @@ const PLOT_TOP = 28;
 const PLOT_BOTTOM = 168;
 const PLOT_LEFT = 16;
 const PLOT_RIGHT = 984;
-const LIGHT_BAR_HEIGHT = 52;
+const LIGHT_BAR_HEIGHT = 60;
 const LIGHT_BAR_TOP = 0;
-const LIGHT_BAR_BOTTOM = 52;
+const LIGHT_BAR_BOTTOM = 60;
+const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
+const EVENT_SCENE_KEYS = {
+  dawn: "scene_dawn",
+  sunrise: "scene_sunrise",
+  noon: "scene_noon",
+  sunset: "scene_sunset",
+  dusk: "scene_dusk",
+};
 
 const LABELS = {
   scene_name: "Scene name",
@@ -215,6 +223,35 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-name:hover {
           text-decoration: underline;
         }
+        .light-edits {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+        }
+        .light-edit {
+          position: absolute;
+          bottom: 0;
+          transform: translateX(-50%);
+          pointer-events: auto;
+          --mdc-icon-button-size: 28px;
+          --mdc-icon-size: 16px;
+          color: var(--primary-text-color);
+          filter: drop-shadow(0 0 4px var(--card-background-color));
+        }
+        .light-dialog ha-selector,
+        .light-dialog ha-switch,
+        .event-dialog ha-selector,
+        .event-dialog ha-switch {
+          display: block;
+          margin-top: 16px;
+        }
+        .dialog-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-top: 16px;
+        }
         .light-warn {
           position: absolute;
           right: 16px;
@@ -244,6 +281,24 @@ class SceneExtrapolationPanel extends HTMLElement {
           align-items: center;
           text-align: center;
           gap: 2px;
+          margin: 0;
+          padding: 6px 4px;
+          border: 1px solid transparent;
+          border-radius: 12px;
+          background: transparent;
+          color: inherit;
+          font: inherit;
+          cursor: default;
+        }
+        .sun-event.clickable {
+          cursor: pointer;
+        }
+        .sun-event.clickable:hover {
+          background: var(--secondary-background-color);
+        }
+        .sun-event.linked {
+          border-color: var(--primary-color);
+          background: color-mix(in srgb, var(--primary-color) 12%, transparent);
         }
         .sun-event ha-icon {
           --mdc-icon-size: 22px;
@@ -258,6 +313,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-size: 12px;
           color: var(--secondary-text-color);
           font-variant-numeric: tabular-nums;
+        }
+        .sun-event .scene {
+          font-size: 11px;
+          color: var(--primary-color);
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .sun-event .scene.empty {
+          color: var(--secondary-text-color);
         }
         .sun-chart {
           position: relative;
@@ -654,12 +720,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     form.computeLabel = (schema) => LABELS[schema.name] || schema.name;
     form.computeHelper = (schema) => HELPERS[schema.name] || "";
     form.addEventListener("value-changed", (ev) => {
-      const previousCombined = this._formData.display_scenes_combined;
-      this._formData = ev.detail.value;
+      this._formData = { ...this._formData, ...ev.detail.value };
       this._error = null;
-      if (previousCombined !== this._formData.display_scenes_combined) {
-        form.schema = this._schema();
-      }
       this._schedulePreview();
     });
     this._form = form;
@@ -739,38 +801,344 @@ class SceneExtrapolationPanel extends HTMLElement {
   _schema() {
     const areaId = this._formData.area || null;
     const sceneSelector = entitySelector(this._hass, "scene", areaId, true);
-    const schema = [
+    return [
       { name: "area", selector: { area: {} } },
-      { name: "display_scenes_combined", selector: { boolean: {} } },
-    ];
-    if (this._formData.display_scenes_combined) {
-      schema.push(
-        {
-          name: "scene_dawn_sunrise_sunset",
-          required: true,
-          selector: sceneSelector,
-        },
-        { name: "scene_noon", required: true, selector: sceneSelector },
-        { name: "scene_dusk", required: true, selector: sceneSelector }
-      );
-    } else {
-      schema.push(
-        { name: "scene_dawn", required: true, selector: sceneSelector },
-        { name: "scene_sunrise", required: true, selector: sceneSelector },
-        { name: "scene_noon", required: true, selector: sceneSelector },
-        { name: "scene_sunset", required: true, selector: sceneSelector },
-        { name: "scene_dusk", required: true, selector: sceneSelector }
-      );
-    }
-    schema.push(
       { name: "scene_dusk_minimum_time_of_day", selector: { time: {} } },
       {
         name: "nightlights_boolean",
         selector: { entity: { domain: "input_boolean", multiple: false } },
       },
-      { name: "nightlights_scene", selector: sceneSelector }
+      { name: "nightlights_scene", selector: sceneSelector },
+    ];
+  }
+
+  _eventSceneId(eventId) {
+    if (LINKED_EVENTS.includes(eventId) && this._formData.display_scenes_combined) {
+      return this._formData.scene_dawn_sunrise_sunset || null;
+    }
+    return this._formData[EVENT_SCENE_KEYS[eventId]] || null;
+  }
+
+  _sceneName(entityId) {
+    if (!entityId) {
+      return "";
+    }
+    const state = this._hass?.states?.[entityId];
+    return state?.attributes?.friendly_name || entityId.replace(/^scene\./, "");
+  }
+
+  _setEventScene(eventId, sceneId, linked) {
+    if (LINKED_EVENTS.includes(eventId)) {
+      if (linked) {
+        this._formData.display_scenes_combined = true;
+        this._formData.scene_dawn_sunrise_sunset = sceneId;
+        this._formData.scene_dawn = sceneId;
+        this._formData.scene_sunrise = sceneId;
+        this._formData.scene_sunset = sceneId;
+      } else {
+        const shared = this._formData.scene_dawn_sunrise_sunset;
+        this._formData.display_scenes_combined = false;
+        this._formData.scene_dawn_sunrise_sunset = null;
+        this._formData.scene_dawn = this._formData.scene_dawn || shared;
+        this._formData.scene_sunrise = this._formData.scene_sunrise || shared;
+        this._formData.scene_sunset = this._formData.scene_sunset || shared;
+        this._formData[EVENT_SCENE_KEYS[eventId]] = sceneId;
+      }
+    } else {
+      this._formData[EVENT_SCENE_KEYS[eventId]] = sceneId;
+    }
+    this._sunPathKey = undefined;
+    this._ensureSunPath();
+  }
+
+  _openEventSceneDialog(event) {
+    this.shadowRoot.querySelector("ha-dialog.event-dialog")?.remove();
+    const canLink = LINKED_EVENTS.includes(event.id);
+    const data = {
+      scene: this._eventSceneId(event.id),
+      linked: Boolean(canLink && this._formData.display_scenes_combined),
+    };
+    const dialog = document.createElement("ha-dialog");
+    dialog.className = "event-dialog";
+    dialog.setAttribute("header-title", event.name);
+    dialog.open = true;
+
+    const picker = document.createElement("ha-selector");
+    picker.hass = this._hass;
+    picker.label = "Scene";
+    picker.value = data.scene;
+    picker.selector = entitySelector(
+      this._hass,
+      "scene",
+      this._formData.area || null,
+      true
     );
-    return schema;
+    picker.addEventListener("value-changed", (ev) => {
+      ev.stopPropagation();
+      data.scene = ev.detail?.value || null;
+    });
+    dialog.appendChild(picker);
+
+    if (canLink) {
+      const row = document.createElement("label");
+      row.className = "dialog-row";
+      const text = document.createElement("span");
+      text.textContent = "Same scene for dawn, sunrise, and sunset";
+      const toggle = document.createElement("ha-switch");
+      toggle.checked = data.linked;
+      toggle.addEventListener("change", () => {
+        data.linked = Boolean(toggle.checked);
+      });
+      row.append(text, toggle);
+      dialog.appendChild(row);
+    }
+
+    const footer = document.createElement("ha-dialog-footer");
+    footer.slot = "footer";
+    const cancel = document.createElement("ha-button");
+    cancel.slot = "secondaryAction";
+    cancel.appearance = "plain";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => {
+      dialog.open = false;
+    });
+    const done = document.createElement("ha-button");
+    done.slot = "primaryAction";
+    done.variant = "brand";
+    done.textContent = "Done";
+    done.addEventListener("click", () => {
+      this._setEventScene(event.id, data.scene, canLink ? data.linked : false);
+      dialog.open = false;
+    });
+    footer.append(cancel, done);
+    dialog.appendChild(footer);
+    dialog.addEventListener("closed", () => dialog.remove());
+    this.shadowRoot.appendChild(dialog);
+  }
+
+  _lightServicePayload(entityId, stored) {
+    if (!stored || stored.state === "off") {
+      return { service: "turn_off", data: { entity_id: entityId } };
+    }
+    const data = { entity_id: entityId };
+    for (const key of [
+      "brightness",
+      "color_temp_kelvin",
+      "hs_color",
+      "rgb_color",
+      "rgbw_color",
+      "rgbww_color",
+      "effect",
+    ]) {
+      if (stored[key] != null && stored[key] !== "none") {
+        data[key] = stored[key];
+      }
+    }
+    return { service: "turn_on", data };
+  }
+
+  async _applyLightState(entityId, stored) {
+    const payload = this._lightServicePayload(entityId, stored);
+    await this._hass.callService("light", payload.service, payload.data);
+  }
+
+  _snapshotLight(entityId) {
+    const state = this._hass.states[entityId];
+    if (!state) {
+      return { state: "off" };
+    }
+    const attrs = state.attributes || {};
+    return {
+      state: state.state,
+      brightness: attrs.brightness,
+      color_temp_kelvin: attrs.color_temp_kelvin,
+      hs_color: attrs.hs_color,
+      rgb_color: attrs.rgb_color,
+      rgbw_color: attrs.rgbw_color,
+      rgbww_color: attrs.rgbww_color,
+      effect: attrs.effect,
+    };
+  }
+
+  async _openLightEditDialog(light, event) {
+    const sceneEntityId = this._eventSceneId(event.id);
+    if (!sceneEntityId) {
+      this._openEventSceneDialog(event);
+      return;
+    }
+    this.shadowRoot.querySelector("ha-dialog.light-dialog")?.remove();
+    const eventState = (light.event_states || []).find(
+      (item) => item.event === event.id
+    );
+    const draft = { ...(eventState?.state || { state: "off" }) };
+    const snapshot = this._snapshotLight(light.entity_id);
+    let liveEdit = false;
+    let liveApplied = false;
+    const supported =
+      this._hass.states[light.entity_id]?.attributes?.supported_color_modes || [];
+
+    const dialog = document.createElement("ha-dialog");
+    dialog.className = "light-dialog";
+    dialog.setAttribute("header-title", `${light.name} · ${event.name}`);
+    dialog.open = true;
+
+    const sceneLine = document.createElement("p");
+    sceneLine.className = "sun-fallback-note";
+    sceneLine.style.margin = "0 0 8px";
+    sceneLine.textContent = `Saved to ${this._sceneName(sceneEntityId)}`;
+    dialog.appendChild(sceneLine);
+
+    const applyLive = async () => {
+      if (!liveEdit) {
+        return;
+      }
+      liveApplied = true;
+      await this._applyLightState(light.entity_id, draft);
+    };
+
+    const liveRow = document.createElement("label");
+    liveRow.className = "dialog-row";
+    const liveLabel = document.createElement("span");
+    liveLabel.textContent = "Live edit";
+    const liveSwitch = document.createElement("ha-switch");
+    liveSwitch.checked = false;
+    liveSwitch.addEventListener("change", async () => {
+      liveEdit = Boolean(liveSwitch.checked);
+      if (liveEdit) {
+        await applyLive();
+      } else if (liveApplied) {
+        await this._applyLightState(light.entity_id, snapshot);
+        liveApplied = false;
+      }
+    });
+    liveRow.append(liveLabel, liveSwitch);
+    dialog.appendChild(liveRow);
+
+    const onField = document.createElement("ha-selector");
+    onField.hass = this._hass;
+    onField.label = "On";
+    onField.value = draft.state !== "off";
+    onField.selector = { boolean: {} };
+    onField.addEventListener("value-changed", async (ev) => {
+      ev.stopPropagation();
+      draft.state = ev.detail.value ? "on" : "off";
+      await applyLive();
+    });
+    dialog.appendChild(onField);
+
+    const brightness = document.createElement("ha-selector");
+    brightness.hass = this._hass;
+    brightness.label = "Brightness";
+    brightness.value = Math.round(((draft.brightness || 0) / 255) * 100);
+    brightness.selector = {
+      number: {
+        min: 0,
+        max: 100,
+        step: 1,
+        mode: "slider",
+        unit_of_measurement: "%",
+      },
+    };
+    brightness.addEventListener("value-changed", async (ev) => {
+      ev.stopPropagation();
+      draft.brightness = Math.round((Number(ev.detail.value) / 100) * 255);
+      if (draft.brightness > 0) {
+        draft.state = "on";
+      }
+      await applyLive();
+    });
+    dialog.appendChild(brightness);
+
+    const hasTemp = supported.includes("color_temp");
+    const hasColor = supported.some((mode) =>
+      ["hs", "rgb", "rgbw", "rgbww", "xy"].includes(mode)
+    );
+    if (hasTemp) {
+      const attrs = this._hass.states[light.entity_id]?.attributes || {};
+      const temp = document.createElement("ha-selector");
+      temp.hass = this._hass;
+      temp.label = "Color temperature";
+      temp.value = draft.color_temp_kelvin || attrs.min_color_temp_kelvin || 2700;
+      temp.selector = {
+        color_temp: {
+          unit: "kelvin",
+          min: attrs.min_color_temp_kelvin,
+          max: attrs.max_color_temp_kelvin,
+        },
+      };
+      temp.addEventListener("value-changed", async (ev) => {
+        ev.stopPropagation();
+        draft.color_temp_kelvin = ev.detail.value;
+        draft.rgb_color = undefined;
+        draft.hs_color = undefined;
+        draft.state = "on";
+        await applyLive();
+      });
+      dialog.appendChild(temp);
+    }
+    if (hasColor) {
+      const color = document.createElement("ha-selector");
+      color.hass = this._hass;
+      color.label = "Color";
+      color.value = draft.rgb_color || [255, 214, 170];
+      color.selector = { color_rgb: {} };
+      color.addEventListener("value-changed", async (ev) => {
+        ev.stopPropagation();
+        draft.rgb_color = ev.detail.value;
+        draft.color_temp_kelvin = undefined;
+        draft.state = "on";
+        await applyLive();
+      });
+      dialog.appendChild(color);
+    }
+
+    const restoreLive = async () => {
+      if (liveApplied) {
+        await this._applyLightState(light.entity_id, snapshot);
+        liveApplied = false;
+      }
+    };
+
+    const footer = document.createElement("ha-dialog-footer");
+    footer.slot = "footer";
+    const cancel = document.createElement("ha-button");
+    cancel.slot = "secondaryAction";
+    cancel.appearance = "plain";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", async () => {
+      await restoreLive();
+      dialog.open = false;
+    });
+    const save = document.createElement("ha-button");
+    save.slot = "primaryAction";
+    save.variant = "brand";
+    save.textContent = "Save";
+    save.addEventListener("click", async () => {
+      try {
+        await this._hass.callWS({
+          type: `${DOMAIN}/update_native_scene`,
+          scene_entity_id: sceneEntityId,
+          entity_id: light.entity_id,
+          entity_state: draft,
+        });
+        await restoreLive();
+        dialog.open = false;
+        this._sunPathKey = undefined;
+        this._ensureSunPath();
+      } catch (err) {
+        this._error = err.message || String(err);
+        await restoreLive();
+        dialog.open = false;
+        this._renderEditor();
+      }
+    });
+    footer.append(cancel, save);
+    dialog.appendChild(footer);
+    dialog.addEventListener("closed", () => {
+      restoreLive();
+      dialog.remove();
+    });
+    this.shadowRoot.appendChild(dialog);
   }
 
   async _openSaveDialog({ rename = false } = {}) {
@@ -1253,9 +1621,19 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const eventsRow = document.createElement("div");
     eventsRow.className = "sun-events";
+    const editable = this._view === "edit";
+    const linked = Boolean(this._formData.display_scenes_combined);
     for (const event of events) {
-      const item = document.createElement("div");
+      const item = document.createElement(editable ? "button" : "div");
       item.className = "sun-event";
+      if (editable) {
+        item.type = "button";
+        item.classList.add("clickable");
+        item.addEventListener("click", () => this._openEventSceneDialog(event));
+      }
+      if (editable && linked && LINKED_EVENTS.includes(event.id)) {
+        item.classList.add("linked");
+      }
       const bits = [];
       if (event.overridden) {
         bits.push(`${event.name} uses the dusk minimum (${event.solar_time} solar dusk)`);
@@ -1277,6 +1655,17 @@ class SceneExtrapolationPanel extends HTMLElement {
       time.className = "time";
       time.textContent = event.fallback ? `${event.time}*` : event.time;
       item.append(icon, name, time);
+      if (editable) {
+        const scene = document.createElement("span");
+        scene.className = "scene";
+        const sceneId = this._eventSceneId(event.id);
+        const sceneName = this._sceneName(sceneId);
+        scene.textContent = sceneName || "Choose scene";
+        if (!sceneName) {
+          scene.classList.add("empty");
+        }
+        item.appendChild(scene);
+      }
       eventsRow.appendChild(item);
     }
 
@@ -1424,6 +1813,28 @@ class SceneExtrapolationPanel extends HTMLElement {
       );
     });
     bar.appendChild(name);
+    if (this._view === "edit") {
+      const edits = document.createElement("div");
+      edits.className = "light-edits";
+      for (const event of events) {
+        if (!this._eventSceneId(event.id)) {
+          continue;
+        }
+        const button = document.createElement("ha-icon-button");
+        button.className = "light-edit";
+        button.label = `Edit ${light.name} at ${event.name}`;
+        button.style.left = `${(xOf(event.seconds) / CHART_WIDTH) * 100}%`;
+        const icon = document.createElement("ha-icon");
+        icon.setAttribute("icon", "mdi:pencil");
+        button.appendChild(icon);
+        button.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          this._openLightEditDialog(light, event);
+        });
+        edits.appendChild(button);
+      }
+      bar.appendChild(edits);
+    }
     if (light.gaps?.length) {
       const warn = document.createElement("div");
       warn.className = "light-warn";

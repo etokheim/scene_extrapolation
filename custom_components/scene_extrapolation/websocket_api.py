@@ -8,6 +8,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import entity_registry as er
 
@@ -18,6 +19,7 @@ from .const import (
     DATA_STORE,
     DOMAIN,
 )
+from .native_scene import async_update_native_scene_entity
 from .preview import build_preview
 from .scene import async_create_or_update_entity, async_remove_entity
 from .solar import build_sun_path
@@ -34,6 +36,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_delete)
     websocket_api.async_register_command(hass, ws_sun_path)
     websocket_api.async_register_command(hass, ws_preview)
+    websocket_api.async_register_command(hass, ws_update_native_scene)
 
 
 def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
@@ -223,4 +226,33 @@ async def ws_preview(
         target_date=msg.get("date"),
         scene_ids=scenes,
     )
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/update_native_scene",
+        vol.Required("scene_entity_id"): str,
+        vol.Required("entity_id"): str,
+        vol.Required("entity_state"): dict,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_update_native_scene(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Write one light into a native YAML scene and reload scenes."""
+    try:
+        payload = await async_update_native_scene_entity(
+            hass,
+            msg["scene_entity_id"],
+            msg["entity_id"],
+            msg["entity_state"],
+        )
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "update_failed", str(err))
+        return
     connection.send_result(msg["id"], payload)

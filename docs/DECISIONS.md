@@ -60,6 +60,27 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Why:** A single line matches the sun chart and stays cheap to paint. Labels on the plot save vertical space; clicking through to the entity is the usual HA pattern. Missing entities are supported on purpose (e.g. a lamp that only exists in the evening scene).
 - **Do not reverse without user ask.**
 
+## Solar event row is the scene picker
+
+- **Date:** 2026-08-26
+- **Decision:** Dawn / sunrise / noon / sunset / dusk above the chart are the scene inputs. Clicking one opens a dialog with a native scene picker. Dawn, sunrise, and sunset can share one scene via “Same scene for dawn, sunrise, and sunset”; linked events get a shared outline. Scene entity pickers and the combine boolean are not on `ha-form`. Area, dusk minimum, and nightlights stay on the form.
+- **Why:** The chart already lists those events. Duplicate pickers below the graph were the same decision twice. Linking lives on the event you are assigning, not a separate toggle.
+- **Do not reverse without user ask.**
+
+## Edit a light at a solar event; write the native scene
+
+- **Date:** 2026-08-26
+- **Decision:** Each light timeline has a pencil per solar event. The dialog edits that lamp’s **stored** state in the native YAML scene for that event (via `scenes.yaml`, same as HA’s scene editor), not the live entity. Optional **Live edit** applies the draft to the lamp only while the dialog is open; save and cancel both restore the lamp to the snapshot taken on open. After save, scenes reload and the preview refreshes.
+- **Why:** Tuning a circadian scene by watching the interpolated chart is faster than opening five HA scene editors. Live edit is opt-in so walking around the house is not required. Restoring on close avoids leaving the room stuck in a draft.
+- **Do not reverse without user ask.**
+
+## Legacy per-room entries migrate; this is not a breaking reconfigure
+
+- **Date:** 2026-08-26
+- **Decision:** Treat the sidebar/store move as a **minor** (2.2.x), not a major. On setup, each old config entry is imported into `scene_extrapolation.scenes` using its `unique_id`, extra entries are removed, and scene entities keep that unique id. Users do not re-pick rooms or native scenes. The options flow is gone; editing happens in the sidebar. Mark 🚨 / major only if unique ids, service fields, or stored keys become incompatible without a migrator.
+- **Why:** The configuration home moved; the data did not. A major would force a fake reconfigure on the only production user and on anyone who upgrades through HACS.
+- **Do not reverse without user ask.**
+
 ## Native HA date field for the preview day
 
 - **Date:** 2026-08-26

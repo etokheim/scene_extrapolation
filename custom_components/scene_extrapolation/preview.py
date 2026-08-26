@@ -27,6 +27,7 @@ from .const import (
     SCENE_SUNRISE,
     SCENE_SUNSET,
 )
+from .native_scene import scene_entity_payload
 from .scene import (
     current_sun_event_index,
     extrapolate_brightness,
@@ -124,12 +125,26 @@ def _light_series(
             seconds = minute * 60
             brightness_pct, rgb = _sample_light(bound, entity_id, seconds)
             samples.append([seconds, brightness_pct, rgb[0], rgb[1], rgb[2]])
+        event_states = []
+        for item in bound:
+            stored = item["scene"]["entities"].get(entity_id)
+            event_states.append(
+                {
+                    "event": item["id"],
+                    "scene_entity_id": item["scene"]["entity_id"],
+                    "scene_id": item["scene"]["id"],
+                    "scene_name": item["scene"]["name"],
+                    "present": stored is not None,
+                    "state": scene_entity_payload(stored),
+                }
+            )
         lights.append(
             {
                 "entity_id": entity_id,
                 "name": state.name if state else entity_id,
                 "samples": samples,
                 "gaps": warnings_by_light.get(entity_id, []),
+                "event_states": event_states,
             }
         )
     return lights, warnings

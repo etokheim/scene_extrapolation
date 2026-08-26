@@ -15,7 +15,8 @@ from homeassistant.core import HomeAssistant
 _LOGGER = logging.getLogger(__name__)
 
 EVENT_META = (
-    ("dawn", "Dawn", "mdi:horizon"),
+    # mdi:horizon is not in HA's icon set, so dawn would render blank.
+    ("dawn", "Dawn", "mdi:weather-sunset"),
     ("sunrise", "Sunrise", "mdi:weather-sunset-up"),
     ("noon", "Noon", "mdi:weather-sunny"),
     ("sunset", "Sunset", "mdi:weather-sunset-down"),
