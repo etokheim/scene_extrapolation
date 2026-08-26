@@ -22,13 +22,15 @@ FRONTEND_DIR = Path(__file__).parent / "frontend"
 PANEL_VERSION = json.loads(
     (Path(__file__).parent / "manifest.json").read_text(encoding="utf-8")
 ).get("version", "0")
+# Increment when panel.js changes without a manifest version bump.
+PANEL_ASSET_REV = "3"
 
 
 async def async_setup_panel(hass: HomeAssistant) -> None:
     """Serve the panel JS and add a sidebar entry."""
     # Versioned path so HA's frontend module cache picks up panel.js after a restart.
-    # Bump manifest.json version when shipping frontend-only changes.
-    static_url = f"/api/scene_extrapolation/assets/{PANEL_VERSION}"
+    # Bump manifest.json version for releases; increment PANEL_ASSET_REV for WIP frontend.
+    static_url = f"/api/scene_extrapolation/assets/{PANEL_VERSION}-{PANEL_ASSET_REV}"
     try:
         await hass.http.async_register_static_paths(
             [

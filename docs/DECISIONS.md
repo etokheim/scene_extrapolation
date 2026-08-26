@@ -20,7 +20,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Panel JS cache-bust via versioned static URL
 
 - **Date:** 2026-08-26
-- **Decision:** Serve `frontend/panel.js` from `/api/scene_extrapolation/assets/<manifest version>/panel.js` with `cache_headers=False`. Bump `manifest.json` `version` when shipping frontend-only changes.
+- **Decision:** Serve `frontend/panel.js` from `/api/scene_extrapolation/assets/<manifest version>-<PANEL_ASSET_REV>/panel.js` with `cache_headers=False`. Bump `manifest.json` `version` on release; increment `PANEL_ASSET_REV` in `panel.py` for in-progress frontend changes.
 - **Why:** HA caches custom panel modules by URL. Python restarts do not pick up JS if the path is unchanged.
 - **Do not reverse without user ask.**
 
@@ -36,4 +36,11 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Date:** 2026-08-26
 - **Decision:** The create/edit screen shows a full-width sun elevation curve for today, with dawn / sunrise / noon / sunset / dusk plotted (icons + times). Dusk on the chart respects the configured earliest-dusk override.
 - **Why:** Makes the solar events the scenes interpolate between visible instead of abstract form fields.
+- **Do not reverse without user ask.**
+
+## Per-light brightness bars and date preview
+
+- **Date:** 2026-08-26
+- **Decision:** Under the sun chart on create/edit, list each light with a full-width bar: height is brightness %, fill color is the interpolated light color. A date picker (with Today / 21 Jun / 21 Dec) drives both the sun curve and the bars. Polar / no-rise events use the same seasonal fallbacks as scene activation. An entity present in one scene but not the next is a warning, not an error (treated as off during that transition).
+- **Why:** Lets you see the day at a glance, including winter/polar handling, without activating the scene. Missing entities are supported on purpose (e.g. a lamp that only exists in the evening scene).
 - **Do not reverse without user ask.**

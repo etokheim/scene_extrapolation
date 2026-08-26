@@ -6,6 +6,9 @@ const PLOT_TOP = 28;
 const PLOT_BOTTOM = 168;
 const PLOT_LEFT = 16;
 const PLOT_RIGHT = 984;
+const LIGHT_BAR_HEIGHT = 36;
+const LIGHT_BAR_TOP = 6;
+const LIGHT_BAR_BOTTOM = 32;
 
 const LABELS = {
   scene_name: "Scene name",
@@ -48,7 +51,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._saving = false;
     this._built = false;
     this._sunPath = null;
-    this._sunPathDusk = undefined;
+    this._sunPathKey = undefined;
+    this._previewDate = todayIso();
     this._onHashChange = () => this._syncHash();
   }
 
@@ -76,12 +80,22 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._build();
     }
     if (!this._sunTimer) {
-      this._sunTimer = window.setInterval(() => this._drawSunPath(), 30000);
+      this._sunTimer = window.setInterval(() => {
+        const active = this.shadowRoot?.activeElement;
+        if (active && active.classList.contains("sun-date")) {
+          return;
+        }
+        this._drawSunPath();
+      }, 30000);
     }
   }
 
   disconnectedCallback() {
     window.removeEventListener("hashchange", this._onHashChange);
+    if (this._previewTimer) {
+      window.clearTimeout(this._previewTimer);
+      this._previewTimer = undefined;
+    }
     if (this._sunTimer) {
       window.clearInterval(this._sunTimer);
       this._sunTimer = undefined;
@@ -144,6 +158,86 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-path[hidden] {
           display: none;
+        }
+        .sun-toolbar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px 0;
+        }
+        .sun-toolbar label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 14px;
+        }
+        .sun-date {
+          background: var(--secondary-background-color, var(--input-fill-color, transparent));
+          color: var(--primary-text-color);
+          border: 1px solid var(--divider-color);
+          border-radius: 8px;
+          padding: 6px 8px;
+          font: inherit;
+        }
+        .sun-chip {
+          background: transparent;
+          color: var(--primary-color);
+          border: 1px solid var(--divider-color);
+          border-radius: 16px;
+          padding: 4px 10px;
+          font: inherit;
+          font-size: 13px;
+          cursor: pointer;
+        }
+        .sun-chip[selected] {
+          background: var(--primary-color);
+          color: var(--text-primary-color, #fff);
+          border-color: var(--primary-color);
+        }
+        .sun-fallback-note {
+          margin: 8px 16px 0;
+          font-size: 13px;
+          color: var(--secondary-text-color);
+        }
+        .sun-lights {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          padding: 8px 0 12px;
+        }
+        .light-row {
+          padding: 0 0 0;
+        }
+        .light-meta {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 0 16px 4px;
+        }
+        .light-name {
+          font-size: 13px;
+          font-weight: 500;
+        }
+        .light-warn {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 12px;
+          color: var(--warning-color, var(--error-color));
+        }
+        .light-warn ha-icon {
+          --mdc-icon-size: 14px;
+        }
+        .light-bar {
+          position: relative;
+          height: ${LIGHT_BAR_HEIGHT}px;
+        }
+        .light-bar svg {
+          display: block;
+          width: 100%;
+          height: ${LIGHT_BAR_HEIGHT}px;
         }
         .sun-events {
           display: flex;
@@ -498,15 +592,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     form.computeHelper = (schema) => HELPERS[schema.name] || "";
     form.addEventListener("value-changed", (ev) => {
       const previousCombined = this._formData.display_scenes_combined;
-      const previousDusk = this._formData.scene_dusk_minimum_time_of_day;
       this._formData = ev.detail.value;
       this._error = null;
       if (previousCombined !== this._formData.display_scenes_combined) {
         form.schema = this._schema();
       }
-      if (previousDusk !== this._formData.scene_dusk_minimum_time_of_day) {
-        this._ensureSunPath();
-      }
+      this._schedulePreview();
     });
     this._form = form;
     wrap.appendChild(form);
@@ -643,27 +734,144 @@ class SceneExtrapolationPanel extends HTMLElement {
     return timeToSeconds(this._formData.scene_dusk_minimum_time_of_day);
   }
 
+  _sceneIdsFromForm() {
+    if (this._formData.display_scenes_combined) {
+      const shared = this._formData.scene_dawn_sunrise_sunset || null;
+      return {
+        scene_dawn: shared,
+        scene_sunrise: shared,
+        scene_sunset: shared,
+        scene_noon: this._formData.scene_noon || null,
+        scene_dusk: this._formData.scene_dusk || null,
+      };
+    }
+    return {
+      scene_dawn: this._formData.scene_dawn || null,
+      scene_sunrise: this._formData.scene_sunrise || null,
+      scene_noon: this._formData.scene_noon || null,
+      scene_sunset: this._formData.scene_sunset || null,
+      scene_dusk: this._formData.scene_dusk || null,
+    };
+  }
+
+  _chartKey() {
+    if (this._view !== "edit") {
+      return "list";
+    }
+    return JSON.stringify({
+      date: this._previewDate,
+      dusk: this._duskMinimumSeconds(),
+      scenes: this._sceneIdsFromForm(),
+    });
+  }
+
+  _schedulePreview() {
+    if (this._previewTimer) {
+      window.clearTimeout(this._previewTimer);
+    }
+    this._previewTimer = window.setTimeout(() => {
+      this._previewTimer = undefined;
+      this._ensureSunPath();
+    }, 150);
+  }
+
   async _ensureSunPath() {
     if (!this._hass || !this._sunPathEl) {
       return;
     }
-    const dusk = this._duskMinimumSeconds();
-    if (this._sunPath && this._sunPathDusk === dusk) {
+    const key = this._chartKey();
+    if (this._sunPath && this._sunPathKey === key) {
       this._drawSunPath();
       return;
     }
+    this._chartRequest = key;
     try {
-      const msg = { type: `${DOMAIN}/sun_path` };
-      if (dusk != null) {
-        msg.dusk_minimum = dusk;
+      let payload;
+      if (this._view === "edit") {
+        const msg = {
+          type: `${DOMAIN}/preview`,
+          date: this._previewDate,
+          scenes: this._sceneIdsFromForm(),
+        };
+        const dusk = this._duskMinimumSeconds();
+        if (dusk != null) {
+          msg.dusk_minimum = dusk;
+        }
+        payload = await this._hass.callWS(msg);
+      } else {
+        payload = await this._hass.callWS({ type: `${DOMAIN}/sun_path` });
       }
-      this._sunPath = await this._hass.callWS(msg);
-      this._sunPathDusk = dusk;
+      if (this._chartRequest !== key) {
+        return;
+      }
+      this._sunPath = payload;
+      this._sunPathKey = key;
       this._drawSunPath();
     } catch (err) {
-      this._sunPathEl.hidden = true;
-      this._sunPathEl.replaceChildren();
+      if (this._chartRequest !== key) {
+        return;
+      }
     }
+  }
+
+  _buildDateToolbar() {
+    const toolbar = document.createElement("div");
+    toolbar.className = "sun-toolbar";
+    const label = document.createElement("label");
+    label.append("Date");
+    const input = document.createElement("input");
+    input.type = "date";
+    input.className = "sun-date";
+    input.value = this._previewDate;
+    input.addEventListener("change", () => {
+      if (!input.value) {
+        return;
+      }
+      this._previewDate = input.value;
+      this._sunPathKey = undefined;
+      this._ensureSunPath();
+    });
+    label.appendChild(input);
+    toolbar.appendChild(label);
+    const year = new Date().getFullYear();
+    const presets = [
+      ["Today", todayIso()],
+      ["21 Jun", `${year}-06-21`],
+      ["21 Dec", `${year}-12-21`],
+    ];
+    for (const [name, value] of presets) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "sun-chip";
+      chip.textContent = name;
+      chip.addEventListener("click", () => {
+        this._previewDate = value;
+        input.value = value;
+        this._sunPathKey = undefined;
+        this._ensureSunPath();
+      });
+      toolbar.appendChild(chip);
+    }
+    this._dateInput = input;
+    this._dateChips = toolbar.querySelectorAll(".sun-chip");
+    return toolbar;
+  }
+
+  _syncDateToolbar() {
+    if (!this._dateInput) {
+      return;
+    }
+    if (this.shadowRoot.activeElement !== this._dateInput) {
+      this._dateInput.value = this._previewDate;
+    }
+    const presets = [todayIso(), `${new Date().getFullYear()}-06-21`, `${new Date().getFullYear()}-12-21`];
+    this._dateChips?.forEach((chip, index) => {
+      if (presets[index] === this._previewDate) {
+        chip.setAttribute("selected", "");
+      } else {
+        chip.removeAttribute("selected");
+      }
+    });
   }
 
   _drawSunPath() {
@@ -671,6 +879,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     const { events, curve } = this._sunPath;
+    const isToday = Boolean(this._sunPath.today);
     const nowSeconds = nowSecondsSinceMidnight();
     const elevations = curve.map((point) => point[1]);
     for (const event of events) {
@@ -723,7 +932,11 @@ class SceneExtrapolationPanel extends HTMLElement {
             return `<line x1="${x}" x2="${x}" y1="${y}" y2="${PLOT_BOTTOM}" stroke="var(--secondary-text-color)" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="2 4"/>`;
           })
           .join("")}
-        <line x1="${xOf(nowSeconds)}" x2="${xOf(nowSeconds)}" y1="${PLOT_TOP}" y2="${PLOT_BOTTOM}" stroke="var(--primary-color)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+        ${
+          isToday
+            ? `<line x1="${xOf(nowSeconds)}" x2="${xOf(nowSeconds)}" y1="${PLOT_TOP}" y2="${PLOT_BOTTOM}" stroke="var(--primary-color)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
+            : ""
+        }
       </svg>
     `;
 
@@ -732,9 +945,18 @@ class SceneExtrapolationPanel extends HTMLElement {
     for (const event of events) {
       const item = document.createElement("div");
       item.className = "sun-event";
-      item.title = event.overridden
-        ? `${event.name} uses the dusk minimum (${event.solar_time} solar dusk)`
-        : event.name;
+      const bits = [];
+      if (event.overridden) {
+        bits.push(`${event.name} uses the dusk minimum (${event.solar_time} solar dusk)`);
+      }
+      if (event.fallback) {
+        bits.push("Seasonal fallback (no real solar event this day)");
+      }
+      if (bits.length) {
+        item.title = bits.join(" · ");
+      } else {
+        item.title = event.name;
+      }
       const icon = document.createElement("ha-icon");
       icon.setAttribute("icon", event.icon);
       const name = document.createElement("span");
@@ -742,7 +964,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       name.textContent = event.name;
       const time = document.createElement("span");
       time.className = "time";
-      time.textContent = event.time;
+      time.textContent = event.fallback ? `${event.time}*` : event.time;
       item.append(icon, name, time);
       eventsRow.appendChild(item);
     }
@@ -766,12 +988,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       marker.appendChild(icon);
       chart.append(dot, marker);
     }
-    const nowDot = document.createElement("div");
-    nowDot.className = "sun-now";
-    nowDot.title = `Now ${formatClock(nowSeconds)}`;
-    nowDot.style.left = `${(xOf(nowSeconds) / CHART_WIDTH) * 100}%`;
-    nowDot.style.top = `${yOf(nowElev)}px`;
-    chart.appendChild(nowDot);
+    if (isToday) {
+      const nowDot = document.createElement("div");
+      nowDot.className = "sun-now";
+      nowDot.title = `Now ${formatClock(nowSeconds)}`;
+      nowDot.style.left = `${(xOf(nowSeconds) / CHART_WIDTH) * 100}%`;
+      nowDot.style.top = `${yOf(nowElev)}px`;
+      chart.appendChild(nowDot);
+    }
 
     const hours = document.createElement("div");
     hours.className = "sun-hours";
@@ -781,9 +1005,118 @@ class SceneExtrapolationPanel extends HTMLElement {
       hours.appendChild(span);
     }
 
+    const children = [];
+    if (this._view === "edit") {
+      if (!this._dateToolbar) {
+        this._dateToolbar = this._buildDateToolbar();
+      }
+      this._syncDateToolbar();
+      children.push(this._dateToolbar);
+    }
+    children.push(eventsRow);
+    if (events.some((event) => event.fallback)) {
+      const note = document.createElement("p");
+      note.className = "sun-fallback-note";
+      note.textContent =
+        "* Time uses a seasonal fallback because the sun does not rise or set that day.";
+      children.push(note);
+    }
+    children.push(chart, hours);
+    if (this._view === "edit") {
+      const lights = this._buildLightBars(xOf, events, isToday, nowSeconds);
+      if (lights) {
+        children.push(lights);
+      }
+    }
+
     this._sunPathEl.hidden = false;
-    this._sunPathEl.replaceChildren(eventsRow, chart, hours);
+    this._sunPathEl.replaceChildren(...children);
   }
+
+  _buildLightBars(xOf, events, isToday, nowSeconds) {
+    const lights = this._sunPath.lights || [];
+    if (!lights.length) {
+      return null;
+    }
+    const wrap = document.createElement("div");
+    wrap.className = "sun-lights";
+    for (const light of lights) {
+      wrap.appendChild(this._lightRow(light, xOf, events, isToday, nowSeconds));
+    }
+    return wrap;
+  }
+
+  _lightRow(light, xOf, events, isToday, nowSeconds) {
+    const row = document.createElement("div");
+    row.className = "light-row";
+    const meta = document.createElement("div");
+    meta.className = "light-meta";
+    const name = document.createElement("div");
+    name.className = "light-name";
+    name.textContent = light.name;
+    meta.appendChild(name);
+    if (light.gaps?.length) {
+      const warn = document.createElement("div");
+      warn.className = "light-warn";
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", "mdi:alert-outline");
+      const missing = [...new Set(light.gaps.map((gap) => gap.missing_name))];
+      const text = document.createElement("span");
+      text.textContent = `Not in ${missing.join(", ")} — treated as off (supported)`;
+      warn.append(icon, text);
+      meta.appendChild(warn);
+    }
+    row.appendChild(meta);
+
+    const bar = document.createElement("div");
+    bar.className = "light-bar";
+    const rects = [];
+    const samples = light.samples || [];
+    for (let index = 0; index < samples.length - 1; index += 1) {
+      const [s0, brightness, red, green, blue] = samples[index];
+      const s1 = samples[index + 1][0];
+      const x0 = xOf(s0);
+      const width = Math.max(0.4, xOf(s1) - x0);
+      const height =
+        (Math.max(0, Math.min(100, brightness)) / 100) *
+        (LIGHT_BAR_BOTTOM - LIGHT_BAR_TOP);
+      if (height < 0.4) {
+        continue;
+      }
+      const y = LIGHT_BAR_BOTTOM - height;
+      rects.push(
+        `<rect x="${x0.toFixed(2)}" y="${y.toFixed(2)}" width="${width.toFixed(2)}" height="${height.toFixed(2)}" fill="rgb(${red},${green},${blue})"/>`
+      );
+    }
+    const eventLines = events
+      .map((event) => {
+        const x = xOf(event.seconds);
+        return `<line x1="${x}" x2="${x}" y1="${LIGHT_BAR_TOP}" y2="${LIGHT_BAR_BOTTOM}" stroke="var(--secondary-text-color)" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="2 4"/>`;
+      })
+      .join("");
+    const nowLine =
+      isToday
+        ? `<line x1="${xOf(nowSeconds)}" x2="${xOf(nowSeconds)}" y1="${LIGHT_BAR_TOP}" y2="${LIGHT_BAR_BOTTOM}" stroke="var(--primary-color)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
+        : "";
+    bar.innerHTML = `
+      <svg viewBox="0 0 ${CHART_WIDTH} ${LIGHT_BAR_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
+        <rect x="${PLOT_LEFT}" y="${LIGHT_BAR_TOP}" width="${PLOT_RIGHT - PLOT_LEFT}" height="${LIGHT_BAR_BOTTOM - LIGHT_BAR_TOP}" fill="var(--divider-color)" fill-opacity="0.25"/>
+        ${rects.join("")}
+        ${eventLines}
+        ${nowLine}
+      </svg>
+    `;
+    row.appendChild(bar);
+    return row;
+  }
+}
+
+function todayIso() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function emptyFormData() {

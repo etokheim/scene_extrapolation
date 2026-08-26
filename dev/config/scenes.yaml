@@ -40,6 +40,10 @@
       state: on
       brightness: 80
       hs_color: [30, 70]
+    light.stue_vindu:
+      state: on
+      brightness: 90
+      color_temp_kelvin: 2200
 
 - id: stue_natt
   name: Stue natt
@@ -54,6 +58,8 @@
       brightness: 40
       color_temp_kelvin: 2000
     light.stue_spotter:
+      state: off
+    light.stue_vindu:
       state: off
 
 # --- Kjøkken ---

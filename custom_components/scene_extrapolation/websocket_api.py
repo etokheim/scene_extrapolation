@@ -18,6 +18,7 @@ from .const import (
     DATA_STORE,
     DOMAIN,
 )
+from .preview import build_preview
 from .scene import async_create_or_update_entity, async_remove_entity
 from .solar import build_sun_path
 from .store import SceneExtrapolationStore, to_form_data
@@ -32,6 +33,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_save)
     websocket_api.async_register_command(hass, ws_delete)
     websocket_api.async_register_command(hass, ws_sun_path)
+    websocket_api.async_register_command(hass, ws_preview)
 
 
 def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
@@ -164,6 +166,7 @@ async def ws_delete(
     {
         vol.Required("type"): f"{DOMAIN}/sun_path",
         vol.Optional("dusk_minimum"): int,
+        vol.Optional("date"): str,
     }
 )
 @websocket_api.require_admin
@@ -173,7 +176,35 @@ async def ws_sun_path(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Return today's solar events and elevation curve."""
+    """Return solar events and elevation curve for a date."""
     dusk_minimum = msg.get("dusk_minimum")
-    payload = await hass.async_add_executor_job(build_sun_path, hass, dusk_minimum)
+    payload = await hass.async_add_executor_job(
+        build_sun_path, hass, dusk_minimum, msg.get("date")
+    )
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/preview",
+        vol.Optional("dusk_minimum"): int,
+        vol.Optional("date"): str,
+        vol.Optional("scenes"): dict,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_preview(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return sun path plus per-light brightness/color samples."""
+    scenes = msg.get("scenes") or {}
+    payload = build_preview(
+        hass,
+        dusk_minimum=msg.get("dusk_minimum"),
+        target_date=msg.get("date"),
+        scene_ids=scenes,
+    )
     connection.send_result(msg["id"], payload)

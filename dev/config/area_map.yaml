@@ -24,6 +24,7 @@ devices:
 entities:
   light.stue_gulvlampe: stue
   light.stue_spotter: stue
+  light.stue_vindu: stue
   light.kjokken_benkelys: kjokken
   light.kjokken_overoy: kjokken
   light.soverom_tak: soverom

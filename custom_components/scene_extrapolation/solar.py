@@ -1,8 +1,9 @@
-"""Solar events and elevation curve for the panel visualization."""
+"""Solar events and elevation curve for scene activation and the panel."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import logging
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -10,6 +11,8 @@ from astral import LocationInfo
 from astral.sun import elevation as sun_elevation
 from astral.sun import sun
 from homeassistant.core import HomeAssistant
+
+_LOGGER = logging.getLogger(__name__)
 
 EVENT_META = (
     ("dawn", "Dawn", "mdi:horizon"),
@@ -19,8 +22,31 @@ EVENT_META = (
     ("dusk", "Dusk", "mdi:weather-night"),
 )
 
+EVENT_ORDER = ("dawn", "sunrise", "noon", "sunset", "dusk")
+PREVIOUS_EVENTS = {
+    "sunrise": "dawn",
+    "noon": "sunrise",
+    "sunset": "noon",
+    "dusk": "sunset",
+}
+
 CURVE_STEP_MINUTES = 5
 SECONDS_PER_DAY = 24 * 3600
+
+WINTER_FALLBACK = {
+    "dawn": (8, 45),
+    "sunrise": (10, 30),
+    "noon": (12, 0),
+    "sunset": (13, 0),
+    "dusk": (22, 0),
+}
+SUMMER_FALLBACK = {
+    "dawn": (2, 15),
+    "sunrise": (4, 0),
+    "noon": (13, 0),
+    "sunset": (22, 0),
+    "dusk": (23, 55),
+}
 
 
 def _seconds_since_midnight(value: datetime) -> int:
@@ -37,14 +63,116 @@ def _format_time(seconds: int) -> str:
     return f"{hours:02d}:{minutes:02d}"
 
 
+def _parse_target_date(
+    time_zone: str, target_date: date | datetime | str | None
+) -> datetime:
+    tz = ZoneInfo(time_zone)
+    if target_date is None:
+        return datetime.now(tz)
+    if isinstance(target_date, datetime):
+        if target_date.tzinfo is None:
+            return target_date.replace(tzinfo=tz)
+        return target_date.astimezone(tz)
+    if isinstance(target_date, str):
+        parsed = date.fromisoformat(target_date)
+        return datetime(parsed.year, parsed.month, parsed.day, tzinfo=tz)
+    return datetime(target_date.year, target_date.month, target_date.day, tzinfo=tz)
+
+
+def _fallback_clock(latitude: float, month: int) -> dict[str, tuple[int, int]]:
+    northern = latitude >= 0
+    is_winter = (
+        month in (10, 11, 12, 1, 2, 3) if northern else month in (4, 5, 6, 7, 8, 9)
+    )
+    return WINTER_FALLBACK if is_winter else SUMMER_FALLBACK
+
+
+def resolve_solar_events(
+    *,
+    latitude: float,
+    longitude: float,
+    time_zone: str,
+    target: datetime,
+) -> tuple[dict[str, datetime], set[str]]:
+    """Return dawn…dusk datetimes, using seasonal fallbacks when astral cannot.
+
+    Same rules as scene activation (polar night / midnight sun / partial failure).
+    """
+    tz = ZoneInfo(time_zone)
+    location = LocationInfo(timezone=time_zone, latitude=latitude, longitude=longitude)
+    fallback_times = _fallback_clock(latitude, target.month)
+    fallbacks: set[str] = set()
+
+    try:
+        raw = sun(location.observer, date=target.date())
+        events: dict[str, datetime] = {}
+        for name, event_time in raw.items():
+            if event_time.tzinfo is None:
+                events[name] = event_time.replace(tzinfo=tz)
+            else:
+                events[name] = event_time.astimezone(tz)
+    except ValueError:
+        _LOGGER.info(
+            "Could not calculate solar events for %s (sun always below/above horizon). "
+            "Using seasonal fallback times",
+            target.date(),
+        )
+        events = {}
+
+    for event_name in EVENT_ORDER:
+        if event_name in events:
+            continue
+        hour, minute = fallback_times[event_name]
+        seasonal = target.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        fallback_time = seasonal
+        prev_name = PREVIOUS_EVENTS.get(event_name)
+        if prev_name and prev_name in events:
+            previous_plus_offset = events[prev_name] + timedelta(minutes=30)
+            fallback_time = max(previous_plus_offset, seasonal)
+            if fallback_time == previous_plus_offset:
+                _LOGGER.info(
+                    "Could not calculate %s for %s. Using %s + 30min: %s",
+                    event_name,
+                    target.date(),
+                    prev_name,
+                    fallback_time.strftime("%H:%M"),
+                )
+            else:
+                _LOGGER.info(
+                    "Could not calculate %s for %s. Using seasonal fallback "
+                    "(later than %s + 30min): %02d:%02d",
+                    event_name,
+                    target.date(),
+                    prev_name,
+                    hour,
+                    minute,
+                )
+        else:
+            _LOGGER.info(
+                "Could not calculate %s for %s. Using seasonal fallback: %02d:%02d",
+                event_name,
+                target.date(),
+                hour,
+                minute,
+            )
+        events[event_name] = fallback_time
+        fallbacks.add(event_name)
+
+    return events, fallbacks
+
+
 def build_sun_path(
-    hass: HomeAssistant, dusk_minimum: int | None = None
+    hass: HomeAssistant,
+    dusk_minimum: int | None = None,
+    target_date: date | datetime | str | None = None,
 ) -> dict[str, Any]:
-    """Return today's solar events and elevation samples for the chart."""
+    """Return solar events and elevation samples for a calendar day."""
     time_zone = hass.config.time_zone or "UTC"
     tz = ZoneInfo(time_zone)
     now = datetime.now(tz)
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    target = _parse_target_date(time_zone, target_date)
+    start = target.replace(hour=0, minute=0, second=0, microsecond=0)
+    today = target.date() == now.date()
     location = LocationInfo(
         timezone=time_zone,
         latitude=hass.config.latitude,
@@ -52,23 +180,16 @@ def build_sun_path(
     )
     observer = location.observer
 
-    events_by_name: dict[str, datetime] = {}
-    try:
-        raw = sun(observer, date=now.date())
-        for name, event_time in raw.items():
-            if event_time.tzinfo is None:
-                event_time = event_time.replace(tzinfo=tz)
-            else:
-                event_time = event_time.astimezone(tz)
-            events_by_name[name] = event_time
-    except ValueError:
-        events_by_name = {}
+    events_by_name, fallbacks = resolve_solar_events(
+        latitude=hass.config.latitude,
+        longitude=hass.config.longitude,
+        time_zone=time_zone,
+        target=target,
+    )
 
     events: list[dict[str, Any]] = []
     for event_id, label, icon in EVENT_META:
-        event_time = events_by_name.get(event_id)
-        if event_time is None:
-            continue
+        event_time = events_by_name[event_id]
         seconds = _seconds_since_midnight(event_time)
         overridden = False
         solar_time = None
@@ -86,6 +207,7 @@ def build_sun_path(
                 "time": _format_time(seconds),
                 "elevation": round(float(sun_elevation(observer, event_time)), 2),
                 "overridden": overridden,
+                "fallback": event_id in fallbacks,
                 "solar_time": solar_time,
             }
         )
@@ -98,6 +220,8 @@ def build_sun_path(
 
     now_seconds = _seconds_since_midnight(now)
     return {
+        "date": target.date().isoformat(),
+        "today": today,
         "now": {
             "seconds": now_seconds,
             "time": _format_time(now_seconds),

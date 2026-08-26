@@ -9,10 +9,10 @@ light:
     initial_color_temp: 200
     persistent: false
   - platform: virtual
-    name: "!Stue spotter"
+    name: "!Stue vindu"
     initial_value: "off"
     support_brightness: true
-    initial_brightness: 255
-    support_color: true
-    initial_color: [40, 30]
+    initial_brightness: 90
+    support_color_temp: true
+    initial_color_temp: 200
     persistent: false
