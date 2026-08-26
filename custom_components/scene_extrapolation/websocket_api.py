@@ -216,6 +216,11 @@ async def ws_sun_path(
         vol.Optional("dusk_minimum"): int,
         vol.Optional("date"): str,
         vol.Optional("scenes"): dict,
+        vol.Optional("overlay"): {
+            vol.Required("scene_entity_id"): str,
+            vol.Required("entity_id"): str,
+            vol.Required("entity_state"): dict,
+        },
     }
 )
 @websocket_api.require_admin
@@ -232,6 +237,7 @@ async def ws_preview(
         dusk_minimum=msg.get("dusk_minimum"),
         target_date=msg.get("date"),
         scene_ids=scenes,
+        overlay=msg.get("overlay"),
     )
     connection.send_result(msg["id"], payload)
 

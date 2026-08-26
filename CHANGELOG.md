@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scene pickers moved onto the solar event row; the form keeps nightlights
 - Sun and light graphs no longer draw static vertical hour/event lines
 - Sun-path height is scaled to the location’s annual max elevation; the curve is darker below the horizon
+- Sidebar scene and light drafts update the graphs immediately; Cancel restores the last saved preview
 
 ### Fixed
 - Transition progress went negative at exact solar event times, which broke winter-date previews

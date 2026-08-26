@@ -85,19 +85,42 @@ def build_preview(
     dusk_minimum: int | None,
     target_date: str | None,
     scene_ids: dict[str, str | None],
+    overlay: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Sun path plus per-light brightness/color samples for the chosen date."""
     sun_path = build_sun_path(hass, dusk_minimum, target_date)
-    lights, warnings = _light_series(hass, sun_path["events"], scene_ids)
+    lights, warnings = _light_series(
+        hass, sun_path["events"], scene_ids, overlay
+    )
     return {**sun_path, "lights": lights, "warnings": warnings}
+
+
+def _overlay_native_scenes(
+    native: dict[str, dict[str, Any]], overlay: dict[str, Any] | None
+) -> dict[str, dict[str, Any]]:
+    """Patch one light into a loaded native scene without writing YAML."""
+    if not overlay:
+        return native
+    scene_id = overlay.get("scene_entity_id")
+    entity_id = overlay.get("entity_id")
+    entity_state = overlay.get("entity_state")
+    if not scene_id or not entity_id or not isinstance(entity_state, dict):
+        return native
+    scene = native.get(scene_id)
+    if not scene:
+        return native
+    patched = copy.deepcopy(scene)
+    patched["entities"][entity_id] = scene_entity_payload(entity_state)
+    return {**native, scene_id: patched}
 
 
 def _light_series(
     hass: HomeAssistant,
     events: list[dict[str, Any]],
     scene_ids: dict[str, str | None],
+    overlay: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    native = load_native_scenes(hass)
+    native = _overlay_native_scenes(load_native_scenes(hass), overlay)
     bound: list[dict[str, Any]] = []
     for event in events:
         entity_id = scene_ids.get(SCENE_KEYS[event["id"]])

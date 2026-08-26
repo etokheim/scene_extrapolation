@@ -81,6 +81,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Date:** 2026-08-26
 - **Superseded in part:** 2026-08-26 — area is chosen before create and again on save; dusk minimum lives on the dusk event dialog; only nightlights stay on `ha-form`.
 - **Superseded in part:** 2026-08-26 — event and light editors use the automation-style sidebar, not a centered `ha-dialog`.
+- **Superseded in part:** 2026-08-26 — picker / dusk / link changes apply to the graphs immediately; Cancel restores the previous assignment.
 - **Decision:** Dawn / sunrise / noon / sunset / dusk above the chart are the scene inputs. Clicking one opens a dialog with a native scene picker. Dawn, sunrise, and sunset can share one scene via “Same scene for dawn, sunrise, and sunset”; linked events get a shared outline. Scene entity pickers and the combine boolean are not on `ha-form`.
 - **Why:** The chart already lists those events. Duplicate pickers below the graph were the same decision twice. Linking lives on the event you are assigning, not a separate toggle.
 - **Do not reverse without user ask.**
@@ -89,8 +90,9 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 
 - **Date:** 2026-08-26
 - **Superseded in part:** 2026-08-26 — the editor is an automation-style sidebar, not a centered modal.
-- **Decision:** Each light timeline has a pencil per solar event. The dialog edits that lamp’s **stored** state in the native YAML scene for that event (via `scenes.yaml`, same as HA’s scene editor), not the live entity. Optional **Live edit** applies the draft to the lamp only while the dialog is open; save and cancel both restore the lamp to the snapshot taken on open. After save, scenes reload and the preview refreshes.
-- **Why:** Tuning a circadian scene by watching the interpolated chart is faster than opening five HA scene editors. Live edit is opt-in so walking around the house is not required. Restoring on close avoids leaving the room stuck in a draft.
+- **Superseded in part:** 2026-08-26 — drafts update the graphs immediately; YAML is still written only on Save.
+- **Decision:** Each light timeline has a pencil per solar event. The dialog edits that lamp’s **stored** state in the native YAML scene for that event (via `scenes.yaml`, same as HA’s scene editor), not the live entity. While the sidebar is open, preview samples overlay the draft onto that scene without writing YAML. Cancel / close drops the overlay and restores the last saved preview. Optional **Live edit** applies the draft to the lamp only while the dialog is open; save and cancel both restore the lamp to the snapshot taken on open. After save, scenes reload and the preview refreshes.
+- **Why:** Tuning a circadian scene by watching the interpolated chart is faster than opening five HA scene editors. Writing YAML on every slider tick would reload scenes and fight Cancel. Live edit is opt-in so walking around the house is not required. Restoring on close avoids leaving the room stuck in a draft.
 - **Do not reverse without user ask.**
 
 ## Scene editors use the automation sidebar / bottom sheet

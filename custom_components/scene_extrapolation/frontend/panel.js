@@ -67,6 +67,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sunPathKey = undefined;
     this._previewDate = todayIso();
     this._previewCache = new Map();
+    this._previewOverlay = null;
     this._previewInFlight = false;
     this._previewQueued = false;
     this._yearScrubbing = false;
@@ -1082,6 +1083,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     this.classList.remove("has-scene-sidebar");
   }
 
+  _commitSceneSidebar(el) {
+    if (el) {
+      el._committed = true;
+    }
+    this._requestCloseSceneSidebar(el);
+  }
+
   _requestCloseSceneSidebar(el) {
     if (el?.localName === "ha-bottom-sheet") {
       el.open = false;
@@ -1090,7 +1098,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._closeSceneSidebar();
   }
 
-  _openSceneSidebar({ title, subtitle, className }) {
+  _openSceneSidebar({ title, subtitle, className, onDismiss }) {
     this._closeSceneSidebar();
     const useSheet =
       this._isEditorNarrow() &&
@@ -1147,6 +1155,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     host.addEventListener("closed", () => {
       this.classList.remove("has-scene-sidebar");
       host.remove();
+      if (!host._committed && this.isConnected) {
+        onDismiss?.();
+      }
     });
     this.shadowRoot.appendChild(host);
     if (useSheet) {
@@ -1315,13 +1326,35 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _openEventSceneDialog(event) {
     const canLink = LINKED_EVENTS.includes(event.id);
+    const snapshot = {
+      display_scenes_combined: this._formData.display_scenes_combined,
+      scene_dawn_sunrise_sunset: this._formData.scene_dawn_sunrise_sunset,
+      scene_dawn: this._formData.scene_dawn,
+      scene_sunrise: this._formData.scene_sunrise,
+      scene_sunset: this._formData.scene_sunset,
+      scene_noon: this._formData.scene_noon,
+      scene_dusk: this._formData.scene_dusk,
+      scene_dusk_minimum_time_of_day: this._formData.scene_dusk_minimum_time_of_day,
+    };
     const data = {
       scene: this._eventSceneId(event.id),
       linked: Boolean(canLink && this._formData.display_scenes_combined),
+      duskMinimum: this._formData.scene_dusk_minimum_time_of_day,
+    };
+    const applyDraft = () => {
+      if (event.id === "dusk") {
+        this._formData.scene_dusk_minimum_time_of_day = data.duskMinimum;
+      }
+      this._setEventScene(event.id, data.scene, canLink ? data.linked : false);
     };
     const { host, body, footer } = this._openSceneSidebar({
       title: event.name,
       className: "event-dialog",
+      onDismiss: () => {
+        Object.assign(this._formData, snapshot);
+        this._sunPathKey = undefined;
+        this._ensureSunPath();
+      },
     });
 
     const picker = document.createElement("ha-selector");
@@ -1337,11 +1370,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     picker.addEventListener("value-changed", (ev) => {
       ev.stopPropagation();
       data.scene = ev.detail?.value || null;
+      applyDraft();
     });
     body.appendChild(picker);
 
     if (event.id === "dusk") {
-      data.duskMinimum = this._formData.scene_dusk_minimum_time_of_day;
       const timePicker = document.createElement("ha-selector");
       timePicker.hass = this._hass;
       timePicker.label = LABELS.scene_dusk_minimum_time_of_day;
@@ -1351,6 +1384,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       timePicker.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
         data.duskMinimum = ev.detail?.value;
+        applyDraft();
       });
       body.appendChild(timePicker);
     }
@@ -1364,6 +1398,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       toggle.checked = data.linked;
       toggle.addEventListener("change", () => {
         data.linked = Boolean(toggle.checked);
+        applyDraft();
       });
       row.append(text, toggle);
       body.appendChild(row);
@@ -1376,13 +1411,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const done = document.createElement("ha-button");
     done.variant = "brand";
     done.textContent = "Done";
-    done.addEventListener("click", () => {
-      if (event.id === "dusk" && data.duskMinimum) {
-        this._formData.scene_dusk_minimum_time_of_day = data.duskMinimum;
-      }
-      this._setEventScene(event.id, data.scene, canLink ? data.linked : false);
-      this._requestCloseSceneSidebar(host);
-    });
+    done.addEventListener("click", () => this._commitSceneSidebar(host));
     footer.append(cancel, done);
   }
 
@@ -1446,18 +1475,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     const supported =
       this._hass.states[light.entity_id]?.attributes?.supported_color_modes || [];
 
-    const { host, body, footer } = this._openSceneSidebar({
-      title: light.name,
-      subtitle: event.name,
-      className: "light-dialog",
-    });
-
-    const sceneLine = document.createElement("p");
-    sceneLine.className = "sun-fallback-note";
-    sceneLine.style.margin = "0 0 8px";
-    sceneLine.textContent = `Saved to ${this._sceneName(sceneEntityId)}`;
-    body.appendChild(sceneLine);
-
+    const restoreLive = async () => {
+      if (liveApplied) {
+        await this._applyLightState(light.entity_id, snapshot);
+        liveApplied = false;
+      }
+    };
     const applyLive = async () => {
       if (!liveEdit) {
         return;
@@ -1465,6 +1488,32 @@ class SceneExtrapolationPanel extends HTMLElement {
       liveApplied = true;
       await this._applyLightState(light.entity_id, draft);
     };
+    const previewDraft = () => {
+      this._previewOverlay = {
+        scene_entity_id: sceneEntityId,
+        entity_id: light.entity_id,
+        entity_state: { ...draft },
+      };
+      this._schedulePreview();
+    };
+
+    const { host, body, footer } = this._openSceneSidebar({
+      title: light.name,
+      subtitle: event.name,
+      className: "light-dialog",
+      onDismiss: () => {
+        this._previewOverlay = null;
+        this._sunPathKey = undefined;
+        this._ensureSunPath();
+        restoreLive();
+      },
+    });
+
+    const sceneLine = document.createElement("p");
+    sceneLine.className = "sun-fallback-note";
+    sceneLine.style.margin = "0 0 8px";
+    sceneLine.textContent = `Saved to ${this._sceneName(sceneEntityId)}`;
+    body.appendChild(sceneLine);
 
     const liveRow = document.createElement("label");
     liveRow.className = "dialog-row";
@@ -1492,6 +1541,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     onField.addEventListener("value-changed", async (ev) => {
       ev.stopPropagation();
       draft.state = ev.detail.value ? "on" : "off";
+      previewDraft();
       await applyLive();
     });
     body.appendChild(onField);
@@ -1515,6 +1565,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (draft.brightness > 0) {
         draft.state = "on";
       }
+      previewDraft();
       await applyLive();
     });
     body.appendChild(brightness);
@@ -1542,6 +1593,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         draft.rgb_color = undefined;
         draft.hs_color = undefined;
         draft.state = "on";
+        previewDraft();
         await applyLive();
       });
       body.appendChild(temp);
@@ -1557,17 +1609,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         draft.rgb_color = ev.detail.value;
         draft.color_temp_kelvin = undefined;
         draft.state = "on";
+        previewDraft();
         await applyLive();
       });
       body.appendChild(color);
     }
-
-    const restoreLive = async () => {
-      if (liveApplied) {
-        await this._applyLightState(light.entity_id, snapshot);
-        liveApplied = false;
-      }
-    };
 
     const cancel = document.createElement("ha-button");
     cancel.appearance = "plain";
@@ -1585,20 +1631,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           entity_state: draft,
         });
         await restoreLive();
-        this._requestCloseSceneSidebar(host);
+        this._previewOverlay = null;
         this._clearPreviewCache();
+        this._commitSceneSidebar(host);
         this._ensureSunPath();
       } catch (err) {
         this._error = err.message || String(err);
-        await restoreLive();
         this._requestCloseSceneSidebar(host);
         this._renderEditor();
       }
     });
     footer.append(cancel, save);
-    host.addEventListener("closed", () => {
-      restoreLive();
-    });
   }
 
   async _openSaveDialog({ rename = false, focus } = {}) {
@@ -1988,6 +2031,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       date: this._previewDate,
       dusk: this._duskMinimumSeconds(),
       scenes: this._sceneIdsFromForm(),
+      overlay: this._previewOverlay,
     });
   }
 
@@ -2050,6 +2094,9 @@ class SceneExtrapolationPanel extends HTMLElement {
             if (dusk != null) {
               msg.dusk_minimum = dusk;
             }
+            if (this._previewOverlay) {
+              msg.overlay = this._previewOverlay;
+            }
             payload = await this._hass.callWS(msg);
           } else {
             payload = await this._hass.callWS({ type: `${DOMAIN}/sun_path` });
@@ -2060,7 +2107,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           }
           this._sunPath = payload;
           this._sunPathKey = key;
-          this._rememberPreview(key, payload);
+          if (!this._previewOverlay) {
+            this._rememberPreview(key, payload);
+          }
           this._drawSunPath();
         } catch (err) {
           if (this._chartKey() !== key) {
