@@ -454,22 +454,24 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-events {
           display: flex;
-          justify-content: space-between;
-          gap: 4px;
-          padding: 12px 16px 4px;
+          justify-content: space-evenly;
+          align-items: stretch;
+          gap: 8px;
+          padding: 12px 16px 8px;
         }
         .sun-event {
-          flex: 1;
+          flex: 1 1 0;
           min-width: 0;
+          max-width: 10.5rem;
           display: flex;
           flex-direction: column;
           align-items: center;
           text-align: center;
           gap: 2px;
           margin: 0;
-          padding: 6px 4px;
+          padding: 10px 8px;
           border: 1px solid transparent;
-          border-radius: 12px;
+          border-radius: var(--ha-border-radius-lg, 12px);
           background: transparent;
           color: inherit;
           font: inherit;
@@ -477,13 +479,36 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-event.clickable {
           cursor: pointer;
+          background: var(--secondary-background-color, var(--card-background-color));
+          border-color: var(--divider-color);
+          box-shadow: var(--ha-box-shadow-s, 0 1px 2px rgba(0, 0, 0, 0.18));
         }
         .sun-event.clickable:hover {
-          background: var(--secondary-background-color);
-        }
-        .sun-event.linked {
           border-color: var(--primary-color);
-          background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+          background: var(--card-background-color);
+        }
+        .sun-event.clickable:focus-visible {
+          outline: 2px solid var(--primary-color);
+          outline-offset: 2px;
+        }
+        .sun-event.clickable:active {
+          transform: scale(0.98);
+        }
+        .sun-event.clickable.missing {
+          border: 2px solid var(--warning-color, var(--accent-color, var(--primary-color)));
+          background: color-mix(
+            in srgb,
+            var(--warning-color, var(--primary-color)) 16%,
+            var(--card-background-color)
+          );
+          box-shadow: none;
+        }
+        .sun-event.clickable.missing:hover {
+          background: color-mix(
+            in srgb,
+            var(--warning-color, var(--primary-color)) 24%,
+            var(--card-background-color)
+          );
         }
         .sun-event ha-icon {
           --mdc-icon-size: 22px;
@@ -508,7 +533,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           white-space: nowrap;
         }
         .sun-event .scene.empty {
-          color: var(--secondary-text-color);
+          color: var(--warning-color, var(--accent-color, var(--primary-color)));
+          font-weight: 600;
         }
         .sun-chart {
           position: relative;
@@ -2554,7 +2580,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     const eventsRow = document.createElement("div");
     eventsRow.className = "sun-events";
     const editable = this._view === "edit";
-    const linked = Boolean(this._formData.display_scenes_combined);
     for (const event of events) {
       const item = document.createElement(editable ? "button" : "div");
       item.className = "sun-event";
@@ -2562,9 +2587,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         item.type = "button";
         item.classList.add("clickable");
         item.addEventListener("click", () => this._openEventSceneDialog(event));
-      }
-      if (editable && linked && LINKED_EVENTS.includes(event.id)) {
-        item.classList.add("linked");
       }
       const bits = [];
       if (event.overridden) {
@@ -2595,6 +2617,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         scene.textContent = sceneName || "Choose scene";
         if (!sceneName) {
           scene.classList.add("empty");
+          item.classList.add("missing");
         }
         item.appendChild(scene);
       }
