@@ -11,7 +11,6 @@ from zoneinfo import ZoneInfo
 
 from astral import LocationInfo
 from astral.sun import sun
-
 from homeassistant.components.fan import DOMAIN as FAN_DOMAIN
 from homeassistant.components.homeassistant.scene import HomeAssistantScene
 from homeassistant.components.light import (
@@ -24,18 +23,18 @@ from homeassistant.components.light import (
     ATTR_RGBW_COLOR,
     ATTR_RGBWW_COLOR,
     ATTR_TRANSITION,
-    DOMAIN as LIGHT_DOMAIN,
+)
+from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
+from homeassistant.components.light import (
     ColorMode,
 )
-from homeassistant.util import dt as dt_util
 from homeassistant.components.lock import LockState
-from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN, Scene
+from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN
+from homeassistant.components.scene import Scene
 from homeassistant.config_entries import ConfigEntry
-
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_STATE,
-    CONF_UNIQUE_ID,
     SERVICE_LOCK,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
@@ -52,13 +51,21 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import (
+    AREA,
+    DATA_ADD_ENTITIES,
+    DATA_ENTITIES,
+    DATA_STORE,
+    DOMAIN,
     NIGHTLIGHTS_BOOLEAN,
     NIGHTLIGHTS_SCENE,
     SCENE_DAWN,
     SCENE_DUSK,
     SCENE_DUSK_MINIMUM_TIME_OF_DAY,
+    SCENE_NAME,
     SCENE_NOON,
     SCENE_SUNRISE,
     SCENE_SUNSET,
@@ -67,22 +74,49 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-# pylint: disable=unused-argument
 async def async_setup_entry(
-    hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: bool
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> bool:
-    """Configure the platform."""
+    """Configure the platform from stored scene configs."""
+    store = hass.data[DOMAIN][DATA_STORE]
+    entities = hass.data[DOMAIN][DATA_ENTITIES]
+    hass.data[DOMAIN][DATA_ADD_ENTITIES] = async_add_entities
 
-    # Create our new scene entity
-    scene_name = (
-        config_entry.options.get("scene_name")
-        or config_entry.data.get("scene_name")
-        or "Automatic Lighting"
-    )
-
-    async_add_entities([ExtrapolationScene(scene_name, hass, config_entry)])
-
+    to_add = []
+    for item in store.list():
+        entity = ExtrapolationScene(hass, config_entry, item)
+        entities[item["id"]] = entity
+        to_add.append(entity)
+    if to_add:
+        async_add_entities(to_add)
     return True
+
+
+async def async_create_or_update_entity(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    item: dict,
+    async_add_entities: AddEntitiesCallback,
+    entities: dict,
+) -> ExtrapolationScene:
+    """Create or update a scene entity for a stored config."""
+    existing = entities.get(item["id"])
+    if existing:
+        await existing.async_update_config(item)
+        return existing
+    entity = ExtrapolationScene(hass, config_entry, item)
+    entities[item["id"]] = entity
+    async_add_entities([entity])
+    return entity
+
+
+async def async_remove_entity(entities: dict, scene_id: str) -> None:
+    """Remove a scene entity."""
+    entity = entities.pop(scene_id, None)
+    if entity is not None:
+        await entity.async_remove(force_remove=True)
 
 
 class SunEvent:
@@ -98,28 +132,27 @@ class SunEvent:
 class ExtrapolationScene(Scene):
     """Representation the ExtrapolationScene."""
 
-    def __init__(self, name, hass: HomeAssistant, config_entry: ConfigEntry):
+    def __init__(
+        self, hass: HomeAssistant, config_entry: ConfigEntry, scene_config: dict
+    ):
         """Initialize an ExtrapolationScene."""
+        name = scene_config.get(SCENE_NAME) or "Automatic Lighting"
         # Setting the entity_id to an already existing entity_id throws no errors. Instead a number is
         # appended to the expected entity_id. Ie. [entity_id]_2
         self.entity_id = "scene." + name.replace(" ", "_").casefold()
         self._scene_id = self.entity_id
         self.hass = hass
         self.config_entry = config_entry
+        self._scene_config = scene_config
 
         self._attr_icon = "mdi:auto-fix"
         self._attr_name = name
-        self._attr_unique_id = config_entry.data.get(CONF_UNIQUE_ID)
+        self._attr_unique_id = scene_config["id"]
         self._attr_integration = "scene_extrapolation"
         self._brightness_modifier = 0
         self._transition_modifier = 0
         self._target_date_time = None
-
-        # Get area_id from the scene entity itself (not stored in integration data)
-        # The area_id is set during initial config flow and stored on the scene entity
-        entity_registry_instance = er.async_get(self.hass)
-        entity_entry = entity_registry_instance.async_get(self.entity_id)
-        self._area_id = entity_entry.area_id if entity_entry else None
+        self._area_id = scene_config.get(AREA)
 
         # Used for calculating solar events when activating the scene
         self.latitude = self.hass.config.latitude
@@ -129,19 +162,31 @@ class ExtrapolationScene(Scene):
             timezone=self.time_zone, latitude=self.latitude, longitude=self.longitude
         )
 
-        # No caching needed - we'll access in-memory scene entities directly
+    def _cfg(self, key, default=None):
+        """Read a value from the stored scene config."""
+        value = self._scene_config.get(key)
+        if value in (None, ""):
+            return default
+        return value
 
-        # Schedule registry update on the event loop to avoid thread-safety issues
-        hass.async_create_task(self.async_update_registry())
+    async def async_added_to_hass(self) -> None:
+        """Assign the configured area once the entity is registered."""
+        await super().async_added_to_hass()
+        await self._async_sync_area()
 
-    async def async_update_registry(self):
-        """Update the registry."""
-        # Wait a tick for the scene to be registered before updating
-        await asyncio.sleep(0)
+    async def async_update_config(self, scene_config: dict) -> None:
+        """Apply an updated store item."""
+        self._scene_config = scene_config
+        self._attr_name = scene_config.get(SCENE_NAME) or self._attr_name
+        self._area_id = scene_config.get(AREA)
+        await self._async_sync_area()
+        self.async_write_ha_state()
 
-        # Note: area_id is now managed by the scene entity itself
-        # and is set during the initial config flow
-        # No need to update it here as it's not stored in integration data
+    async def _async_sync_area(self) -> None:
+        """Keep the entity registry area in sync with the stored config."""
+        entity_reg = er.async_get(self.hass)
+        if entity_reg.async_get(self.entity_id):
+            entity_reg.async_update_entity(self.entity_id, area_id=self._area_id)
 
     async def async_get_in_memory_scenes(self):
         """Get scenes from in-memory scene entities instead of reading YAML."""
@@ -206,35 +251,16 @@ class ExtrapolationScene(Scene):
             attrs["target_date_time"] = self._target_date_time.isoformat()
 
         # Expose scene entity_ids as attributes
-        dawn_scene = self.config_entry.options.get(
-            SCENE_DAWN
-        ) or self.config_entry.data.get(SCENE_DAWN)
-        if dawn_scene:
-            attrs["dawn_scene"] = dawn_scene
-
-        sunrise_scene = self.config_entry.options.get(
-            SCENE_SUNRISE
-        ) or self.config_entry.data.get(SCENE_SUNRISE)
-        if sunrise_scene:
-            attrs["sunrise_scene"] = sunrise_scene
-
-        noon_scene = self.config_entry.options.get(
-            SCENE_NOON
-        ) or self.config_entry.data.get(SCENE_NOON)
-        if noon_scene:
-            attrs["noon_scene"] = noon_scene
-
-        sunset_scene = self.config_entry.options.get(
-            SCENE_SUNSET
-        ) or self.config_entry.data.get(SCENE_SUNSET)
-        if sunset_scene:
-            attrs["sunset_scene"] = sunset_scene
-
-        dusk_scene = self.config_entry.options.get(
-            SCENE_DUSK
-        ) or self.config_entry.data.get(SCENE_DUSK)
-        if dusk_scene:
-            attrs["dusk_scene"] = dusk_scene
+        for attr_name, key in (
+            ("dawn_scene", SCENE_DAWN),
+            ("sunrise_scene", SCENE_SUNRISE),
+            ("noon_scene", SCENE_NOON),
+            ("sunset_scene", SCENE_SUNSET),
+            ("dusk_scene", SCENE_DUSK),
+        ):
+            value = self._cfg(key)
+            if value:
+                attrs[attr_name] = value
 
         return attrs
 
@@ -298,7 +324,7 @@ class ExtrapolationScene(Scene):
         ##############################################
         #             Handle nightlights             #
         ##############################################
-        nightlights_boolean_id = self.config_entry.options.get(NIGHTLIGHTS_BOOLEAN)
+        nightlights_boolean_id = self._cfg(NIGHTLIGHTS_BOOLEAN)
         nightlights_boolean = False
 
         if nightlights_boolean_id:
@@ -312,7 +338,7 @@ class ExtrapolationScene(Scene):
                 "nightlights_boolean is on. Turning on nightlights instead of default behavior"
             )
 
-            nightlights_scene_id = self.config_entry.options.get(NIGHTLIGHTS_SCENE)
+            nightlights_scene_id = self._cfg(NIGHTLIGHTS_SCENE)
 
             try:
                 await self.hass.services.async_call(
@@ -485,21 +511,18 @@ class ExtrapolationScene(Scene):
 
                 solar_events[event_name] = fallback_time
 
-        scene_dusk_minimum_time_of_day = self.config_entry.options.get(
-            SCENE_DUSK_MINIMUM_TIME_OF_DAY
-        ) or self.config_entry.data.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
+        scene_dusk_minimum_time_of_day = self._cfg(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
 
-        assert isinstance(scene_dusk_minimum_time_of_day, numbers.Number), (
-            "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
-        )
+        assert isinstance(
+            scene_dusk_minimum_time_of_day, numbers.Number
+        ), "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
 
         sun_events = {
             "dawn": SunEvent(
                 name="Dawn",
                 scene=get_scene_by_uuid(
                     scenes,
-                    self.config_entry.options.get(SCENE_DAWN)
-                    or self.config_entry.data.get(SCENE_DAWN),
+                    self._cfg(SCENE_DAWN),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["dawn"]
@@ -509,8 +532,7 @@ class ExtrapolationScene(Scene):
                 name="Sunrise",
                 scene=get_scene_by_uuid(
                     scenes,
-                    self.config_entry.options.get(SCENE_SUNRISE)
-                    or self.config_entry.data.get(SCENE_SUNRISE),
+                    self._cfg(SCENE_SUNRISE),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["sunrise"]
@@ -520,8 +542,7 @@ class ExtrapolationScene(Scene):
                 name="Noon",
                 scene=get_scene_by_uuid(
                     scenes,
-                    self.config_entry.options.get(SCENE_NOON)
-                    or self.config_entry.data.get(SCENE_NOON),
+                    self._cfg(SCENE_NOON),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["noon"]
@@ -531,8 +552,7 @@ class ExtrapolationScene(Scene):
                 name="Sunset",
                 scene=get_scene_by_uuid(
                     scenes,
-                    self.config_entry.options.get(SCENE_SUNSET)
-                    or self.config_entry.data.get(SCENE_SUNSET),
+                    self._cfg(SCENE_SUNSET),
                 ),
                 start_time=self.datetime_to_seconds_since_midnight(
                     solar_events["sunset"]
@@ -542,8 +562,7 @@ class ExtrapolationScene(Scene):
                 name="Dusk",
                 scene=get_scene_by_uuid(
                     scenes,
-                    self.config_entry.options.get(SCENE_DUSK)
-                    or self.config_entry.data.get(SCENE_DUSK),
+                    self._cfg(SCENE_DUSK),
                 ),
                 start_time=max(
                     self.datetime_to_seconds_since_midnight(solar_events["dusk"]),

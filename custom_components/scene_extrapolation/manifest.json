@@ -13,5 +13,6 @@
   "codeowners": [
     "@etokheim"
   ],
-  "iot_class": "calculated"
+  "iot_class": "calculated",
+  "after_dependencies": ["frontend", "http"]
 }

@@ -3,21 +3,27 @@
 from __future__ import annotations
 
 import logging
-import voluptuous as vol
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation, entity_platform, service, selector
+from homeassistant.helpers import selector
 
-from .const import DOMAIN
+from .const import (
+    AREA,
+    DATA_ADD_ENTITIES,
+    DATA_CONFIG_ENTRY,
+    DATA_ENTITIES,
+    DATA_STORE,
+    DOMAIN,
+    SCENE_NAME,
+)
+from .panel import async_setup_panel, async_unload_panel
+from .store import SceneExtrapolationStore
+from .websocket_api import async_setup_websocket
 
 _LOGGER = logging.getLogger(__name__)
-
-DOMAIN = "scene_extrapolation"
-
-ATTR_NAME = "name"
-DEFAULT_NAME = "World"
 
 PLATFORMS: list[Platform] = [Platform.SCENE]
 
@@ -41,7 +47,6 @@ async def async_setup(hass, config):
         target_date_time = call.data.get(ATTR_TARGET_DATE_TIME)
         location = call.data.get(ATTR_LOCATION)
 
-        # Validate brightness modifier range
         if not -100 <= brightness_modifier <= 100:
             _LOGGER.error(
                 "Brightness modifier must be between -100 and 100, got %s",
@@ -49,7 +54,6 @@ async def async_setup(hass, config):
             )
             return
 
-        # Validate transition range
         if not 0 <= transition <= 6553:
             _LOGGER.error(
                 "Transition must be between 0 and 6553 seconds, got %s",
@@ -57,7 +61,6 @@ async def async_setup(hass, config):
             )
             return
 
-        # Validate transition modifier range
         if not -100 <= transition_modifier <= 100:
             _LOGGER.error(
                 "Transition modifier must be between -100 and 100, got %s",
@@ -65,33 +68,30 @@ async def async_setup(hass, config):
             )
             return
 
-        # Activate each extrapolation scene with brightness modifier and transition modifier
         for entity_id in entity_ids:
-            if entity_id.startswith("scene."):
-                # Get the scene entity and call its async_activate method directly
-                scene_entity = hass.states.get(entity_id)
-                if scene_entity:
-                    # Find the actual scene entity object in the scene platform
-                    scene_platform = hass.data.get("scene")
-                    if scene_platform:
-                        for scene in scene_platform.entities:
-                            if scene.entity_id == entity_id:
-                                await scene.async_activate(
-                                    transition=transition,
-                                    brightness_modifier=brightness_modifier,
-                                    transition_modifier=transition_modifier,
-                                    target_date_time=target_date_time,
-                                    location=location,
-                                )
-                                break
-                        else:
-                            _LOGGER.error("Scene entity %s not found", entity_id)
-                    else:
-                        _LOGGER.error("Scene platform not found")
-                else:
-                    _LOGGER.error("Scene entity %s not found in states", entity_id)
+            if not entity_id.startswith("scene."):
+                continue
+            scene_entity = hass.states.get(entity_id)
+            if not scene_entity:
+                _LOGGER.error("Scene entity %s not found in states", entity_id)
+                continue
+            scene_platform = hass.data.get("scene")
+            if not scene_platform:
+                _LOGGER.error("Scene platform not found")
+                continue
+            for scene in scene_platform.entities:
+                if scene.entity_id == entity_id:
+                    await scene.async_activate(
+                        transition=transition,
+                        brightness_modifier=brightness_modifier,
+                        transition_modifier=transition_modifier,
+                        target_date_time=target_date_time,
+                        location=location,
+                    )
+                    break
+            else:
+                _LOGGER.error("Scene entity %s not found", entity_id)
 
-    # Register the service
     hass.services.async_register(
         DOMAIN,
         SERVICE_TURN_ON,
@@ -144,35 +144,87 @@ async def async_setup(hass, config):
         ),
     )
 
-    # Return boolean to indicate that initialization was successful.
     return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Keep older config entries loadable after the single-instance flow."""
+    if config_entry.version < 2:
+        hass.config_entries.async_update_entry(config_entry, version=2)
+    return True
+
+
+def _is_legacy_entry(entry: ConfigEntry) -> bool:
+    return SCENE_NAME in entry.data or AREA in entry.data or "unique_id" in entry.data
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up Scene Extrapolation from a config entry."""
+    domain_data = hass.data.setdefault(
+        DOMAIN,
+        {
+            DATA_STORE: SceneExtrapolationStore(hass),
+            DATA_ENTITIES: {},
+            DATA_ADD_ENTITIES: None,
+            DATA_CONFIG_ENTRY: None,
+            "websocket_setup": False,
+            "panel_setup": False,
+            "store_loaded": False,
+        },
+    )
 
-    # hass.data.setdefault(DOMAIN, {})
+    store: SceneExtrapolationStore = domain_data[DATA_STORE]
+    if not domain_data["store_loaded"]:
+        await store.async_load()
+        domain_data["store_loaded"] = True
 
-    # platform = entity_platform.async_get_current_platform()
+    if _is_legacy_entry(config_entry):
+        await store.async_import_legacy(
+            dict(config_entry.data), dict(config_entry.options)
+        )
 
-    # # This will call Entity.set_sleep_timer(sleep_time=VALUE)
-    # platform.async_register_entity_service(
-    #     SERVICE_SET_TIMER,
-    #     {
-    #         vol.Required('sleep_time'): config_validation.time_period,
-    #     },
-    #     "set_sleep_timer",
-    # )
+    if domain_data[DATA_CONFIG_ENTRY] is not None:
+        hass.async_create_task(hass.config_entries.async_remove(config_entry.entry_id))
+        return True
+
+    domain_data[DATA_CONFIG_ENTRY] = config_entry
+    hass.async_create_task(_async_normalize_primary_entry(hass, config_entry.entry_id))
+
+    if not domain_data["websocket_setup"]:
+        async_setup_websocket(hass)
+        domain_data["websocket_setup"] = True
+
+    if not domain_data["panel_setup"]:
+        await async_setup_panel(hass)
+        domain_data["panel_setup"] = True
 
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
-
     return True
+
+
+async def _async_normalize_primary_entry(hass: HomeAssistant, entry_id: str) -> None:
+    """Collapse a migrated entry to the single-instance shape after setup."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None:
+        return
+    if entry.data or entry.options or entry.unique_id != DOMAIN:
+        hass.config_entries.async_update_entry(
+            entry,
+            unique_id=DOMAIN,
+            title="Scene Extrapolation",
+            data={},
+            options={},
+        )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    # if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-    #    hass.data[DOMAIN].pop(entry.entry_id)
+    domain_data = hass.data.get(DOMAIN)
+    if not domain_data or domain_data.get(DATA_CONFIG_ENTRY) is not entry:
+        return True
 
-    # return unload_ok
-    return True
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        await async_unload_panel(hass)
+        hass.data.pop(DOMAIN, None)
+    return unload_ok
