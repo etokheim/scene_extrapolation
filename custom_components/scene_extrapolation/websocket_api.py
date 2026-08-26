@@ -40,26 +40,40 @@ def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
     return hass.data[DOMAIN][DATA_STORE]
 
 
+def _registry_entry(hass: HomeAssistant, scene_id: str):
+    entity_reg = er.async_get(hass)
+    for registry_entry in entity_reg.entities.values():
+        if registry_entry.unique_id == scene_id and registry_entry.domain == "scene":
+            return registry_entry
+    return None
+
+
+def _form_payload(item: dict[str, Any], entry=None) -> dict[str, Any]:
+    form = to_form_data(item)
+    if entry:
+        form["labels"] = list(entry.labels)
+        form["category"] = (entry.categories or {}).get("scene")
+    return form
+
+
 def _list_payload(hass: HomeAssistant) -> list[dict[str, Any]]:
     area_reg = ar.async_get(hass)
-    entity_reg = er.async_get(hass)
     payload = []
     for item in _store(hass).list():
         area_id = item.get("area")
         area_name = None
         if area_id and area_id in area_reg.areas:
             area_name = area_reg.areas[area_id].name
-        entity_id = None
-        for entry in entity_reg.entities.values():
-            if entry.unique_id == item["id"] and entry.domain == "scene":
-                entity_id = entry.entity_id
-                break
+        entry = _registry_entry(hass, item["id"])
+        form = _form_payload(item, entry)
         payload.append(
             {
                 **item,
                 "area_name": area_name,
-                "entity_id": entity_id,
-                "form": to_form_data(item),
+                "entity_id": entry.entity_id if entry else None,
+                "labels": form.get("labels") or [],
+                "category": form.get("category"),
+                "form": form,
             }
         )
     payload.sort(key=lambda item: (item.get("scene_name") or "").casefold())
@@ -96,7 +110,8 @@ def ws_get(
     if item is None:
         connection.send_error(msg["id"], websocket_api.ERR_NOT_FOUND, "Scene not found")
         return
-    connection.send_result(msg["id"], {**item, "form": to_form_data(item)})
+    entry = _registry_entry(hass, item["id"])
+    connection.send_result(msg["id"], {**item, "form": _form_payload(item, entry)})
 
 
 @websocket_api.websocket_command(
@@ -136,7 +151,8 @@ async def ws_save(
         hass.data[DOMAIN][DATA_ADD_ENTITIES],
         hass.data[DOMAIN][DATA_ENTITIES],
     )
-    connection.send_result(msg["id"], {**item, "form": to_form_data(item)})
+    entry = _registry_entry(hass, item["id"])
+    connection.send_result(msg["id"], {**item, "form": _form_payload(item, entry)})
 
 
 @websocket_api.websocket_command(

@@ -3,6 +3,9 @@
 DOMAIN = "scene_extrapolation"
 AREA = "area"
 SCENE_NAME = "scene_name"
+DESCRIPTION = "description"
+LABELS = "labels"
+CATEGORY = "category"
 
 SCENE_DAWN = "scene_dawn"
 SCENE_SUNRISE = "scene_sunrise"

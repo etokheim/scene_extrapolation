@@ -56,6 +56,41 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Per-light brightness curves and date preview
 
 - **Date:** 2026-08-26
-- **Decision:** Under the sun chart on create/edit, list each light as a full-width brightness polyline (one SVG path + x-gradient from sample colors), not a strip of `<rect>` bars. The entity name sits on the chart and opens more-info. Graphs stack with no gap. A date picker (with Today / 21 Jun / 21 Dec) drives both the sun curve and the lights. Polar / no-rise events use the same seasonal fallbacks as scene activation. An entity present in one scene but not the next is a warning, not an error (treated as off during that transition).
+- **Decision:** Under the sun chart on create/edit, list each light as a full-width brightness polyline (one SVG path + x-gradient from sample colors), not a strip of `<rect>` bars. The entity name sits on the chart and opens more-info. Graphs stack with no gap. Polar / no-rise events use the same seasonal fallbacks as scene activation. An entity present in one scene but not the next is a warning, not an error (treated as off during that transition).
 - **Why:** A single line matches the sun chart and stays cheap to paint. Labels on the plot save vertical space; clicking through to the entity is the usual HA pattern. Missing entities are supported on purpose (e.g. a lamp that only exists in the evening scene).
+- **Do not reverse without user ask.**
+
+## Native HA date field for the preview day
+
+- **Date:** 2026-08-26
+- **Decision:** The preview day control is HA’s `ha-selector` `{ date: {} }` (`ha-date-input` → `ha-dialog-date-picker`), with prev/next day buttons and Today / 21 Jun / 21 Dec chips. Do not use Activity’s `ha-date-range-picker` (that is a start–end range) or a raw `<input type="date">`.
+- **Why:** Logbook’s widget is a range. The single-day native widget is `ha-date-input`. `ha-selector` already knows how to lazy-load that chunk from HA’s bundle; our `panel.js` cannot `import()` those files.
+- **Do not reverse without user ask.**
+
+## Opaque light-graph fills
+
+- **Date:** 2026-08-26
+- **Decision:** The area under each light brightness polyline is fully opaque (`fill-opacity: 1`). Keep the stroke on top of the fill.
+- **Why:** Semi-transparent fills made the curves look washed out against the card background.
+- **Do not reverse without user ask.**
+
+## Panel FAB matches hass-subpage, not ha-fab
+
+- **Date:** 2026-08-26
+- **Decision:** List and editor use a corner overlay (`position: absolute` sibling of `ha-top-app-bar-fixed`, same offsets as hass-subpage `#fab`) with `ha-button size="l" variant="brand" appearance="accent"`. List label is “New extrapolation scene”; editor is “Save”. Do not use `ha-fab` — it is not registered in this frontend.
+- **Why:** Automations create with that button in the `#fab` slot. `ha-top-app-bar-fixed` has no fab slot, so the overlay has to sit beside the app bar.
+- **Do not reverse without user ask.**
+
+## Save/rename dialog; area stays on the form
+
+- **Date:** 2026-08-26
+- **Decision:** Save and Rename open a `ha-dialog` patterned on `ha-dialog-automation-save`: required name, optional description / category / labels via assist chips. Area is not in the dialog; it stays on the main `ha-form`. Name is no longer a form field. Persist description in the store; sync labels and the `scene` category through the entity registry.
+- **Why:** HA scene/automation save prompts for identity metadata at save time. Area still filters scene pickers on the form, so it cannot move into the dialog. `ha-dialog-scene-save` is not loaded in a custom panel.
+- **Do not reverse without user ask.**
+
+## Editor overflow menu for rename and delete
+
+- **Date:** 2026-08-26
+- **Decision:** Existing scenes get `ha-dropdown` in `slot="actionItems"` (dots trigger, `wa-select`, Rename + danger Delete). New unsaved scenes have no overflow. Inline Save/Delete buttons on the form are gone.
+- **Why:** Same header overflow pattern as the automation editor. Delete is destructive, so it stays off the FAB.
 - **Do not reverse without user ask.**

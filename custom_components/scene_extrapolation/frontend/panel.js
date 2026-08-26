@@ -64,6 +64,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._menuButtonEl) {
       this._menuButtonEl.hass = hass;
     }
+    if (this._datePicker) {
+      this._datePicker.hass = hass;
+    }
     if (!this._built && this.isConnected) {
       this._build();
     }
@@ -91,7 +94,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!this._sunTimer) {
       this._sunTimer = window.setInterval(() => {
         const active = this.shadowRoot?.activeElement;
-        if (active && active.classList.contains("sun-date")) {
+        if (active && this._datePicker?.contains(active)) {
           return;
         }
         this._drawSunPath();
@@ -121,6 +124,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       <style>
         :host {
           display: block;
+          position: relative;
           height: 100vh;
           overflow: hidden;
           background: var(--primary-background-color);
@@ -145,19 +149,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 8px;
           padding: 12px 16px 0;
         }
-        .sun-toolbar label {
+        .sun-date-nav {
           display: flex;
           align-items: center;
-          gap: 8px;
-          font-size: 14px;
+          gap: 4px;
+          min-width: 0;
         }
-        .sun-date {
-          background: var(--secondary-background-color, var(--input-fill-color, transparent));
-          color: var(--primary-text-color);
-          border: 1px solid var(--divider-color);
-          border-radius: 8px;
-          padding: 6px 8px;
-          font: inherit;
+        .sun-date-nav ha-selector {
+          min-width: 168px;
         }
         .sun-chip {
           background: transparent;
@@ -322,7 +321,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
         }
         .content {
-          padding: 16px;
+          padding: 16px 16px 88px;
         }
         .content.wide {
           max-width: 720px;
@@ -367,16 +366,28 @@ class SceneExtrapolationPanel extends HTMLElement {
           color: var(--secondary-text-color);
           font-size: 14px;
         }
+        /* Corner overlay matching hass-subpage #fab. ha-top-app-bar-fixed has
+           no fab slot, so this sits as a sibling of the app bar. */
         .fab {
-          position: fixed;
-          right: 16px;
-          bottom: 16px;
+          position: absolute;
+          right: calc(16px + var(--safe-area-inset-right, 0px));
+          bottom: calc(16px + var(--safe-area-inset-bottom, 0px));
+          z-index: 6;
+          --ha-button-box-shadow: var(--ha-box-shadow-l);
         }
-        .actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 8px;
-          margin-top: 24px;
+        .fab[hidden] {
+          display: none;
+        }
+        .save-dialog ha-input,
+        .save-dialog ha-textarea,
+        .save-dialog ha-labels-picker,
+        .save-dialog ha-category-picker,
+        .save-dialog ha-selector {
+          display: block;
+          margin-top: 16px;
+        }
+        .save-dialog ha-chip-set {
+          margin-top: 16px;
         }
         .error {
           color: var(--error-color);
@@ -407,12 +418,14 @@ class SceneExtrapolationPanel extends HTMLElement {
         <div class="sun-path" hidden></div>
         <div class="content"></div>
       </ha-top-app-bar-fixed>
+      <div class="fab" hidden></div>
     `;
     this._appBar = this.shadowRoot.querySelector("ha-top-app-bar-fixed");
     this._appBar.narrow = Boolean(this._narrow);
     this._headerEl = this.shadowRoot.querySelector("[slot='title']");
     this._sunPathEl = this.shadowRoot.querySelector(".sun-path");
     this._contentEl = this.shadowRoot.querySelector(".content");
+    this._fabEl = this.shadowRoot.querySelector(".fab");
     this._syncHash();
   }
 
@@ -490,6 +503,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       error.className = "error";
       error.textContent = this._error;
       this._contentEl.replaceChildren(error);
+      this._setActionItems();
+      this._setFab(this._addButton());
       return;
     }
 
@@ -497,7 +512,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!this._items.length) {
       wrap.className = "empty";
       wrap.textContent =
-        "No extrapolation scenes yet. Add one to start lighting a room from the sun.";
+        "No extrapolation scenes yet. Create one to start lighting a room from the sun.";
     } else {
       wrap.className = "list";
       for (const item of this._items) {
@@ -505,7 +520,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     }
     this._contentEl.replaceChildren(wrap);
-    this._contentEl.appendChild(this._addButton());
+    this._setActionItems();
+    this._setFab(this._addButton());
   }
 
   _listRow(item) {
@@ -535,33 +551,92 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _addButton() {
-    const holder = document.createElement("div");
-    holder.className = "fab";
-    if (customElements.get("ha-fab")) {
-      const fab = document.createElement("ha-fab");
-      fab.label = "Add";
-      fab.extended = true;
-      const icon = document.createElement("ha-icon");
-      icon.setAttribute("icon", "mdi:plus");
-      icon.slot = "icon";
-      fab.appendChild(icon);
-      fab.addEventListener("click", () => this._go("new"));
-      holder.appendChild(fab);
-    } else {
-      const button = document.createElement("button");
-      button.className = "fallback";
-      button.textContent = "Add";
-      button.addEventListener("click", () => this._go("new"));
-      holder.appendChild(button);
+    return this._fabButton("New extrapolation scene", "mdi:plus", () =>
+      this._go("new")
+    );
+  }
+
+  _setFab(node) {
+    if (!this._fabEl) {
+      return;
     }
-    return holder;
+    this._fabEl.replaceChildren();
+    if (!node) {
+      this._fabEl.hidden = true;
+      return;
+    }
+    this._fabEl.hidden = false;
+    this._fabEl.appendChild(node);
+  }
+
+  _fabButton(label, icon, onClick) {
+    const button = document.createElement("ha-button");
+    button.size = "l";
+    button.variant = "brand";
+    button.appearance = "accent";
+    const haIcon = document.createElement("ha-icon");
+    haIcon.setAttribute("icon", icon);
+    haIcon.slot = "start";
+    button.append(haIcon, document.createTextNode(label));
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  _setActionItems(node) {
+    for (const child of [...this._appBar.children]) {
+      if (child.getAttribute("slot") === "actionItems") {
+        child.remove();
+      }
+    }
+    if (!node) {
+      return;
+    }
+    node.slot = "actionItems";
+    this._appBar.appendChild(node);
+  }
+
+  _overflowMenu() {
+    const menu = document.createElement("ha-dropdown");
+    const trigger = document.createElement("ha-icon-button");
+    trigger.slot = "trigger";
+    trigger.label = "Menu";
+    const icon = document.createElement("ha-icon");
+    icon.setAttribute("icon", "mdi:dots-vertical");
+    trigger.appendChild(icon);
+    const rename = document.createElement("ha-dropdown-item");
+    rename.value = "rename";
+    const renameIcon = document.createElement("ha-icon");
+    renameIcon.setAttribute("icon", "mdi:rename-box");
+    renameIcon.slot = "icon";
+    rename.append(renameIcon, document.createTextNode("Rename"));
+    const remove = document.createElement("ha-dropdown-item");
+    remove.value = "delete";
+    remove.variant = "danger";
+    const removeIcon = document.createElement("ha-icon");
+    removeIcon.setAttribute("icon", "mdi:delete");
+    removeIcon.slot = "icon";
+    remove.append(removeIcon, document.createTextNode("Delete"));
+    menu.append(trigger, rename, remove);
+    menu.addEventListener("wa-select", (ev) => {
+      const action = ev.detail?.item?.value;
+      if (action === "rename") {
+        this._openSaveDialog({ rename: true });
+      } else if (action === "delete") {
+        this._delete();
+      }
+    });
+    return menu;
   }
 
   _renderEditor() {
     this._headerEl.textContent = this._editId
       ? this._formData.scene_name || "Edit scene"
-      : "Add scene";
+      : "New scene";
     this._setNavigationIcon(this._backButton());
+    this._setActionItems(this._editId ? this._overflowMenu() : null);
+    this._setFab(
+      this._fabButton("Save", "mdi:content-save", () => this._openSaveDialog())
+    );
     this._contentEl.classList.add("wide");
 
     const wrap = document.createElement("div");
@@ -589,16 +664,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
     this._form = form;
     wrap.appendChild(form);
-
-    const actions = document.createElement("div");
-    actions.className = "actions";
-    if (this._editId) {
-      actions.appendChild(
-        this._button("Delete", () => this._delete(), { danger: true, ghost: true })
-      );
-    }
-    actions.appendChild(this._button("Save", () => this._save()));
-    wrap.appendChild(actions);
     this._contentEl.replaceChildren(wrap);
   }
 
@@ -675,7 +740,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     const areaId = this._formData.area || null;
     const sceneSelector = entitySelector(this._hass, "scene", areaId, true);
     const schema = [
-      { name: "scene_name", required: true, selector: { text: {} } },
       { name: "area", selector: { area: {} } },
       { name: "display_scenes_combined", selector: { boolean: {} } },
     ];
@@ -707,6 +771,186 @@ class SceneExtrapolationPanel extends HTMLElement {
       { name: "nightlights_scene", selector: sceneSelector }
     );
     return schema;
+  }
+
+  async _openSaveDialog({ rename = false } = {}) {
+    this.shadowRoot.querySelector("ha-dialog.save-dialog")?.remove();
+    const data = {
+      scene_name: this._formData.scene_name || "Automatic Lighting",
+      description: this._formData.description || "",
+      labels: [...(this._formData.labels || [])],
+      category: this._formData.category || "",
+    };
+    const chipsAvailable = Boolean(customElements.get("ha-assist-chip"));
+    const visible = new Set();
+    if (!chipsAvailable || data.description) {
+      visible.add("description");
+    }
+    if (!chipsAvailable || data.category) {
+      visible.add("category");
+    }
+    if (!chipsAvailable || data.labels.length) {
+      visible.add("labels");
+    }
+
+    let categories = [];
+    try {
+      categories = await this._hass.callWS({
+        type: "config/category_registry/list",
+        scope: "scene",
+      });
+    } catch (_err) {
+      categories = [];
+    }
+
+    const dialog = document.createElement("ha-dialog");
+    dialog.className = "save-dialog";
+    dialog.setAttribute("header-title", rename ? "Rename" : "Save");
+    dialog.open = true;
+
+    const bindValue = (el, onValue) => {
+      el.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        onValue(ev.detail?.value);
+      });
+      el.addEventListener("input", () => onValue(el.value));
+    };
+
+    const nameInput = customElements.get("ha-input")
+      ? document.createElement("ha-input")
+      : document.createElement("ha-selector");
+    nameInput.label = "Name";
+    nameInput.required = true;
+    nameInput.value = data.scene_name;
+    if (nameInput.localName === "ha-selector") {
+      nameInput.hass = this._hass;
+      nameInput.selector = { text: {} };
+    }
+    nameInput.setAttribute("autofocus", "");
+    bindValue(nameInput, (value) => {
+      data.scene_name = value ?? "";
+    });
+    dialog.appendChild(nameInput);
+
+    const optional = document.createElement("div");
+    const chips = document.createElement(
+      customElements.get("ha-chip-set") ? "ha-chip-set" : "div"
+    );
+    const addChip = (id, label, build) => {
+      if (visible.has(id)) {
+        optional.appendChild(build());
+        return;
+      }
+      const chip = document.createElement("ha-assist-chip");
+      chip.id = id;
+      chip.label = label;
+      const plus = document.createElement("ha-icon");
+      plus.setAttribute("icon", "mdi:plus");
+      plus.slot = "icon";
+      chip.appendChild(plus);
+      chip.addEventListener("click", () => {
+        chip.remove();
+        visible.add(id);
+        optional.appendChild(build());
+      });
+      chips.appendChild(chip);
+    };
+
+    addChip("description", "Add description", () => {
+      const field = customElements.get("ha-textarea")
+        ? document.createElement("ha-textarea")
+        : document.createElement("ha-selector");
+      field.label = "Description";
+      field.value = data.description;
+      if (field.localName === "ha-selector") {
+        field.hass = this._hass;
+        field.selector = { text: { multiline: true } };
+      }
+      bindValue(field, (value) => {
+        data.description = value ?? "";
+      });
+      return field;
+    });
+    addChip("category", "Add category", () => {
+      if (customElements.get("ha-category-picker")) {
+        const picker = document.createElement("ha-category-picker");
+        picker.hass = this._hass;
+        picker.scope = "scene";
+        picker.label = "Category";
+        picker.value = data.category || "";
+        bindValue(picker, (value) => {
+          data.category = value || "";
+        });
+        return picker;
+      }
+      const picker = document.createElement("ha-selector");
+      picker.hass = this._hass;
+      picker.label = "Category";
+      picker.value = data.category || "";
+      picker.selector = {
+        select: {
+          mode: "dropdown",
+          options: categories.map((item) => ({
+            value: item.category_id,
+            label: item.name,
+          })),
+        },
+      };
+      bindValue(picker, (value) => {
+        data.category = value || "";
+      });
+      return picker;
+    });
+    addChip("labels", "Add labels", () => {
+      const picker = customElements.get("ha-labels-picker")
+        ? document.createElement("ha-labels-picker")
+        : document.createElement("ha-selector");
+      picker.hass = this._hass;
+      picker.value = data.labels;
+      if (picker.localName === "ha-selector") {
+        picker.label = "Labels";
+        picker.selector = { label: { multiple: true } };
+      }
+      bindValue(picker, (value) => {
+        data.labels = value || [];
+      });
+      return picker;
+    });
+    dialog.append(optional, chips);
+
+    const footer = customElements.get("ha-dialog-footer")
+      ? document.createElement("ha-dialog-footer")
+      : document.createElement("div");
+    footer.slot = "footer";
+    const cancel = document.createElement("ha-button");
+    cancel.slot = "secondaryAction";
+    cancel.appearance = "plain";
+    cancel.textContent = "Cancel";
+    cancel.setAttribute("data-dialog", "close");
+    cancel.addEventListener("click", () => {
+      dialog.open = false;
+    });
+    const save = document.createElement("ha-button");
+    save.slot = "primaryAction";
+    save.variant = "brand";
+    save.textContent = rename ? "Rename" : "Save";
+    save.addEventListener("click", async () => {
+      const name = (data.scene_name || "").trim();
+      if (!name) {
+        nameInput.reportValidity?.();
+        return;
+      }
+      this._formData.scene_name = name;
+      this._formData.description = data.description;
+      this._formData.labels = data.labels;
+      this._formData.category = data.category || null;
+      dialog.open = false;
+      await this._save();
+    });
+    footer.append(cancel, save);
+    dialog.appendChild(footer);
+    dialog.addEventListener("closed", () => dialog.remove());
+    this.shadowRoot.appendChild(dialog);
   }
 
   async _save() {
@@ -841,25 +1085,66 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
   }
 
+  _shiftPreviewDate(days) {
+    this._previewDate = shiftIsoDate(this._previewDate, days);
+    this._sunPathKey = undefined;
+    this._ensureSunPath();
+  }
+
   _buildDateToolbar() {
     const toolbar = document.createElement("div");
     toolbar.className = "sun-toolbar";
-    const label = document.createElement("label");
-    label.append("Date");
-    const input = document.createElement("input");
-    input.type = "date";
-    input.className = "sun-date";
-    input.value = this._previewDate;
-    input.addEventListener("change", () => {
-      if (!input.value) {
+    const nav = document.createElement("div");
+    nav.className = "sun-date-nav";
+
+    const prev = customElements.get("ha-icon-button-prev")
+      ? document.createElement("ha-icon-button-prev")
+      : document.createElement("ha-icon-button");
+    prev.label = "Previous day";
+    if (prev.localName === "ha-icon-button") {
+      const prevIcon = document.createElement("ha-icon");
+      prevIcon.setAttribute("icon", "mdi:chevron-left");
+      prev.appendChild(prevIcon);
+    }
+    prev.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this._shiftPreviewDate(-1);
+    });
+
+    // Activity uses ha-date-range-picker (a range). A single calendar day is
+    // ha-selector { date: {} }, which lazy-loads ha-date-input from HA's bundle.
+    const picker = document.createElement("ha-selector");
+    picker.hass = this._hass;
+    picker.label = "Date";
+    picker.required = true;
+    picker.selector = { date: {} };
+    picker.value = this._previewDate;
+    picker.addEventListener("value-changed", (ev) => {
+      const value = ev.detail?.value;
+      if (!value) {
         return;
       }
-      this._previewDate = input.value;
+      this._previewDate = value;
       this._sunPathKey = undefined;
       this._ensureSunPath();
     });
-    label.appendChild(input);
-    toolbar.appendChild(label);
+
+    const next = customElements.get("ha-icon-button-next")
+      ? document.createElement("ha-icon-button-next")
+      : document.createElement("ha-icon-button");
+    next.label = "Next day";
+    if (next.localName === "ha-icon-button") {
+      const nextIcon = document.createElement("ha-icon");
+      nextIcon.setAttribute("icon", "mdi:chevron-right");
+      next.appendChild(nextIcon);
+    }
+    next.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this._shiftPreviewDate(1);
+    });
+
+    nav.append(prev, picker, next);
+    toolbar.appendChild(nav);
     const year = new Date().getFullYear();
     const presets = [
       ["Today", todayIso()],
@@ -873,25 +1158,24 @@ class SceneExtrapolationPanel extends HTMLElement {
       chip.textContent = name;
       chip.addEventListener("click", () => {
         this._previewDate = value;
-        input.value = value;
+        picker.value = value;
         this._sunPathKey = undefined;
         this._ensureSunPath();
       });
       toolbar.appendChild(chip);
     }
-    this._dateInput = input;
+    this._datePicker = picker;
     this._dateChips = toolbar.querySelectorAll(".sun-chip");
     return toolbar;
   }
 
   _syncDateToolbar() {
-    if (!this._dateInput) {
-      return;
+    if (this._datePicker) {
+      this._datePicker.hass = this._hass;
+      this._datePicker.value = this._previewDate;
     }
-    if (this.shadowRoot.activeElement !== this._dateInput) {
-      this._dateInput.value = this._previewDate;
-    }
-    const presets = [todayIso(), `${new Date().getFullYear()}-06-21`, `${new Date().getFullYear()}-12-21`];
+    const year = new Date().getFullYear();
+    const presets = [todayIso(), `${year}-06-21`, `${year}-12-21`];
     this._dateChips?.forEach((chip, index) => {
       if (presets[index] === this._previewDate) {
         chip.setAttribute("selected", "");
@@ -1120,7 +1404,7 @@ class SceneExtrapolationPanel extends HTMLElement {
             ${stops}
           </linearGradient>
         </defs>
-        <path d="${area}" fill="url(#${gradientId})" fill-opacity="0.35"></path>
+        <path d="${area}" fill="url(#${gradientId})" fill-opacity="1"></path>
         <path d="${line}" fill="none" stroke="url(#${gradientId})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
         ${eventLines}
         ${nowLine}
@@ -1164,9 +1448,22 @@ function todayIso() {
   return `${year}-${month}-${day}`;
 }
 
+function shiftIsoDate(iso, days) {
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  const nextYear = date.getFullYear();
+  const nextMonth = String(date.getMonth() + 1).padStart(2, "0");
+  const nextDay = String(date.getDate()).padStart(2, "0");
+  return `${nextYear}-${nextMonth}-${nextDay}`;
+}
+
 function emptyFormData() {
   return {
     scene_name: "Automatic Lighting",
+    description: "",
+    labels: [],
+    category: null,
     area: null,
     display_scenes_combined: true,
     scene_dawn_sunrise_sunset: null,

@@ -11,8 +11,11 @@ from homeassistant.helpers.storage import Store
 
 from .const import (
     AREA,
+    CATEGORY,
+    DESCRIPTION,
     DISPLAY_SCENES_COMBINED,
     DOMAIN,
+    LABELS,
     NIGHTLIGHTS_BOOLEAN,
     NIGHTLIGHTS_SCENE,
     SCENE_DAWN,
@@ -71,9 +74,15 @@ def normalize_scene_config(
     if not name:
         raise ValueError("Scene name is required")
 
+    labels = raw.get(LABELS) or []
+    if isinstance(labels, str):
+        labels = [labels] if labels else []
     item: dict[str, Any] = {
         "id": scene_id or raw.get("id") or str(uuid.uuid4()),
         SCENE_NAME: name,
+        DESCRIPTION: (raw.get(DESCRIPTION) or "").strip() or None,
+        LABELS: [str(label) for label in labels if label],
+        CATEGORY: raw.get(CATEGORY) or None,
         AREA: raw.get(AREA) or None,
         DISPLAY_SCENES_COMBINED: combined,
         NIGHTLIGHTS_BOOLEAN: raw.get(NIGHTLIGHTS_BOOLEAN) or None,
@@ -129,6 +138,9 @@ def to_form_data(item: dict[str, Any]) -> dict[str, Any]:
     data = {
         "id": item.get("id"),
         SCENE_NAME: item.get(SCENE_NAME),
+        DESCRIPTION: item.get(DESCRIPTION) or "",
+        LABELS: list(item.get(LABELS) or []),
+        CATEGORY: item.get(CATEGORY),
         AREA: item.get(AREA),
         DISPLAY_SCENES_COMBINED: combined,
         SCENE_NOON: item.get(SCENE_NOON),

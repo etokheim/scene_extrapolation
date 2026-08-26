@@ -7,6 +7,7 @@ import logging
 import numbers
 import time
 from datetime import datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from astral import LocationInfo
@@ -54,12 +55,14 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    AREA,
-    DATA_ADD_ENTITIES,
-    DATA_ENTITIES,
-    DATA_STORE,
-    DOMAIN,
-    NIGHTLIGHTS_BOOLEAN,
+        AREA,
+        CATEGORY,
+        DATA_ADD_ENTITIES,
+        DATA_ENTITIES,
+        DATA_STORE,
+        DOMAIN,
+        LABELS,
+        NIGHTLIGHTS_BOOLEAN,
     NIGHTLIGHTS_SCENE,
     SCENE_DAWN,
     SCENE_DUSK,
@@ -223,21 +226,35 @@ class ExtrapolationScene(Scene):
     async def async_added_to_hass(self) -> None:
         """Assign the configured area once the entity is registered."""
         await super().async_added_to_hass()
-        await self._async_sync_area()
+        await self._async_sync_registry()
 
     async def async_update_config(self, scene_config: dict) -> None:
         """Apply an updated store item."""
         self._scene_config = scene_config
         self._attr_name = scene_config.get(SCENE_NAME) or self._attr_name
         self._area_id = scene_config.get(AREA)
-        await self._async_sync_area()
+        await self._async_sync_registry()
         self.async_write_ha_state()
 
-    async def _async_sync_area(self) -> None:
-        """Keep the entity registry area in sync with the stored config."""
+    async def _async_sync_registry(self) -> None:
+        """Keep entity registry area, labels, and category in sync."""
         entity_reg = er.async_get(self.hass)
-        if entity_reg.async_get(self.entity_id):
-            entity_reg.async_update_entity(self.entity_id, area_id=self._area_id)
+        entry = entity_reg.async_get(self.entity_id)
+        if not entry:
+            return
+        updates: dict[str, Any] = {"area_id": self._area_id}
+        labels = self._scene_config.get(LABELS)
+        if labels is not None:
+            updates["labels"] = set(labels)
+        # Always write categories so clearing the scene category is not a no-op.
+        categories = dict(entry.categories or {})
+        category = self._scene_config.get(CATEGORY)
+        if category:
+            categories["scene"] = category
+        else:
+            categories.pop("scene", None)
+        updates["categories"] = categories
+        entity_reg.async_update_entity(self.entity_id, **updates)
 
     async def async_get_in_memory_scenes(self):
         """Get scenes from in-memory scene entities instead of reading YAML."""
