@@ -11,8 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidebar panel to create and edit all extrapolation scenes from one integration instance
 - Sun-path visualization on the create/edit screen (elevation curve + solar events)
 - Per-light brightness/color preview on create/edit, with a date picker for winter/polar days
-- Save/rename dialog for scene name, description, category, and labels
-- Header overflow menu on existing scenes (rename / delete)
+- Save/rename dialog for scene name, description, category, labels, and area
+- Header overflow on create/edit matching the native scene editor (activate, info, settings, category, rename, duplicate, delete)
+- New extrapolation scene prompts for an area before opening the editor
+- Earliest dusk time is set in the dusk event dialog
 - Click a solar event above the chart to assign its native scene (optional link for dawn / sunrise / sunset)
 - Pencil on each light timeline to edit that lamp in the scene for that event, with optional live preview
 
@@ -23,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Create/save use a sticky native HA button (New extrapolation scene / Save) instead of inline form actions
 - Preview day uses HA’s date selector instead of a raw browser date input
 - Light graphs fill the area under the brightness line opaquely
-- Scene pickers moved onto the solar event row; the form keeps area, dusk minimum, and nightlights
+- Scene pickers moved onto the solar event row; the form keeps nightlights
 
 ### Fixed
 - Transition progress went negative at exact solar event times, which broke winter-date previews

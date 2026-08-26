@@ -55,6 +55,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._editId = null;
     this._items = [];
     this._formData = emptyFormData();
+    this._entityId = null;
+    this._pendingNewForm = null;
+    this._areaPromptOpen = false;
     this._error = null;
     this._saving = false;
     this._built = false;
@@ -448,7 +451,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         .save-dialog ha-textarea,
         .save-dialog ha-labels-picker,
         .save-dialog ha-category-picker,
-        .save-dialog ha-selector {
+        .save-dialog ha-selector,
+        .area-dialog ha-selector,
+        .confirm-dialog p {
           display: block;
           margin-top: 16px;
         }
@@ -498,11 +503,19 @@ class SceneExtrapolationPanel extends HTMLElement {
   _syncHash() {
     const hash = (window.location.hash || "#").replace(/^#/, "");
     if (hash === "new") {
+      const pending = this._pendingNewForm;
+      this._pendingNewForm = null;
       this._view = "edit";
       this._editId = null;
-      this._formData = emptyFormData();
+      this._entityId = null;
+      this._formData = pending
+        ? { ...emptyFormData(), ...pending }
+        : emptyFormData();
       this._error = null;
       this._render();
+      if (!this._formData.area) {
+        this._openAreaDialog({ context: "new" });
+      }
       return;
     }
     const match = hash.match(/^edit\/(.+)$/);
@@ -515,6 +528,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._view = "list";
     this._editId = null;
+    this._entityId = null;
     this._loadList();
   }
 
@@ -534,9 +548,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         type: `${DOMAIN}/get`,
         scene_id: sceneId,
       });
+      this._entityId = item.entity_id || null;
       this._formData = { ...emptyFormData(), ...(item.form || item) };
     } catch (err) {
       this._error = err.message || String(err);
+      this._entityId = null;
       this._formData = emptyFormData();
     }
     this._render();
@@ -544,6 +560,18 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _go(hash) {
     window.location.hash = hash;
+  }
+
+  _loc(key, fallback, vars) {
+    const localize = this._hass?.localize;
+    if (typeof localize !== "function") {
+      return fallback;
+    }
+    const value = vars ? localize(key, vars) : localize(key);
+    if (!value || value === key) {
+      return fallback;
+    }
+    return value;
   }
 
   _render() {
@@ -618,7 +646,7 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _addButton() {
     return this._fabButton("New extrapolation scene", "mdi:plus", () =>
-      this._go("new")
+      this._openAreaDialog({ context: "list" })
     );
   }
 
@@ -662,36 +690,155 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _overflowMenu() {
+    const hasScene = Boolean(this._editId);
+    const hasEntity = Boolean(this._entityId);
     const menu = document.createElement("ha-dropdown");
+    menu.activatable = true;
     const trigger = document.createElement("ha-icon-button");
     trigger.slot = "trigger";
-    trigger.label = "Menu";
+    trigger.label = this._loc("ui.common.menu", "Menu");
     const icon = document.createElement("ha-icon");
     icon.setAttribute("icon", "mdi:dots-vertical");
     trigger.appendChild(icon);
-    const rename = document.createElement("ha-dropdown-item");
-    rename.value = "rename";
-    const renameIcon = document.createElement("ha-icon");
-    renameIcon.setAttribute("icon", "mdi:rename-box");
-    renameIcon.slot = "icon";
-    rename.append(renameIcon, document.createTextNode("Rename"));
-    const remove = document.createElement("ha-dropdown-item");
-    remove.value = "delete";
-    remove.variant = "danger";
-    const removeIcon = document.createElement("ha-icon");
-    removeIcon.setAttribute("icon", "mdi:delete");
-    removeIcon.slot = "icon";
-    remove.append(removeIcon, document.createTextNode("Delete"));
-    menu.append(trigger, rename, remove);
-    menu.addEventListener("wa-select", (ev) => {
-      const action = ev.detail?.item?.value;
-      if (action === "rename") {
-        this._openSaveDialog({ rename: true });
-      } else if (action === "delete") {
-        this._delete();
+    menu.appendChild(trigger);
+
+    const addItem = (value, label, iconName, { disabled = false, danger = false } = {}) => {
+      const item = document.createElement("ha-dropdown-item");
+      item.value = value;
+      item.disabled = disabled;
+      if (danger) {
+        item.variant = "danger";
       }
+      const itemIcon = document.createElement("ha-icon");
+      itemIcon.setAttribute("icon", iconName);
+      itemIcon.slot = "icon";
+      item.append(itemIcon, document.createTextNode(label));
+      menu.appendChild(item);
+    };
+
+    addItem(
+      "apply",
+      this._loc("ui.panel.config.scene.picker.apply", "Activate"),
+      "mdi:play",
+      { disabled: !hasEntity }
+    );
+    addItem(
+      "show-info",
+      this._loc("ui.panel.config.scene.picker.show_info", "Information"),
+      "mdi:information-outline",
+      { disabled: !hasEntity }
+    );
+    addItem(
+      "show-settings",
+      this._loc("ui.panel.config.automation.picker.show_settings", "Settings"),
+      "mdi:cog",
+      { disabled: !hasEntity }
+    );
+    addItem(
+      "edit-category",
+      this._formData.category
+        ? this._loc("ui.panel.config.scene.picker.edit_category", "Edit category")
+        : this._loc(
+            "ui.panel.config.scene.picker.assign_category",
+            "Assign category"
+          ),
+      "mdi:tag",
+      { disabled: !hasScene }
+    );
+    addItem(
+      "rename",
+      this._loc("ui.panel.config.scene.editor.rename", "Rename"),
+      "mdi:pencil",
+      { disabled: !hasScene }
+    );
+    if (customElements.get("wa-divider")) {
+      menu.appendChild(document.createElement("wa-divider"));
+    }
+    addItem(
+      "duplicate",
+      this._loc("ui.panel.config.scene.picker.duplicate_scene", "Duplicate"),
+      "mdi:content-duplicate",
+      { disabled: !hasScene }
+    );
+    addItem(
+      "delete",
+      this._loc("ui.panel.config.scene.picker.delete_scene", "Delete"),
+      "mdi:delete",
+      { disabled: !hasScene, danger: true }
+    );
+    menu.addEventListener("wa-select", (ev) => {
+      this._handleOverflow(ev.detail?.item?.value);
     });
     return menu;
+  }
+
+  _handleOverflow(action) {
+    if (!action) {
+      return;
+    }
+    if (action === "apply") {
+      if (!this._entityId) {
+        return;
+      }
+      this._hass.callService("scene", "turn_on", { entity_id: this._entityId });
+      return;
+    }
+    if (action === "show-info") {
+      this._showMoreInfo();
+      return;
+    }
+    if (action === "show-settings") {
+      this._showMoreInfo("settings");
+      return;
+    }
+    if (action === "edit-category") {
+      this._openSaveDialog({ rename: true, focus: "category" });
+      return;
+    }
+    if (action === "rename") {
+      this._openSaveDialog({ rename: true });
+      return;
+    }
+    if (action === "duplicate") {
+      this._duplicate();
+      return;
+    }
+    if (action === "delete") {
+      this._confirmDelete();
+    }
+  }
+
+  _showMoreInfo(view) {
+    if (!this._entityId) {
+      return;
+    }
+    const detail = { entityId: this._entityId };
+    if (view) {
+      detail.view = view;
+    }
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        bubbles: true,
+        composed: true,
+        detail,
+      })
+    );
+  }
+
+  _duplicate() {
+    if (!this._editId) {
+      return;
+    }
+    const suffix = this._loc(
+      "ui.panel.config.scene.picker.duplicate",
+      "duplicate"
+    );
+    this._pendingNewForm = {
+      ...this._formData,
+      labels: [...(this._formData.labels || [])],
+      scene_name: `${this._formData.scene_name || "Automatic Lighting"} (${suffix})`,
+    };
+    this._go("new");
   }
 
   _renderEditor() {
@@ -699,7 +846,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       ? this._formData.scene_name || "Edit scene"
       : "New scene";
     this._setNavigationIcon(this._backButton());
-    this._setActionItems(this._editId ? this._overflowMenu() : null);
+    this._setActionItems(this._overflowMenu());
     this._setFab(
       this._fabButton("Save", "mdi:content-save", () => this._openSaveDialog())
     );
@@ -802,8 +949,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     const areaId = this._formData.area || null;
     const sceneSelector = entitySelector(this._hass, "scene", areaId, true);
     return [
-      { name: "area", selector: { area: {} } },
-      { name: "scene_dusk_minimum_time_of_day", selector: { time: {} } },
       {
         name: "nightlights_boolean",
         selector: { entity: { domain: "input_boolean", multiple: false } },
@@ -879,6 +1024,21 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
     dialog.appendChild(picker);
 
+    if (event.id === "dusk") {
+      data.duskMinimum = this._formData.scene_dusk_minimum_time_of_day;
+      const timePicker = document.createElement("ha-selector");
+      timePicker.hass = this._hass;
+      timePicker.label = LABELS.scene_dusk_minimum_time_of_day;
+      timePicker.helper = HELPERS.scene_dusk_minimum_time_of_day;
+      timePicker.value = data.duskMinimum;
+      timePicker.selector = { time: {} };
+      timePicker.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        data.duskMinimum = ev.detail?.value;
+      });
+      dialog.appendChild(timePicker);
+    }
+
     if (canLink) {
       const row = document.createElement("label");
       row.className = "dialog-row";
@@ -907,6 +1067,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     done.variant = "brand";
     done.textContent = "Done";
     done.addEventListener("click", () => {
+      if (event.id === "dusk" && data.duskMinimum) {
+        this._formData.scene_dusk_minimum_time_of_day = data.duskMinimum;
+      }
       this._setEventScene(event.id, data.scene, canLink ? data.linked : false);
       dialog.open = false;
     });
@@ -1141,16 +1304,20 @@ class SceneExtrapolationPanel extends HTMLElement {
     this.shadowRoot.appendChild(dialog);
   }
 
-  async _openSaveDialog({ rename = false } = {}) {
+  async _openSaveDialog({ rename = false, focus } = {}) {
     this.shadowRoot.querySelector("ha-dialog.save-dialog")?.remove();
     const data = {
       scene_name: this._formData.scene_name || "Automatic Lighting",
+      area: this._formData.area || null,
       description: this._formData.description || "",
       labels: [...(this._formData.labels || [])],
       category: this._formData.category || "",
     };
     const chipsAvailable = Boolean(customElements.get("ha-assist-chip"));
     const visible = new Set();
+    if (focus === "category") {
+      visible.add("category");
+    }
     if (!chipsAvailable || data.description) {
       visible.add("description");
     }
@@ -1199,6 +1366,18 @@ class SceneExtrapolationPanel extends HTMLElement {
       data.scene_name = value ?? "";
     });
     dialog.appendChild(nameInput);
+
+    const areaPicker = document.createElement("ha-selector");
+    areaPicker.hass = this._hass;
+    areaPicker.label = LABELS.area;
+    areaPicker.helper = HELPERS.area;
+    areaPicker.required = true;
+    areaPicker.value = data.area;
+    areaPicker.selector = { area: {} };
+    bindValue(areaPicker, (value) => {
+      data.area = value || null;
+    });
+    dialog.appendChild(areaPicker);
 
     const optional = document.createElement("div");
     const chips = document.createElement(
@@ -1308,7 +1487,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         nameInput.reportValidity?.();
         return;
       }
+      if (!data.area) {
+        areaPicker.reportValidity?.();
+        return;
+      }
       this._formData.scene_name = name;
+      this._formData.area = data.area;
       this._formData.description = data.description;
       this._formData.labels = data.labels;
       this._formData.category = data.category || null;
@@ -1343,9 +1527,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!this._editId) {
       return;
     }
-    if (!window.confirm("Delete this extrapolation scene?")) {
-      return;
-    }
     try {
       await this._hass.callWS({
         type: `${DOMAIN}/delete`,
@@ -1356,6 +1537,123 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._error = err.message || String(err);
       this._renderEditor();
     }
+  }
+
+  _confirmDelete() {
+    if (!this._editId) {
+      return;
+    }
+    this.shadowRoot.querySelector("ha-dialog.confirm-dialog")?.remove();
+    const dialog = document.createElement("ha-dialog");
+    dialog.className = "confirm-dialog";
+    dialog.setAttribute(
+      "header-title",
+      this._loc(
+        "ui.panel.config.scene.picker.delete_confirm_title",
+        "Delete scene?"
+      )
+    );
+    dialog.open = true;
+    const text = document.createElement("p");
+    text.textContent = this._loc(
+      "ui.panel.config.scene.picker.delete_confirm_text",
+      `Are you sure you want to delete ${this._formData.scene_name}?`,
+      { name: this._formData.scene_name }
+    );
+    dialog.appendChild(text);
+    const footer = customElements.get("ha-dialog-footer")
+      ? document.createElement("ha-dialog-footer")
+      : document.createElement("div");
+    footer.slot = "footer";
+    const cancel = document.createElement("ha-button");
+    cancel.slot = "secondaryAction";
+    cancel.appearance = "plain";
+    cancel.textContent = this._loc("ui.common.cancel", "Cancel");
+    cancel.addEventListener("click", () => {
+      dialog.open = false;
+    });
+    const confirm = document.createElement("ha-button");
+    confirm.slot = "primaryAction";
+    confirm.variant = "danger";
+    confirm.textContent = this._loc("ui.common.delete", "Delete");
+    confirm.addEventListener("click", () => {
+      dialog.open = false;
+      this._delete();
+    });
+    footer.append(cancel, confirm);
+    dialog.appendChild(footer);
+    dialog.addEventListener("closed", () => dialog.remove());
+    this.shadowRoot.appendChild(dialog);
+  }
+
+  _openAreaDialog({ context = "list" } = {}) {
+    if (this._areaPromptOpen) {
+      return;
+    }
+    this._areaPromptOpen = true;
+    let committed = false;
+    this.shadowRoot.querySelector("ha-dialog.area-dialog")?.remove();
+    const data = { area: this._formData.area || null };
+    const dialog = document.createElement("ha-dialog");
+    dialog.className = "area-dialog";
+    dialog.setAttribute("header-title", LABELS.area);
+    dialog.open = true;
+
+    const picker = document.createElement("ha-selector");
+    picker.hass = this._hass;
+    picker.label = LABELS.area;
+    picker.helper = HELPERS.area;
+    picker.required = true;
+    picker.value = data.area;
+    picker.selector = { area: {} };
+    dialog.appendChild(picker);
+
+    const footer = customElements.get("ha-dialog-footer")
+      ? document.createElement("ha-dialog-footer")
+      : document.createElement("div");
+    footer.slot = "footer";
+    const cancel = document.createElement("ha-button");
+    cancel.slot = "secondaryAction";
+    cancel.appearance = "plain";
+    cancel.textContent = this._loc("ui.common.cancel", "Cancel");
+    cancel.addEventListener("click", () => {
+      dialog.open = false;
+    });
+    const continueBtn = document.createElement("ha-button");
+    continueBtn.slot = "primaryAction";
+    continueBtn.variant = "brand";
+    continueBtn.textContent = this._loc("ui.common.continue", "Continue");
+    continueBtn.disabled = !data.area;
+    picker.addEventListener("value-changed", (ev) => {
+      ev.stopPropagation();
+      data.area = ev.detail?.value || null;
+      continueBtn.disabled = !data.area;
+    });
+    continueBtn.addEventListener("click", () => {
+      if (!data.area) {
+        picker.reportValidity?.();
+        return;
+      }
+      committed = true;
+      if (context === "list") {
+        this._pendingNewForm = { area: data.area };
+        this._go("new");
+      } else {
+        this._formData.area = data.area;
+        this._render();
+      }
+      dialog.open = false;
+    });
+    footer.append(cancel, continueBtn);
+    dialog.appendChild(footer);
+    dialog.addEventListener("closed", () => {
+      this._areaPromptOpen = false;
+      dialog.remove();
+      if (!committed && context === "new" && !this._formData.area) {
+        this._go("");
+      }
+    });
+    this.shadowRoot.appendChild(dialog);
   }
 
   _duskMinimumSeconds() {

@@ -114,7 +114,14 @@ def ws_get(
         connection.send_error(msg["id"], websocket_api.ERR_NOT_FOUND, "Scene not found")
         return
     entry = _registry_entry(hass, item["id"])
-    connection.send_result(msg["id"], {**item, "form": _form_payload(item, entry)})
+    connection.send_result(
+        msg["id"],
+        {
+            **item,
+            "entity_id": entry.entity_id if entry else None,
+            "form": _form_payload(item, entry),
+        },
+    )
 
 
 @websocket_api.websocket_command(

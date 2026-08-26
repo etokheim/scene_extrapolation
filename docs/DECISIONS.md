@@ -63,7 +63,8 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Solar event row is the scene picker
 
 - **Date:** 2026-08-26
-- **Decision:** Dawn / sunrise / noon / sunset / dusk above the chart are the scene inputs. Clicking one opens a dialog with a native scene picker. Dawn, sunrise, and sunset can share one scene via “Same scene for dawn, sunrise, and sunset”; linked events get a shared outline. Scene entity pickers and the combine boolean are not on `ha-form`. Area, dusk minimum, and nightlights stay on the form.
+- **Superseded in part:** 2026-08-26 — area is chosen before create and again on save; dusk minimum lives on the dusk event dialog; only nightlights stay on `ha-form`.
+- **Decision:** Dawn / sunrise / noon / sunset / dusk above the chart are the scene inputs. Clicking one opens a dialog with a native scene picker. Dawn, sunrise, and sunset can share one scene via “Same scene for dawn, sunrise, and sunset”; linked events get a shared outline. Scene entity pickers and the combine boolean are not on `ha-form`.
 - **Why:** The chart already lists those events. Duplicate pickers below the graph were the same decision twice. Linking lives on the event you are assigning, not a separate toggle.
 - **Do not reverse without user ask.**
 
@@ -105,13 +106,36 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Save/rename dialog; area stays on the form
 
 - **Date:** 2026-08-26
+- **Superseded:** 2026-08-26 — area is required in a dialog before create, then shown again on Save/Rename.
 - **Decision:** Save and Rename open a `ha-dialog` patterned on `ha-dialog-automation-save`: required name, optional description / category / labels via assist chips. Area is not in the dialog; it stays on the main `ha-form`. Name is no longer a form field. Persist description in the store; sync labels and the `scene` category through the entity registry.
 - **Why:** HA scene/automation save prompts for identity metadata at save time. Area still filters scene pickers on the form, so it cannot move into the dialog. `ha-dialog-scene-save` is not loaded in a custom panel.
+- **Do not reverse without user ask.**
+
+## Prompt for area before a new scene; area also on Save
+
+- **Date:** 2026-08-26
+- **Decision:** **New extrapolation scene** opens an area dialog first. Continue navigates to `#new` with that area already set (refresh of `#new` with no area prompts again; cancel returns to the list). Save/Rename always shows the same area selector, prefilled. Area is not on `ha-form`. Native scene pickers still filter by the working area.
+- **Why:** Area is the room identity and the filter for native scenes. Asking once up front avoids an empty editor; repeating it on save matches HA entity metadata and lets the user change it later.
+- **Do not reverse without user ask.**
+
+## Earliest dusk time lives on the dusk event dialog
+
+- **Date:** 2026-08-26
+- **Decision:** `scene_dusk_minimum_time_of_day` is edited in the dusk solar-event dialog, next to that event’s scene picker. It is not on `ha-form`.
+- **Why:** The override only applies to dusk. Putting it on the main form made it look like a global setting.
 - **Do not reverse without user ask.**
 
 ## Editor overflow menu for rename and delete
 
 - **Date:** 2026-08-26
+- **Superseded:** 2026-08-26 — reuse the native scene editor overflow on create and edit.
 - **Decision:** Existing scenes get `ha-dropdown` in `slot="actionItems"` (dots trigger, `wa-select`, Rename + danger Delete). New unsaved scenes have no overflow. Inline Save/Delete buttons on the form are gone.
 - **Why:** Same header overflow pattern as the automation editor. Delete is destructive, so it stays off the FAB.
+- **Do not reverse without user ask.**
+
+## Editor overflow matches the native scene page
+
+- **Date:** 2026-08-26
+- **Decision:** Create and edit both show the native scene overflow (`ha-dropdown` + dots). Items: Activate, Information, Settings, Assign/Edit category, Rename, Duplicate, Delete. Actions that need a saved entity are disabled on `#new`. Skip Edit YAML — this panel has no YAML mode. Category opens our Save dialog with the category field visible so the store and registry stay in sync. Delete uses an `ha-dialog` with the native confirm strings, not `window.confirm`.
+- **Why:** Users already know that menu from Settings → Scenes. A shorter custom menu hid Apply / info / duplicate.
 - **Do not reverse without user ask.**
