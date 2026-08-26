@@ -379,18 +379,16 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform: translateX(0);
           opacity: 1;
         }
-        .sun-path,
-        .content.wide,
+        .page,
         .fab {
           transition:
             padding-inline-end ${SIDEBAR_ANIMATION_MS}ms ease-out,
-            margin-inline-end ${SIDEBAR_ANIMATION_MS}ms ease-out,
+            max-width ${SIDEBAR_ANIMATION_MS}ms ease-out,
             right ${SIDEBAR_ANIMATION_MS}ms ease-out;
         }
         @media (prefers-reduced-motion: reduce) {
           .scene-sidebar.desktop,
-          .sun-path,
-          .content.wide,
+          .page,
           .fab {
             transition-duration: 1ms;
           }
@@ -627,12 +625,18 @@ class SceneExtrapolationPanel extends HTMLElement {
           box-sizing: border-box;
           pointer-events: none;
         }
+        .page {
+          /* Main column only; the editor sidebar sits outside this width. */
+          --page-max-width: 1024px;
+          max-width: var(--page-max-width);
+          width: 100%;
+          margin-inline: auto;
+          box-sizing: border-box;
+        }
         .content {
           padding: 16px 16px 88px;
         }
         .content.wide {
-          max-width: 720px;
-          margin: 0 auto;
           width: 100%;
           box-sizing: border-box;
         }
@@ -685,11 +689,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         .fab[hidden] {
           display: none;
         }
-        :host(.has-scene-sidebar) .sun-path {
+        :host(.has-scene-sidebar) .page {
+          max-width: calc(
+            var(--page-max-width) + var(--scene-sidebar-width, 375px) + 16px
+          );
           padding-inline-end: calc(var(--scene-sidebar-width, 375px) + 16px);
-        }
-        :host(.has-scene-sidebar) .content.wide {
-          margin-inline-end: calc(var(--scene-sidebar-width, 375px) + 16px);
         }
         :host(.has-scene-sidebar) .fab {
           right: calc(
@@ -736,10 +740,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       </style>
       <ha-top-app-bar-fixed>
         <div slot="title"></div>
-        <div class="sun-path" hidden>
-          <div class="sun-path-body"></div>
+        <div class="page">
+          <div class="sun-path" hidden>
+            <div class="sun-path-body"></div>
+          </div>
+          <div class="content"></div>
         </div>
-        <div class="content"></div>
       </ha-top-app-bar-fixed>
       <div class="fab" hidden></div>
     `;
