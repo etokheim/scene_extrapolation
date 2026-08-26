@@ -99,8 +99,16 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Opaque light-graph fills
 
 - **Date:** 2026-08-26
+- **Superseded in part:** 2026-08-26 — keep the opaque brightness fill; add a 50% opacity full-height color wash behind it.
 - **Decision:** The area under each light brightness polyline is fully opaque (`fill-opacity: 1`). Keep the stroke on top of the fill.
 - **Why:** Semi-transparent fills made the curves look washed out against the card background.
+- **Do not reverse without user ask.**
+
+## Light-graph color wash is independent of brightness
+
+- **Date:** 2026-08-26
+- **Decision:** Each light row paints the same horizontal color gradient as a full-height rect at `fill-opacity: 0.5`, then the brightness-shaped area at `fill-opacity: 1`. Y-axis stays brightness. The stroke stays on top.
+- **Why:** A dim or off stretch still has a color. Clipping color to the brightness fill hid warm/cool shifts when the curve sat near the baseline.
 - **Do not reverse without user ask.**
 
 ## Panel FAB matches hass-subpage, not ha-fab

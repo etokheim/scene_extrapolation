@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light preview draws one brightness line per lamp (not a strip of bars); names sit on the chart and open more-info
 - Create/save use a sticky native HA button (New extrapolation scene / Save) instead of inline form actions
 - Preview day uses HA’s date selector instead of a raw browser date input
-- Light graphs fill the area under the brightness line opaquely
+- Light graphs fill the area under the brightness line opaquely, with a 50% opacity color wash behind the whole row
 - Scene pickers moved onto the solar event row; the form keeps nightlights
 
 ### Fixed

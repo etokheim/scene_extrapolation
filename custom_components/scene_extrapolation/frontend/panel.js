@@ -2315,6 +2315,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       isToday
         ? `<line x1="${xOf(nowSeconds)}" x2="${xOf(nowSeconds)}" y1="${LIGHT_BAR_TOP}" y2="${LIGHT_BAR_BOTTOM}" stroke="var(--primary-color)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
         : "";
+    const bg = `<rect x="${PLOT_LEFT}" y="${LIGHT_BAR_TOP}" width="${PLOT_RIGHT - PLOT_LEFT}" height="${plotHeight}" fill="url(#${gradientId})" fill-opacity="0.5"></rect>`;
     bar.innerHTML = `
       <svg viewBox="0 0 ${CHART_WIDTH} ${LIGHT_BAR_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
         <defs>
@@ -2322,6 +2323,7 @@ class SceneExtrapolationPanel extends HTMLElement {
             ${stops}
           </linearGradient>
         </defs>
+        ${bg}
         <path d="${area}" fill="url(#${gradientId})" fill-opacity="1"></path>
         <path d="${line}" fill="none" stroke="url(#${gradientId})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
         ${eventLines}
