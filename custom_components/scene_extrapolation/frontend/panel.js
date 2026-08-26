@@ -598,15 +598,22 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           cursor: crosshair;
         }
+        .sun-now-line,
         .sun-hover-line {
           position: absolute;
           top: 0;
           bottom: 0;
           width: 2px;
           margin-left: -1px;
+          pointer-events: none;
+        }
+        .sun-now-line {
+          background: var(--primary-color);
+          z-index: 2;
+        }
+        .sun-hover-line {
           background: var(--primary-text-color);
           opacity: 0.55;
-          pointer-events: none;
           z-index: 3;
           display: none;
         }
@@ -2555,11 +2562,6 @@ class SceneExtrapolationPanel extends HTMLElement {
               `<path d="${d}" fill="none" stroke="${night ? SUN_LINE_NIGHT : SUN_LINE_DAY}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>`
           )
           .join("")}
-        ${
-          isToday
-            ? `<line x1="${xOf(nowSeconds)}" x2="${xOf(nowSeconds)}" y1="${PLOT_TOP}" y2="${PLOT_BOTTOM}" stroke="var(--primary-color)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
-            : ""
-        }
       </svg>
     `;
 
@@ -2658,10 +2660,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._hoverLine = hoverLine;
     plots.append(chart, hours);
     if (this._view === "edit") {
-      const lights = this._buildLightBars(xOf, events, isToday, nowSeconds);
+      const lights = this._buildLightBars(xOf, events);
       if (lights) {
         plots.appendChild(lights);
       }
+    }
+    if (isToday) {
+      const nowLine = document.createElement("div");
+      nowLine.className = "sun-now-line";
+      nowLine.style.left = `${(xOf(nowSeconds) / CHART_WIDTH) * 100}%`;
+      plots.appendChild(nowLine);
     }
     plots.appendChild(hoverLine);
     this._bindPlotHover(plots);
@@ -2792,7 +2800,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
   }
 
-  _buildLightBars(xOf, events, isToday, nowSeconds) {
+  _buildLightBars(xOf, events) {
     this._lightNameLabels = [];
     const lights = this._sunPath.lights || [];
     if (!lights.length) {
@@ -2801,12 +2809,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     const wrap = document.createElement("div");
     wrap.className = "sun-lights";
     for (const light of lights) {
-      wrap.appendChild(this._lightRow(light, xOf, events, isToday, nowSeconds));
+      wrap.appendChild(this._lightRow(light, xOf, events));
     }
     return wrap;
   }
 
-  _lightRow(light, xOf, events, isToday, nowSeconds) {
+  _lightRow(light, xOf, events) {
     const row = document.createElement("div");
     row.className = "light-row";
 
@@ -2836,10 +2844,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         return `<stop offset="${offset.toFixed(2)}%" stop-color="rgb(${sample[2]},${sample[3]},${sample[4]})"/>`;
       })
       .join("");
-    const nowLine =
-      isToday
-        ? `<line x1="${xOf(nowSeconds)}" x2="${xOf(nowSeconds)}" y1="${LIGHT_BAR_TOP}" y2="${LIGHT_BAR_BOTTOM}" stroke="var(--primary-color)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
-        : "";
     const bg = `<rect x="${PLOT_LEFT}" y="${LIGHT_BAR_TOP}" width="${PLOT_RIGHT - PLOT_LEFT}" height="${plotHeight}" fill="url(#${gradientId})" fill-opacity="0.5"></rect>`;
     bar.innerHTML = `
       <svg viewBox="0 0 ${CHART_WIDTH} ${LIGHT_BAR_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
@@ -2851,7 +2855,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         ${bg}
         <path d="${area}" fill="url(#${gradientId})" fill-opacity="1"></path>
         <path d="${line}" fill="none" stroke="url(#${gradientId})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
-        ${nowLine}
       </svg>
     `;
     const name = document.createElement("button");
