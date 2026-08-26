@@ -107,7 +107,7 @@ Official reference: [REST API](https://developers.home-assistant.io/docs/api/res
 |------|--------|
 | Current entity/device state, attributes, last_changed | REST API |
 | Fire a service / validate a template quickly | REST API |
-| Scene Extrapolation sidebar panel layout, CSS, chart | Already-authenticated **sandbox** tab (`http://localhost:8123`), or ask the user. **Never** open production HA login / submit credentials (IP ban). |
+| Scene Extrapolation sidebar panel layout, CSS, chart | Browser on the **sandbox** (`http://localhost:8123`) |
 | How the integration is authored | `custom_components/scene_extrapolation/` |
 | How the sandbox home is authored | `dev/config/` starter YAML |
 
@@ -116,4 +116,3 @@ Official reference: [REST API](https://developers.home-assistant.io/docs/api/res
 - Read-only by default. Only call mutating services when the task requires it.
 - Do not dump `/api/states` unfiltered into chat — summarize.
 - Do not commit tokens, response blobs that embed tokens, or `.storage` auth files.
-- **Never** `POST /auth/login` or use the Cursor browser against a **production** HA URL if that would show a login form. Failed logins ban the IP (`login_attempts_threshold: 5`). Prefer this sandbox; do not brute-force the sandbox login form either.

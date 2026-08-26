@@ -5,8 +5,6 @@ Custom Home Assistant integration in `custom_components/scene_extrapolation/`. T
 ## Must do
 
 - **Commit after each change set** — see [`.cursor/rules/commit-after-changes.mdc`](.cursor/rules/commit-after-changes.mdc). Overrides global “only commit when asked.” Dirty tree after your edits = commit before finishing the turn.
-- **Do not reload the HA/Cursor browser** from the agent — ask the user to hard-refresh (Ctrl+Shift+R / Cmd+Shift+R). See [`.cursor/rules/no-browser-reload.mdc`](.cursor/rules/no-browser-reload.mdc).
-- **Do not log into production Home Assistant** from the Cursor browser — failed logins ban the IP. Prefer the local Docker sandbox. See [`.cursor/rules/no-ha-login.mdc`](.cursor/rules/no-ha-login.mdc).
 - **Record non-obvious decisions** inline or in [`docs/DECISIONS.md`](docs/DECISIONS.md). See [`.cursor/rules/document-decisions.mdc`](.cursor/rules/document-decisions.mdc).
 - **HA Jinja templates** — follow [`.cursor/skills/home-assistant-templates/SKILL.md`](.cursor/skills/home-assistant-templates/SKILL.md); update that skill when you find new quirks.
 - **HA REST API** — local sandbox at `http://127.0.0.1:8123`; auth via `cursor_ha_token` in `dev/config/secrets.yaml`. See [`.cursor/skills/home-assistant-api/SKILL.md`](.cursor/skills/home-assistant-api/SKILL.md).
