@@ -64,6 +64,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sunPath = null;
     this._sunPathKey = undefined;
     this._previewDate = todayIso();
+    this._previewCache = new Map();
+    this._previewInFlight = false;
+    this._previewQueued = false;
+    this._yearScrubbing = false;
     this._onHashChange = () => this._syncHash();
   }
 
@@ -104,8 +108,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (!this._sunTimer) {
       this._sunTimer = window.setInterval(() => {
+        if (this._yearScrubbing) {
+          return;
+        }
         const active = this.shadowRoot?.activeElement;
-        if (active && this._datePicker?.contains(active)) {
+        if (
+          active &&
+          (this._datePicker?.contains(active) ||
+            this._yearScrub === active ||
+            this._yearScrub?.contains(active))
+        ) {
           return;
         }
         this._drawSunPath();
@@ -123,6 +135,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._sunTimer) {
       window.clearInterval(this._sunTimer);
       this._sunTimer = undefined;
+    }
+    if (this._scrubRaf) {
+      window.cancelAnimationFrame(this._scrubRaf);
+      this._scrubRaf = undefined;
     }
   }
 
@@ -630,7 +646,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       </style>
       <ha-top-app-bar-fixed>
         <div slot="title"></div>
-        <div class="sun-path" hidden></div>
+        <div class="sun-path" hidden>
+          <div class="sun-path-body"></div>
+        </div>
         <div class="content"></div>
       </ha-top-app-bar-fixed>
       <div class="fab" hidden></div>
@@ -639,6 +657,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._appBar.narrow = Boolean(this._narrow);
     this._headerEl = this.shadowRoot.querySelector("[slot='title']");
     this._sunPathEl = this.shadowRoot.querySelector(".sun-path");
+    this._sunPathBodyEl = this.shadowRoot.querySelector(".sun-path-body");
     this._contentEl = this.shadowRoot.querySelector(".content");
     this._fabEl = this.shadowRoot.querySelector(".fab");
     this._syncHash();
@@ -1507,7 +1526,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         });
         await restoreLive();
         this._requestCloseSceneSidebar(host);
-        this._sunPathKey = undefined;
+        this._clearPreviewCache();
         this._ensureSunPath();
       } catch (err) {
         this._error = err.message || String(err);
@@ -1919,53 +1938,90 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._previewTimer = window.setTimeout(() => {
       this._previewTimer = undefined;
       this._ensureSunPath();
-    }, 150);
+    }, 80);
+  }
+
+  _rememberPreview(key, payload) {
+    this._previewCache.set(key, payload);
+    if (this._previewCache.size <= 64) {
+      return;
+    }
+    this._previewCache.delete(this._previewCache.keys().next().value);
+  }
+
+  _clearPreviewCache() {
+    this._previewCache.clear();
+    this._sunPathKey = undefined;
   }
 
   async _ensureSunPath() {
     if (!this._hass || !this._sunPathEl) {
       return;
     }
-    const key = this._chartKey();
-    if (this._sunPath && this._sunPathKey === key) {
-      this._drawSunPath();
+    if (this._previewInFlight) {
+      this._previewQueued = true;
       return;
     }
-    this._chartRequest = key;
+    this._previewInFlight = true;
     try {
-      let payload;
-      if (this._view === "edit") {
-        const msg = {
-          type: `${DOMAIN}/preview`,
-          date: this._previewDate,
-          scenes: this._sceneIdsFromForm(),
-        };
-        const dusk = this._duskMinimumSeconds();
-        if (dusk != null) {
-          msg.dusk_minimum = dusk;
+      do {
+        this._previewQueued = false;
+        const key = this._chartKey();
+        if (this._sunPath && this._sunPathKey === key) {
+          this._drawSunPath();
+          continue;
         }
-        payload = await this._hass.callWS(msg);
-      } else {
-        payload = await this._hass.callWS({ type: `${DOMAIN}/sun_path` });
-      }
-      if (this._chartRequest !== key) {
-        return;
-      }
-      this._sunPath = payload;
-      this._sunPathKey = key;
-      this._drawSunPath();
-    } catch (err) {
-      if (this._chartRequest !== key) {
-        return;
-      }
-      this._sunPath = null;
-      this._sunPathKey = undefined;
-      this._sunPathEl.hidden = false;
-      const error = document.createElement("p");
-      error.className = "error";
-      error.style.padding = "16px";
-      error.textContent = err.message || String(err);
-      this._sunPathEl.replaceChildren(error);
+        const cached = this._previewCache.get(key);
+        if (cached) {
+          this._sunPath = cached;
+          this._sunPathKey = key;
+          this._drawSunPath();
+          continue;
+        }
+        try {
+          let payload;
+          if (this._view === "edit") {
+            const msg = {
+              type: `${DOMAIN}/preview`,
+              date: this._previewDate,
+              scenes: this._sceneIdsFromForm(),
+            };
+            const dusk = this._duskMinimumSeconds();
+            if (dusk != null) {
+              msg.dusk_minimum = dusk;
+            }
+            payload = await this._hass.callWS(msg);
+          } else {
+            payload = await this._hass.callWS({ type: `${DOMAIN}/sun_path` });
+          }
+          if (this._chartKey() !== key) {
+            this._previewQueued = true;
+            continue;
+          }
+          this._sunPath = payload;
+          this._sunPathKey = key;
+          this._rememberPreview(key, payload);
+          this._drawSunPath();
+        } catch (err) {
+          if (this._chartKey() !== key) {
+            this._previewQueued = true;
+            continue;
+          }
+          this._sunPath = null;
+          this._sunPathKey = undefined;
+          this._sunPathEl.hidden = false;
+          const error = document.createElement("p");
+          error.className = "error";
+          error.style.padding = "16px";
+          error.textContent = err.message || String(err);
+          this._sunPathBodyEl.replaceChildren(error);
+        }
+      } while (this._previewQueued);
+    } finally {
+      this._previewInFlight = false;
+    }
+    if (this._previewQueued) {
+      this._ensureSunPath();
     }
   }
 
@@ -1979,7 +2035,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const changed = iso !== this._previewDate;
     this._previewDate = iso;
-    this._syncDateToolbar();
+    if (this._yearScrubbing) {
+      this._syncYearScrub();
+    } else {
+      this._syncDateToolbar();
+    }
     if (!changed) {
       return;
     }
@@ -2090,11 +2150,15 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const dateFromEvent = (ev) => {
       const rect = track.getBoundingClientRect();
-      const t = rect.width ? (ev.clientX - rect.left) / rect.width : 0;
+      const clientX = ev.clientX;
+      const t = rect.width ? (clientX - rect.left) / rect.width : 0;
       const year = isoYear(this._previewDate);
       const days = daysInYear(year);
       const dayIndex = Math.max(0, Math.min(days - 1, Math.floor(t * days)));
       return isoFromDayOfYear(year, dayIndex);
+    };
+    const applyPointer = (ev) => {
+      this._setPreviewDate(dateFromEvent(ev), { debounce: true });
     };
 
     scrub.addEventListener("pointerdown", (ev) => {
@@ -2102,25 +2166,44 @@ class SceneExtrapolationPanel extends HTMLElement {
         return;
       }
       ev.preventDefault();
-      scrub.focus();
+      scrub.focus({ preventScroll: true });
       scrub.setPointerCapture(ev.pointerId);
       this._yearScrubbing = true;
-      this._setPreviewDate(dateFromEvent(ev), { debounce: true });
+      applyPointer(ev);
     });
     scrub.addEventListener("pointermove", (ev) => {
       if (!scrub.hasPointerCapture(ev.pointerId)) {
         return;
       }
-      this._setPreviewDate(dateFromEvent(ev), { debounce: true });
+      this._pendingScrubX = ev.clientX;
+      if (this._scrubRaf) {
+        return;
+      }
+      this._scrubRaf = window.requestAnimationFrame(() => {
+        this._scrubRaf = undefined;
+        if (!this._yearScrubbing || this._pendingScrubX == null) {
+          return;
+        }
+        applyPointer({ clientX: this._pendingScrubX });
+      });
     });
     const endScrub = (ev) => {
       if (!this._yearScrubbing) {
         return;
       }
       this._yearScrubbing = false;
+      if (this._scrubRaf) {
+        window.cancelAnimationFrame(this._scrubRaf);
+        this._scrubRaf = undefined;
+      }
+      if (this._pendingScrubX != null) {
+        applyPointer({ clientX: this._pendingScrubX });
+        this._pendingScrubX = undefined;
+      }
       if (ev?.pointerId != null && scrub.hasPointerCapture(ev.pointerId)) {
         scrub.releasePointerCapture(ev.pointerId);
       }
+      this._syncDateToolbar();
       this._ensureSunPath();
     };
     scrub.addEventListener("pointerup", endScrub);
@@ -2381,8 +2464,16 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (!this._dateToolbar) {
         this._dateToolbar = this._buildDateToolbar();
       }
-      this._syncDateToolbar();
-      children.push(this._dateToolbar);
+      if (this._dateToolbar.parentNode !== this._sunPathEl) {
+        this._sunPathEl.insertBefore(this._dateToolbar, this._sunPathBodyEl);
+      }
+      if (this._yearScrubbing) {
+        this._syncYearScrub();
+      } else {
+        this._syncDateToolbar();
+      }
+    } else if (this._dateToolbar) {
+      this._dateToolbar.remove();
     }
     children.push(eventsRow);
     if (events.some((event) => event.fallback)) {
@@ -2401,7 +2492,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
 
     this._sunPathEl.hidden = false;
-    this._sunPathEl.replaceChildren(...children);
+    this._sunPathBodyEl.replaceChildren(...children);
   }
 
   _buildLightBars(xOf, events, isToday, nowSeconds) {

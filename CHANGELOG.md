@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Transition progress went negative at exact solar event times, which broke winter-date previews
 - Dawn had no icon (`mdi:horizon` is not in Home Assistant’s icon set)
+- Year scrubber dropped the drag when preview charts re-rendered; it now keeps the toolbar mounted, caches days, and only runs one preview request at a time
 
 ## [2.1.0] - 2025-12-21
 

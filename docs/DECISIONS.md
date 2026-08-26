@@ -101,8 +101,8 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Year scrubber under the preview date
 
 - **Date:** 2026-08-26
-- **Decision:** Under the date row, show a custom year timeline (month labels + draggable thumb) for the year of the selected preview day. Pointer drag/click maps to calendar days; keyboard arrows / Home / End work on the slider. Do not use `<input type="range">` — it cannot host month ticks. Debounce the preview websocket while dragging so each pointer move does not wait on a round trip.
-- **Why:** Jumping between solstices with chips is coarse; the calendar picker is precise but slow for seasonal comparison. A year strip is the missing middle.
+- **Decision:** Under the date row, show a custom year timeline (month labels + draggable thumb) for the year of the selected preview day. Pointer drag/click maps to calendar days; keyboard arrows / Home / End work on the slider. Do not use `<input type="range">` — it cannot host month ticks. Keep the toolbar as a stable sibling of the chart body so `replaceChildren` on preview redraw cannot drop pointer capture or focus. While dragging, update only the thumb (not the date selector), coalesce moves to animation frames, debounce the preview websocket, serialize in-flight requests, and cache recent payloads by chart key.
+- **Why:** Jumping between solstices with chips is coarse; the calendar picker is precise but slow for seasonal comparison. A year strip is the missing middle. Re-inserting the scrubber on every preview cancelled the drag.
 - **Do not reverse without user ask.**
 
 ## Opaque light-graph fills
