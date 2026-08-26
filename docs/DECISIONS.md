@@ -65,8 +65,9 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Hover inspects time and brightness in a fixed readout
 
 - **Date:** 2026-08-26
-- **Decision:** Sun and light graphs have no static vertical grid or event drop-lines. Today still draws the “now” line. Hovering any plot shows a second full-height cursor. Time, sun elevation, and each light’s brightness % plus color swatch update in a readout **above** the plots — not a tooltip that follows the pointer.
-- **Why:** Hour/event verticals competed with the now line. A follow-cursor tooltip covers the curves you are reading.
+- **Superseded in part:** 2026-08-26 — brightness % is appended to each light’s graph name; the readout has no lamp list or color swatch.
+- **Decision:** Sun and light graphs have no static vertical grid or event drop-lines. Today still draws the “now” line. Hovering any plot shows a second full-height cursor. Time and sun elevation update in a readout **above** the plots — not a tooltip that follows the pointer. Each light name on its graph shows the brightness at the cursor (or at now when not hovering).
+- **Why:** Hour/event verticals competed with the now line. A follow-cursor tooltip covers the curves you are reading. Putting % on the name keeps the value next to the curve it belongs to.
 - **Do not reverse without user ask.**
 
 ## Per-light brightness curves and date preview

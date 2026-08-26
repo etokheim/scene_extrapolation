@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Click a solar event above the chart to assign its native scene (optional link for dawn / sunrise / sunset)
 - Pencil on each light timeline to edit that lamp in the scene for that event, with optional live preview
 - Year-long scrubber under the preview date to drag between days
-- Hover a sun or light graph to inspect time, sun elevation, and per-light brightness in a fixed readout (cursor line; today’s “now” line stays)
+- Hover a sun or light graph to inspect time and sun elevation in a fixed readout (cursor line; today’s “now” line stays)
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sun and light graphs no longer draw static vertical hour/event lines
 - Sun-path height is scaled to the location’s annual max elevation; the curve is darker below the horizon
 - Sidebar scene and light drafts update the graphs immediately; Cancel restores the last saved preview
+- Hover brightness % is appended to each light name on its graph; the readout no longer lists lamps or color swatches
 
 ### Fixed
 - Transition progress went negative at exact solar event times, which broke winter-date previews

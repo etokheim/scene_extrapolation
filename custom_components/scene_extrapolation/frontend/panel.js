@@ -327,6 +327,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-name:hover {
           text-decoration: underline;
         }
+        .light-name .light-brightness {
+          font-weight: 400;
+          font-variant-numeric: tabular-nums;
+        }
         .light-edits {
           position: absolute;
           inset: 0;
@@ -589,24 +593,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-hover-time {
           font-weight: 500;
-        }
-        .sun-hover-lights {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px 14px;
-        }
-        .sun-hover-light {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          white-space: nowrap;
-        }
-        .sun-hover-swatch {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
-          flex-shrink: 0;
         }
         .sun-plots {
           position: relative;
@@ -2763,6 +2749,7 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _fillHoverReadout(seconds, { hovering }) {
+    this._updateLightNameBrightness(seconds);
     const readout = this._hoverReadout;
     if (!readout) {
       return;
@@ -2770,7 +2757,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     readout.replaceChildren();
     if (seconds == null) {
       readout.removeAttribute("data-active");
-      readout.textContent = "Hover a graph to inspect time and brightness";
+      readout.textContent = "Hover a graph to inspect time";
       return;
     }
     if (hovering) {
@@ -2787,28 +2774,26 @@ class SceneExtrapolationPanel extends HTMLElement {
     const elev = interpolateElevation(this._sunPath.curve, seconds);
     sun.textContent = `Sun ${elev.toFixed(1)}°`;
     readout.append(time, sun);
-    const lights = this._sunPath.lights || [];
-    if (!lights.length) {
-      return;
-    }
-    const list = document.createElement("div");
-    list.className = "sun-hover-lights";
-    for (const light of lights) {
+  }
+
+  _updateLightNameBrightness(seconds) {
+    for (const { light, el } of this._lightNameLabels || []) {
+      if (seconds == null) {
+        el.textContent = light.name;
+        continue;
+      }
       const sample = interpolateLightSample(light.samples || [], seconds);
-      const item = document.createElement("span");
-      item.className = "sun-hover-light";
-      const swatch = document.createElement("span");
-      swatch.className = "sun-hover-swatch";
-      swatch.style.background = `rgb(${sample.rgb[0]}, ${sample.rgb[1]}, ${sample.rgb[2]})`;
-      const label = document.createElement("span");
-      label.textContent = `${light.name} ${Math.round(sample.brightness)}%`;
-      item.append(swatch, label);
-      list.appendChild(item);
+      el.replaceChildren();
+      el.appendChild(document.createTextNode(`${light.name} `));
+      const pct = document.createElement("span");
+      pct.className = "light-brightness";
+      pct.textContent = `${Math.round(sample.brightness)}%`;
+      el.appendChild(pct);
     }
-    readout.appendChild(list);
   }
 
   _buildLightBars(xOf, events, isToday, nowSeconds) {
+    this._lightNameLabels = [];
     const lights = this._sunPath.lights || [];
     if (!lights.length) {
       return null;
@@ -2873,6 +2858,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     name.type = "button";
     name.className = "light-name";
     name.textContent = light.name;
+    this._lightNameLabels.push({ light, el: name });
     name.addEventListener("click", () => {
       this.dispatchEvent(
         new CustomEvent("hass-more-info", {
