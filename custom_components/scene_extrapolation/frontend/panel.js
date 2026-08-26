@@ -6,9 +6,9 @@ const PLOT_TOP = 28;
 const PLOT_BOTTOM = 168;
 const PLOT_LEFT = 16;
 const PLOT_RIGHT = 984;
-const LIGHT_BAR_HEIGHT = 36;
-const LIGHT_BAR_TOP = 6;
-const LIGHT_BAR_BOTTOM = 32;
+const LIGHT_BAR_HEIGHT = 52;
+const LIGHT_BAR_TOP = 0;
+const LIGHT_BAR_BOTTOM = 52;
 
 const LABELS = {
   scene_name: "Scene name",
@@ -61,6 +61,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._form) {
       this._form.hass = hass;
     }
+    if (this._menuButtonEl) {
+      this._menuButtonEl.hass = hass;
+    }
     if (!this._built && this.isConnected) {
       this._build();
     }
@@ -68,6 +71,12 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   set narrow(value) {
     this._narrow = value;
+    if (this._appBar) {
+      this._appBar.narrow = Boolean(value);
+    }
+    if (this._menuButtonEl) {
+      this._menuButtonEl.narrow = Boolean(value);
+    }
   }
 
   set route(_route) {}
@@ -104,53 +113,23 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   async _build() {
     this._built = true;
+    if (customElements.get("ha-top-app-bar-fixed") === undefined) {
+      await customElements.whenDefined("ha-top-app-bar-fixed");
+    }
     this.attachShadow({ mode: "open" });
     this.shadowRoot.innerHTML = `
       <style>
         :host {
-          display: flex;
-          flex-direction: column;
-          height: 100%;
+          display: block;
+          height: 100vh;
           overflow: hidden;
           background: var(--primary-background-color);
           color: var(--primary-text-color);
         }
-        .page {
-          display: flex;
-          flex-direction: column;
-          flex: 1;
-          min-height: 0;
-          overflow: hidden;
-        }
-        .header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex: 0 0 auto;
-          position: sticky;
-          top: 0;
-          z-index: 4;
-          min-height: var(--header-height, 56px);
-          padding: 0 12px;
-          background: var(--app-header-background-color, var(--primary-color));
-          color: var(--app-header-text-color, var(--text-primary-color, #fff));
-          border-bottom: 1px solid
-            color-mix(
-              in srgb,
-              var(--app-header-text-color, var(--primary-text-color)) 45%,
-              transparent
-            );
-        }
-        .header h1 {
-          font-size: 20px;
-          font-weight: 400;
-          margin: 0;
-          flex: 1;
-        }
-        .scroll {
-          flex: 1 1 auto;
-          min-height: 0;
-          overflow: auto;
+        /* ha-panel-custom often computes to 0 height, so 100% on the app bar
+           collapses. Fill the viewport, then stretch the bar to this host. */
+        ha-top-app-bar-fixed {
+          height: 100% !important;
         }
         .sun-path {
           background: var(--card-background-color);
@@ -203,32 +182,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-lights {
           display: flex;
           flex-direction: column;
-          gap: 10px;
-          padding: 8px 0 12px;
+          gap: 0;
+          padding: 0;
         }
         .light-row {
-          padding: 0 0 0;
-        }
-        .light-meta {
-          display: flex;
-          align-items: baseline;
-          justify-content: space-between;
-          gap: 8px;
-          padding: 0 16px 4px;
-        }
-        .light-name {
-          font-size: 13px;
-          font-weight: 500;
-        }
-        .light-warn {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 12px;
-          color: var(--warning-color, var(--error-color));
-        }
-        .light-warn ha-icon {
-          --mdc-icon-size: 14px;
+          position: relative;
         }
         .light-bar {
           position: relative;
@@ -238,6 +196,40 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: block;
           width: 100%;
           height: ${LIGHT_BAR_HEIGHT}px;
+        }
+        .light-name {
+          position: absolute;
+          left: 16px;
+          top: 6px;
+          z-index: 1;
+          margin: 0;
+          padding: 0;
+          border: 0;
+          background: none;
+          font: inherit;
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--primary-text-color);
+          cursor: pointer;
+          text-shadow: 0 0 6px var(--card-background-color);
+        }
+        .light-name:hover {
+          text-decoration: underline;
+        }
+        .light-warn {
+          position: absolute;
+          right: 16px;
+          top: 6px;
+          z-index: 1;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 12px;
+          color: var(--warning-color, var(--error-color));
+          text-shadow: 0 0 6px var(--card-background-color);
+        }
+        .light-warn ha-icon {
+          --mdc-icon-size: 14px;
         }
         .sun-events {
           display: flex;
@@ -410,19 +402,15 @@ class SceneExtrapolationPanel extends HTMLElement {
           color: inherit;
         }
       </style>
-      <div class="page">
-        <div class="header">
-          <span class="nav"></span>
-          <h1></h1>
-        </div>
-        <div class="scroll">
-          <div class="sun-path" hidden></div>
-          <div class="content"></div>
-        </div>
-      </div>
+      <ha-top-app-bar-fixed>
+        <div slot="title"></div>
+        <div class="sun-path" hidden></div>
+        <div class="content"></div>
+      </ha-top-app-bar-fixed>
     `;
-    this._headerEl = this.shadowRoot.querySelector("h1");
-    this._navEl = this.shadowRoot.querySelector(".nav");
+    this._appBar = this.shadowRoot.querySelector("ha-top-app-bar-fixed");
+    this._appBar.narrow = Boolean(this._narrow);
+    this._headerEl = this.shadowRoot.querySelector("[slot='title']");
     this._sunPathEl = this.shadowRoot.querySelector(".sun-path");
     this._contentEl = this.shadowRoot.querySelector(".content");
     this._syncHash();
@@ -494,7 +482,7 @@ class SceneExtrapolationPanel extends HTMLElement {
   _renderList() {
     this._form = undefined;
     this._headerEl.textContent = "Scene Extrapolation";
-    this._navEl.replaceChildren();
+    this._setNavigationIcon(this._menuButton());
     this._contentEl.classList.remove("wide");
 
     if (this._error) {
@@ -573,7 +561,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._headerEl.textContent = this._editId
       ? this._formData.scene_name || "Edit scene"
       : "Add scene";
-    this._navEl.replaceChildren(this._backButton());
+    this._setNavigationIcon(this._backButton());
     this._contentEl.classList.add("wide");
 
     const wrap = document.createElement("div");
@@ -614,7 +602,38 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._contentEl.replaceChildren(wrap);
   }
 
+  _setNavigationIcon(node) {
+    for (const child of [...this._appBar.children]) {
+      if (child.getAttribute("slot") === "navigationIcon") {
+        child.remove();
+      }
+    }
+    if (!node) {
+      this._menuButtonEl = undefined;
+      return;
+    }
+    node.slot = "navigationIcon";
+    this._appBar.insertBefore(node, this._appBar.firstChild);
+    this._menuButtonEl =
+      node.tagName === "HA-MENU-BUTTON" ? node : undefined;
+  }
+
+  _menuButton() {
+    const button = document.createElement("ha-menu-button");
+    button.hass = this._hass;
+    button.narrow = Boolean(this._narrow);
+    return button;
+  }
+
   _backButton() {
+    if (customElements.get("ha-icon-button-arrow-prev")) {
+      const button = document.createElement("ha-icon-button-arrow-prev");
+      button.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this._go("");
+      });
+      return button;
+    }
     if (customElements.get("ha-icon-button")) {
       const button = document.createElement("ha-icon-button");
       button.label = "Back";
@@ -811,6 +830,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (this._chartRequest !== key) {
         return;
       }
+      this._sunPath = null;
+      this._sunPathKey = undefined;
+      this._sunPathEl.hidden = false;
+      const error = document.createElement("p");
+      error.className = "error";
+      error.style.padding = "16px";
+      error.textContent = err.message || String(err);
+      this._sunPathEl.replaceChildren(error);
     }
   }
 
@@ -1049,45 +1076,33 @@ class SceneExtrapolationPanel extends HTMLElement {
   _lightRow(light, xOf, events, isToday, nowSeconds) {
     const row = document.createElement("div");
     row.className = "light-row";
-    const meta = document.createElement("div");
-    meta.className = "light-meta";
-    const name = document.createElement("div");
-    name.className = "light-name";
-    name.textContent = light.name;
-    meta.appendChild(name);
-    if (light.gaps?.length) {
-      const warn = document.createElement("div");
-      warn.className = "light-warn";
-      const icon = document.createElement("ha-icon");
-      icon.setAttribute("icon", "mdi:alert-outline");
-      const missing = [...new Set(light.gaps.map((gap) => gap.missing_name))];
-      const text = document.createElement("span");
-      text.textContent = `Not in ${missing.join(", ")} — treated as off (supported)`;
-      warn.append(icon, text);
-      meta.appendChild(warn);
-    }
-    row.appendChild(meta);
 
     const bar = document.createElement("div");
     bar.className = "light-bar";
-    const rects = [];
     const samples = light.samples || [];
-    for (let index = 0; index < samples.length - 1; index += 1) {
-      const [s0, brightness, red, green, blue] = samples[index];
-      const s1 = samples[index + 1][0];
-      const x0 = xOf(s0);
-      const width = Math.max(0.4, xOf(s1) - x0);
-      const height =
-        (Math.max(0, Math.min(100, brightness)) / 100) *
-        (LIGHT_BAR_BOTTOM - LIGHT_BAR_TOP);
-      if (height < 0.4) {
-        continue;
-      }
-      const y = LIGHT_BAR_BOTTOM - height;
-      rects.push(
-        `<rect x="${x0.toFixed(2)}" y="${y.toFixed(2)}" width="${width.toFixed(2)}" height="${height.toFixed(2)}" fill="rgb(${red},${green},${blue})"/>`
-      );
-    }
+    const gradientId = `light-grad-${light.entity_id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    const plotHeight = LIGHT_BAR_BOTTOM - LIGHT_BAR_TOP;
+    const yOf = (brightness) =>
+      LIGHT_BAR_BOTTOM - (Math.max(0, brightness) / 100) * plotHeight;
+    const line = samples
+      .map((sample, index) => {
+        const command = index === 0 ? "M" : "L";
+        return `${command}${xOf(sample[0]).toFixed(1)},${yOf(sample[1]).toFixed(1)}`;
+      })
+      .join(" ");
+    const firstX = samples.length ? xOf(samples[0][0]).toFixed(1) : PLOT_LEFT;
+    const lastX = samples.length
+      ? xOf(samples[samples.length - 1][0]).toFixed(1)
+      : PLOT_RIGHT;
+    const area = samples.length
+      ? `${line} L${lastX},${LIGHT_BAR_BOTTOM} L${firstX},${LIGHT_BAR_BOTTOM} Z`
+      : "";
+    const stops = samples
+      .map((sample) => {
+        const offset = (sample[0] / SECONDS_PER_DAY) * 100;
+        return `<stop offset="${offset.toFixed(2)}%" stop-color="rgb(${sample[2]},${sample[3]},${sample[4]})"/>`;
+      })
+      .join("");
     const eventLines = events
       .map((event) => {
         const x = xOf(event.seconds);
@@ -1100,12 +1115,42 @@ class SceneExtrapolationPanel extends HTMLElement {
         : "";
     bar.innerHTML = `
       <svg viewBox="0 0 ${CHART_WIDTH} ${LIGHT_BAR_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
-        <rect x="${PLOT_LEFT}" y="${LIGHT_BAR_TOP}" width="${PLOT_RIGHT - PLOT_LEFT}" height="${LIGHT_BAR_BOTTOM - LIGHT_BAR_TOP}" fill="var(--divider-color)" fill-opacity="0.25"/>
-        ${rects.join("")}
+        <defs>
+          <linearGradient id="${gradientId}" gradientUnits="userSpaceOnUse" x1="${PLOT_LEFT}" y1="0" x2="${PLOT_RIGHT}" y2="0">
+            ${stops}
+          </linearGradient>
+        </defs>
+        <path d="${area}" fill="url(#${gradientId})" fill-opacity="0.35"></path>
+        <path d="${line}" fill="none" stroke="url(#${gradientId})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
         ${eventLines}
         ${nowLine}
       </svg>
     `;
+    const name = document.createElement("button");
+    name.type = "button";
+    name.className = "light-name";
+    name.textContent = light.name;
+    name.addEventListener("click", () => {
+      this.dispatchEvent(
+        new CustomEvent("hass-more-info", {
+          bubbles: true,
+          composed: true,
+          detail: { entityId: light.entity_id },
+        })
+      );
+    });
+    bar.appendChild(name);
+    if (light.gaps?.length) {
+      const warn = document.createElement("div");
+      warn.className = "light-warn";
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", "mdi:alert-outline");
+      const missing = [...new Set(light.gaps.map((gap) => gap.missing_name))];
+      const text = document.createElement("span");
+      text.textContent = `Not in ${missing.join(", ")}`;
+      warn.append(icon, text);
+      bar.appendChild(warn);
+    }
     row.appendChild(bar);
     return row;
   }

@@ -1,0 +1,14 @@
+---
+description: Never hide invariant failures with clamps, broad excepts, or guessed fallbacks
+alwaysApply: true
+---
+
+# Do not silence bugs
+
+If a computed value is out of range, math is inconsistent, or an exception means **our** model is wrong:
+
+- **Fix the cause.** Do not clamp (`max(0, min(100, x))` and the like) to hide an invariant violation.
+- **Do not** catch the error and continue with a guessed value (`except Exception`, swallowing `HomeAssistantError` from extrapolation, etc.).
+- If you cannot fix it in this change set, **stop and ask**. Do not ship a quieter failure.
+
+Guarding against bad **input** (missing entity, empty form, user typo) is fine. Guarding against our own broken math is not.

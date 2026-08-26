@@ -5,6 +5,7 @@ Custom Home Assistant integration in `custom_components/scene_extrapolation/`. T
 ## Must do
 
 - **Commit after each change set** — see [`.cursor/rules/commit-after-changes.mdc`](.cursor/rules/commit-after-changes.mdc). Overrides global “only commit when asked.” Dirty tree after your edits = commit before finishing the turn.
+- **Do not silence bugs** — fix the cause; do not clamp or catch-and-guess to hide invariant failures. See [`.cursor/rules/dont-silence-bugs.mdc`](.cursor/rules/dont-silence-bugs.mdc).
 - **Record non-obvious decisions** inline or in [`docs/DECISIONS.md`](docs/DECISIONS.md). See [`.cursor/rules/document-decisions.mdc`](.cursor/rules/document-decisions.mdc).
 - **HA Jinja templates** — follow [`.cursor/skills/home-assistant-templates/SKILL.md`](.cursor/skills/home-assistant-templates/SKILL.md); update that skill when you find new quirks.
 - **HA REST API** — local sandbox at `http://127.0.0.1:8123`; auth via `cursor_ha_token` in `dev/config/secrets.yaml`. See [`.cursor/skills/home-assistant-api/SKILL.md`](.cursor/skills/home-assistant-api/SKILL.md).

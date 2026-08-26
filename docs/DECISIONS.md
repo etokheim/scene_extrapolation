@@ -27,8 +27,23 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Sticky panel header with bottom border
 
 - **Date:** 2026-08-26
+- **Superseded:** 2026-08-26 — use `ha-top-app-bar-fixed` instead of a custom sticky header.
 - **Decision:** The sidebar panel header stays pinned (`position: sticky`) and has a visible bottom border while the body scrolls.
 - **Why:** Explicit UX request; matches HA’s own app header behavior.
+- **Do not reverse without user ask.**
+
+## Use HA’s top app bar; header stays outside the scroll container
+
+- **Date:** 2026-08-26
+- **Decision:** The sidebar panel uses `ha-top-app-bar-fixed`. Title goes in `slot="title"`. Page content (sun path + form) goes in the default slot, which is the component’s scroll container. List view slots `ha-menu-button`; the editor slots a back button that hash-routes home (do not use `back-button` / `goBack()` — this panel is not HA history). Size the panel `:host` to `100vh` and stretch the app bar to `100%` of that. Do not size the app bar with `100%` of `ha-panel-custom` — that host often computes to 0 height, which collapses the bar and clips the page.
+- **Why:** A custom sticky header had the wrong bottom-border token and sat inside our own overflow, so it did not pin. HA keeps the bar outside the scrolling region and uses `--app-header-border-bottom`. `ha-top-app-bar-fixed` itself uses `100vh` for the same 0-height parent.
+- **Do not reverse without user ask.**
+
+## Standing on a solar event is 0% of the next transition
+
+- **Date:** 2026-08-26
+- **Decision:** Current event is the last whose start is *strictly after* now (`start > seconds`). Wrap-around remaining uses `seconds <= next_start` so an exact next-event time is 100%, not a leftover 86400s. Activation (`scene.py`) and preview share `current_sun_event_index` / `transition_progress_percent`. Out-of-range progress still raises; it is not clamped.
+- **Why:** `start >= now` treated “exactly dawn” as still the dusk→dawn wrap. Remaining became 86400s, elapsed went negative, and preview samples on the 5-minute grid (dusk minimum 22:00, fallback dawn) raised “Extrapolation math error 2”.
 - **Do not reverse without user ask.**
 
 ## Sun-path chart on create/edit
@@ -38,9 +53,9 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Why:** Makes the solar events the scenes interpolate between visible instead of abstract form fields.
 - **Do not reverse without user ask.**
 
-## Per-light brightness bars and date preview
+## Per-light brightness curves and date preview
 
 - **Date:** 2026-08-26
-- **Decision:** Under the sun chart on create/edit, list each light with a full-width bar: height is brightness %, fill color is the interpolated light color. A date picker (with Today / 21 Jun / 21 Dec) drives both the sun curve and the bars. Polar / no-rise events use the same seasonal fallbacks as scene activation. An entity present in one scene but not the next is a warning, not an error (treated as off during that transition).
-- **Why:** Lets you see the day at a glance, including winter/polar handling, without activating the scene. Missing entities are supported on purpose (e.g. a lamp that only exists in the evening scene).
+- **Decision:** Under the sun chart on create/edit, list each light as a full-width brightness polyline (one SVG path + x-gradient from sample colors), not a strip of `<rect>` bars. The entity name sits on the chart and opens more-info. Graphs stack with no gap. A date picker (with Today / 21 Jun / 21 Dec) drives both the sun curve and the lights. Polar / no-rise events use the same seasonal fallbacks as scene activation. An entity present in one scene but not the next is a warning, not an error (treated as off during that transition).
+- **Why:** A single line matches the sun chart and stays cheap to paint. Labels on the plot save vertical space; clicking through to the entity is the usual HA pattern. Missing entities are supported on purpose (e.g. a lamp that only exists in the evening scene).
 - **Do not reverse without user ask.**

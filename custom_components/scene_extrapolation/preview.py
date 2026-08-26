@@ -19,7 +19,6 @@ from homeassistant.components.light import (
 )
 from homeassistant.const import ATTR_STATE, STATE_OFF, STATE_ON, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     SCENE_DAWN,
@@ -29,6 +28,7 @@ from .const import (
     SCENE_SUNSET,
 )
 from .scene import (
+    current_sun_event_index,
     extrapolate_brightness,
     extrapolate_hs,
     extrapolate_rgb,
@@ -36,8 +36,9 @@ from .scene import (
     extrapolate_rgbww,
     extrapolate_state,
     extrapolate_temp_kelvin,
+    transition_progress_percent,
 )
-from .solar import CURVE_STEP_MINUTES, SECONDS_PER_DAY, build_sun_path
+from .solar import CURVE_STEP_MINUTES, build_sun_path
 
 SCENE_KEYS = {
     "dawn": SCENE_DAWN,
@@ -175,37 +176,9 @@ def _gap_warnings(
 def _event_at(
     bound: list[dict[str, Any]], seconds: int, offset: int = 0
 ) -> dict[str, Any]:
-    closest = None
-    for index, event in enumerate(bound):
-        if event["seconds"] >= seconds:
-            closest = index - 1
-            break
-    if closest is None:
-        closest = len(bound) - 1
-    return bound[(closest + offset) % len(bound)]
-
-
-def _transition_percent(
-    current: dict[str, Any], nxt: dict[str, Any], seconds: int
-) -> float:
-    seconds = int(seconds) % SECONDS_PER_DAY
-    current_at = int(current["seconds"])
-    next_at = int(nxt["seconds"])
-    if seconds == next_at:
-        return 100.0
-    crossing_midnight = current_at > next_at
-    if crossing_midnight:
-        span = SECONDS_PER_DAY - current_at + next_at
-        if seconds >= current_at:
-            elapsed = seconds - current_at
-        else:
-            elapsed = SECONDS_PER_DAY - current_at + seconds
-    else:
-        span = next_at - current_at
-        elapsed = seconds - current_at
-    if span <= 0:
-        return 0.0
-    return max(0.0, min(100.0, 100.0 * elapsed / span))
+    starts = [event["seconds"] for event in bound]
+    index = current_sun_event_index(starts, seconds)
+    return bound[(index + offset) % len(bound)]
 
 
 def _sample_light(
@@ -213,7 +186,7 @@ def _sample_light(
 ) -> tuple[int, tuple[int, int, int]]:
     current = _event_at(bound, seconds, 0)
     nxt = _event_at(bound, seconds, 1)
-    percent = _transition_percent(current, nxt, seconds)
+    percent = transition_progress_percent(current["seconds"], nxt["seconds"], seconds)
     from_entity = copy.deepcopy(
         current["scene"]["entities"].get(entity_id, {ATTR_STATE: STATE_OFF})
     )
@@ -249,18 +222,15 @@ def _sample_light(
         color_mode = _infer_color_mode(from_entity) or _infer_color_mode(to_entity)
 
     brightness = 0
-    try:
-        if ATTR_BRIGHTNESS in from_entity or ATTR_BRIGHTNESS in to_entity:
-            brightness = extrapolate_brightness(
-                from_entity, to_entity, final_entity, percent, 0
-            )
-            final_entity[ATTR_BRIGHTNESS] = brightness
-        elif final_entity.get(ATTR_STATE) == STATE_ON:
-            brightness = 255
-            final_entity[ATTR_BRIGHTNESS] = brightness
-        rgb = _display_rgb(from_entity, to_entity, final_entity, color_mode, percent)
-    except HomeAssistantError:
-        rgb = _entity_rgb(from_entity) or _entity_rgb(to_entity) or DEFAULT_RGB
+    if ATTR_BRIGHTNESS in from_entity or ATTR_BRIGHTNESS in to_entity:
+        brightness = extrapolate_brightness(
+            from_entity, to_entity, final_entity, percent, 0
+        )
+        final_entity[ATTR_BRIGHTNESS] = brightness
+    elif final_entity.get(ATTR_STATE) == STATE_ON:
+        brightness = 255
+        final_entity[ATTR_BRIGHTNESS] = brightness
+    rgb = _display_rgb(from_entity, to_entity, final_entity, color_mode, percent)
     pct = max(0, min(100, round(brightness * 100 / 255)))
     if final_entity.get(ATTR_STATE) != STATE_ON and brightness <= 0:
         pct = 0

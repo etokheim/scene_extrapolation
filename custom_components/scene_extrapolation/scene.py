@@ -129,6 +129,57 @@ class SunEvent:
         self.scene = scene
 
 
+def current_sun_event_index(start_times: list[float], seconds: float) -> int:
+    """Index of the last solar event that has started at `seconds`.
+
+    The next event is the first whose start is *strictly after* now, so standing
+    exactly on an event belongs to that event (0% into the following transition).
+    Before the first event of the day, that is the last event (wrap from yesterday).
+    """
+    for index, start in enumerate(start_times):
+        if start > seconds:
+            return index - 1 if index else len(start_times) - 1
+    return len(start_times) - 1
+
+
+def transition_progress_percent(
+    current_start: float, next_start: float, seconds: float
+) -> float:
+    """How far we are from current_start toward next_start (0–100).
+
+    Raises HomeAssistantError if the result is outside that range — that is a
+    bug in event pairing or wrap math, not something to clamp away.
+    """
+    seconds = seconds % 86400
+    crossing_midnight = current_start > next_start
+
+    if crossing_midnight:
+        span = 86400 - current_start + next_start
+        # Inclusive next-event bound: at exactly next_start remaining is 0 (100%),
+        # not 86400 (which made progress negative).
+        if seconds <= next_start:
+            remaining = next_start - seconds
+        else:
+            remaining = 86400 - seconds + next_start
+    else:
+        span = next_start - current_start
+        remaining = next_start - seconds
+
+    if span == 0:
+        return 0.0
+
+    progress = 100 * (span - remaining) / span
+    if progress < 0 or progress > 100:
+        raise HomeAssistantError(
+            f"Invalid transition progress: {progress:.1f}% "
+            f"(expected 0-100%). This is a calculation error. "
+            f"Please open an issue at https://github.com/etokheim/scene_extrapolation/issues "
+            f"with the following details: current={current_start}s, next={next_start}s, "
+            f"time={seconds}s"
+        )
+    return progress
+
+
 class ExtrapolationScene(Scene):
     """Representation the ExtrapolationScene."""
 
@@ -595,74 +646,11 @@ class ExtrapolationScene(Scene):
         self, current_sun_event, next_sun_event, seconds_since_midnight
     ) -> int:
         """Get a percentage value for how far into the transitioning between the from and to scene we currently are."""
-
-        # Account for passing midnight
-        seconds_between_current_and_next_sun_events = None
-        seconds_till_next_sun_event = None
-
-        # Clamp to max 24 hours (to handle manipulation of seconds since midnight by transition modifier)
-        seconds_since_midnight = seconds_since_midnight % 86400
-
-        # Determine if we're crossing midnight between events
-        # This happens when current event time > next event time (wrapping around midnight)
-        crossing_midnight = current_sun_event.start_time > next_sun_event.start_time
-
-        if crossing_midnight:
-            # Wrapping around midnight: current event is before midnight, next is after
-            # Calculate total time between events (wrapping around midnight)
-            seconds_between_current_and_next_sun_events = (
-                86400 - current_sun_event.start_time + next_sun_event.start_time
-            )
-            # Calculate time remaining until next event
-            # If we're already past midnight (seconds_since_midnight < next_sun_event.start_time),
-            # then we just need time from now to the next event today
-            if seconds_since_midnight < next_sun_event.start_time:
-                # We're after midnight but before the next event today
-                seconds_till_next_sun_event = (
-                    next_sun_event.start_time - seconds_since_midnight
-                )
-            else:
-                # We're before midnight, so we need: time to midnight + time to next event
-                seconds_till_next_sun_event = (
-                    86400 - seconds_since_midnight + next_sun_event.start_time
-                )
-        else:
-            # Normal case: events are on the same day and we're between them
-            seconds_between_current_and_next_sun_events = (
-                next_sun_event.start_time - current_sun_event.start_time
-            )
-            # Calculate time until next event (same day)
-            seconds_till_next_sun_event = (
-                next_sun_event.start_time - seconds_since_midnight
-            )
-
-        # Calculate transition progress percentage
-        if seconds_between_current_and_next_sun_events == 0:
-            # Edge case: current and next events are at the same time
-            transition_progress = 0
-        else:
-            # Calculate how much of the transition has elapsed
-            # elapsed = total_time - time_remaining
-            elapsed_time = (
-                seconds_between_current_and_next_sun_events
-                - seconds_till_next_sun_event
-            )
-            transition_progress = (
-                100 * elapsed_time / seconds_between_current_and_next_sun_events
-            )
-
-        # Validate that transition progress is within valid range [0, 100]
-        if transition_progress < 0 or transition_progress > 100:
-            raise HomeAssistantError(
-                f"Invalid transition progress: {transition_progress:.1f}% "
-                f"(expected 0-100%). This is a calculation error. "
-                f"Please open an issue at https://github.com/etokheim/scene_extrapolation/issues "
-                f"with the following details: Current event: {current_sun_event.name} "
-                f"({current_sun_event.start_time}s), Next event: {next_sun_event.name} "
-                f"({next_sun_event.start_time}s), Time: {seconds_since_midnight}s"
-            )
-
-        return transition_progress
+        return transition_progress_percent(
+            current_sun_event.start_time,
+            next_sun_event.start_time,
+            seconds_since_midnight,
+        )
 
     def seconds_since_midnight(self, offset_seconds: int) -> float:
         """Returns the number of seconds since midnight, can be adjusted with an offset."""
@@ -696,24 +684,11 @@ class ExtrapolationScene(Scene):
     def get_sun_event(self, sun_events, seconds_since_midnight, offset=0) -> SunEvent:
         """Returns the current sun event, according to the current time of day. Can be offset by ie. 1 to get the next sun event instead."""
         sorted_sun_events = sorted(sun_events.values(), key=lambda x: x.start_time)
-
-        # Find the event closest, but still in the future
-        closest_match_index = None
-        for index, sun_event in enumerate(sorted_sun_events):
-            # Find the next sun_event index
-            if sun_event.start_time >= seconds_since_midnight:
-                closest_match_index = index - 1  # -1 to get current sun_event index
-                break
-
-        # If we couldn't find a match for today, we're past the last event
-        # Return the last event of the day (which will wrap to next day's events)
-        if closest_match_index is None:
-            # We're past all events today, so current event is the last one
-            closest_match_index = len(sorted_sun_events) - 1
-
+        starts = [event.start_time for event in sorted_sun_events]
+        closest_match_index = current_sun_event_index(
+            starts, seconds_since_midnight % 86400
+        )
         offset_index = closest_match_index + offset
-
-        # The % strips away any overshooting of the list length
         return sorted_sun_events[offset_index % len(sorted_sun_events)]
 
     def _calculate_time_shift_from_transition_modifier(

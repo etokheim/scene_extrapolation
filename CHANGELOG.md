@@ -10,10 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Sidebar panel to create and edit all extrapolation scenes from one integration instance
 - Sun-path visualization on the create/edit screen (elevation curve + solar events)
-- Per-light brightness/color bars on create/edit, with a date picker for winter/polar days
+- Per-light brightness/color preview on create/edit, with a date picker for winter/polar days
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
+- Panel uses Home Assistant’s `ha-top-app-bar-fixed` (header outside the scroll container)
+- Light preview draws one brightness line per lamp (not a strip of bars); names sit on the chart and open more-info
+
+### Fixed
+- Transition progress went negative at exact solar event times, which broke winter-date previews
 
 ## [2.1.0] - 2025-12-21
 
