@@ -18,8 +18,6 @@ NIGHTLIGHTS_SCENE = "nightlights_scene"
 DISPLAY_SCENES_COMBINED = "display_scenes_combined"
 
 PANEL_URL_PATH = "scene_extrapolation"
-PANEL_FILENAME = "panel.js"
-PANEL_MODULE_URL = "/api/scene_extrapolation/static/panel.js"
 
 DATA_STORE = "store"
 DATA_ENTITIES = "entities"

@@ -26,7 +26,9 @@ PANEL_VERSION = json.loads(
 
 async def async_setup_panel(hass: HomeAssistant) -> None:
     """Serve the panel JS and add a sidebar entry."""
-    static_url = f"/api/scene_extrapolation/assets/{PANEL_VERSION}-1"
+    # Versioned path so HA's frontend module cache picks up panel.js after a restart.
+    # Bump manifest.json version when shipping frontend-only changes.
+    static_url = f"/api/scene_extrapolation/assets/{PANEL_VERSION}"
     try:
         await hass.http.async_register_static_paths(
             [
@@ -54,6 +56,7 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
             "_panel_custom": {
                 "name": "scene-extrapolation-panel",
                 "module_url": f"{static_url}/panel.js",
+                # Native HA web components (ha-form, selectors) do not work in an iframe.
                 "embed_iframe": False,
             }
         },

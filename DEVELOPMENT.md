@@ -34,9 +34,10 @@ docker compose start
 
 After that:
 
-1. **Settings → Devices & services → Add integration → Scene Extrapolation**
-2. Pick an area and that area's **dag / kveld** scenes (optional `input_boolean.nightlights` + natt scene)
-3. Activate the generated scene from **Developer tools → States**
+1. **Settings → Devices & services → Add integration → Scene Extrapolation** (once; the form is empty)
+2. Open **Scene Extrapolation** in the sidebar
+3. **Add** a scene (area + native dag/kveld/natt scenes; optional `input_boolean.nightlights`)
+4. Activate the generated `scene.*` from **Developer tools → States**
 
 Logs: `dev/config/home-assistant.log` or `docker compose logs -f`.
 

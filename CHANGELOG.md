@@ -8,13 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- 
+- Sidebar panel to create and edit all extrapolation scenes from one integration instance
+- Sun-path visualization on the create/edit screen (elevation curve + solar events)
 
 ### Changed
-- 
-
-### Fixed
-- 
+- One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
 
 ## [2.1.0] - 2025-12-21
 

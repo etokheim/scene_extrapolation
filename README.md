@@ -6,7 +6,9 @@ _TLDR: Let's you easily create a circadian rythm like lighting experience! - Mea
 
 ## Setup
 
-Super simple to set up! Create two (or more) scenes. One with how you want the lighting to be at day, and one for the evening.
+Super simple to set up! Create two (or more) native Home Assistant scenes. One with how you want the lighting to be at day, and one for the evening.
+
+Then add **Scene Extrapolation** once (Settings → Devices & services). Open it from the sidebar and add an extrapolation scene per room — pick the area and the native scenes to blend. You do not add a new integration entry for each room.
 
 You might already have made some scenes that you prefer throughout the day. Maybe something like this:
 ![Illustration - Scenes with hard transitions](images/Example%20-%20Fixed.png)
