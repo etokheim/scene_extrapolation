@@ -1,0 +1,38 @@
+# Local Home Assistant sandbox for Scene Extrapolation development.
+# Runtime files (.storage, databases, logs) stay in this folder and are gitignored.
+
+homeassistant:
+  name: Scene Extrapolation Dev
+  latitude: 59.9139
+  longitude: 10.7522
+  elevation: 23
+  unit_system: metric
+  time_zone: Europe/Oslo
+  currency: NOK
+  country: "NO"
+  internal_url: http://localhost:8123
+  packages: !include_dir_named packages
+
+default_config:
+
+# Built-in dummy lights (assigned to areas via area_map.yaml).
+demo:
+
+# YAML virtual lights from twrecked/hass-virtual (old-style, no config flow).
+virtual:
+  yaml_config: true
+
+logger:
+  default: info
+  logs:
+    custom_components.scene_extrapolation: debug
+    custom_components.virtual: info
+
+input_boolean:
+  nightlights:
+    name: Nightlights
+    icon: mdi:weather-night
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml

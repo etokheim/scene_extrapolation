@@ -1,0 +1,18 @@
+# Extra living-room lights. Demo already provides ceiling_lights + living_room_rgbww_lights.
+light:
+  - platform: virtual
+    name: "!Stue gulvlampe"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue spotter"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 255
+    support_color: true
+    initial_color: [40, 30]
+    persistent: false

@@ -1,0 +1,39 @@
+# HA has no YAML area assignment. This map is applied to the registries
+# (run: python3 dev/apply_area_map.py) after HA has created the entities.
+
+devices:
+  Ceiling Lights:
+    area: stue
+    name: Taklampe
+  Living Room RGBWW Lights:
+    area: stue
+    name: RGB-lampe
+  Kitchen Lights:
+    area: kjokken
+    name: Taklampe
+  Office RGBW Lights:
+    area: kjokken
+    name: RGB underskap
+  Bed Light:
+    area: soverom
+    name: Nattbord
+  Entrance Color + White Lights:
+    area: soverom
+    name: Taklampe
+
+entities:
+  light.stue_gulvlampe: stue
+  light.stue_spotter: stue
+  light.kjokken_benkelys: kjokken
+  light.kjokken_overoy: kjokken
+  light.soverom_tak: soverom
+  light.soverom_garderobe: soverom
+  scene.stue_dag: stue
+  scene.stue_kveld: stue
+  scene.stue_natt: stue
+  scene.kjokken_dag: kjokken
+  scene.kjokken_kveld: kjokken
+  scene.kjokken_natt: kjokken
+  scene.soverom_dag: soverom
+  scene.soverom_kveld: soverom
+  scene.soverom_natt: soverom

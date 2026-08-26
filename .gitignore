@@ -1,1 +1,12 @@
 __pycache__
+
+# Home Assistant sandbox runtime (keep the committed starter YAML)
+dev/config/*
+!dev/config/configuration.yaml
+!dev/config/scenes.yaml
+!dev/config/automations.yaml
+!dev/config/scripts.yaml
+!dev/config/area_map.yaml
+!dev/config/apply_area_map.py
+!dev/config/packages/
+!dev/config/packages/**

@@ -1,0 +1,18 @@
+# Extra kitchen lights. Demo already provides kitchen_lights + office_rgbw_lights.
+light:
+  - platform: virtual
+    name: "!Kjøkken benkelys"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 200
+    support_color_temp: true
+    initial_color_temp: 180
+    persistent: false
+  - platform: virtual
+    name: "!Kjøkken overøy"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 220
+    support_color: true
+    initial_color: [45, 20]
+    persistent: false

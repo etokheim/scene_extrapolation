@@ -1,0 +1,16 @@
+# Extra bedroom lights. Demo already provides bed_light + entrance_color_white_lights.
+light:
+  - platform: virtual
+    name: "!Soverom tak"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 200
+    support_color_temp: true
+    initial_color_temp: 220
+    persistent: false
+  - platform: virtual
+    name: "!Soverom garderobe"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 80
+    persistent: false

@@ -1,0 +1,14 @@
+name: scene-extrapolation
+
+services:
+  homeassistant:
+    container_name: scene-extrapolation-ha
+    image: ghcr.io/home-assistant/home-assistant:stable
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+    environment:
+      TZ: Europe/Oslo
+    volumes:
+      - ./dev/config:/config
+      - ./custom_components/scene_extrapolation:/config/custom_components/scene_extrapolation:ro
