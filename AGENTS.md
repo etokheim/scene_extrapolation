@@ -1,0 +1,22 @@
+# Agent notes (Scene Extrapolation)
+
+Custom Home Assistant integration in `custom_components/scene_extrapolation/`. This is **not** the live `/config` + Heim dashboard. Keep this file short; durable rationale lives in [`docs/DECISIONS.md`](docs/DECISIONS.md).
+
+## Must do
+
+- **Commit after each change set** — see [`.cursor/rules/commit-after-changes.mdc`](.cursor/rules/commit-after-changes.mdc). Overrides global “only commit when asked.” Dirty tree after your edits = commit before finishing the turn.
+- **Do not reload the HA/Cursor browser** from the agent — ask the user to hard-refresh (Ctrl+Shift+R / Cmd+Shift+R). See [`.cursor/rules/no-browser-reload.mdc`](.cursor/rules/no-browser-reload.mdc).
+- **Do not log into production Home Assistant** from the Cursor browser — failed logins ban the IP. Prefer the local Docker sandbox. See [`.cursor/rules/no-ha-login.mdc`](.cursor/rules/no-ha-login.mdc).
+- **Record non-obvious decisions** inline or in [`docs/DECISIONS.md`](docs/DECISIONS.md). See [`.cursor/rules/document-decisions.mdc`](.cursor/rules/document-decisions.mdc).
+- **HA Jinja templates** — follow [`.cursor/skills/home-assistant-templates/SKILL.md`](.cursor/skills/home-assistant-templates/SKILL.md); update that skill when you find new quirks.
+- **HA REST API** — local sandbox at `http://127.0.0.1:8123`; auth via `cursor_ha_token` in `dev/config/secrets.yaml`. See [`.cursor/skills/home-assistant-api/SKILL.md`](.cursor/skills/home-assistant-api/SKILL.md).
+- **Secrets** — never dump tokens, `.env`, or HA `.storage` credentials; disclose any accidental secret read immediately. See [`.cursor/rules/secrets-handling.mdc`](.cursor/rules/secrets-handling.mdc).
+
+## Local sandbox
+
+- Docker + starter YAML: [`DEVELOPMENT.md`](DEVELOPMENT.md). Python changes need `docker compose restart`.
+- Integration code: [`custom_components/scene_extrapolation/`](custom_components/scene_extrapolation/). Runtime files under `dev/config/` are gitignored except the committed starter YAML.
+
+## Git remote
+
+Public origin: [`etokheim/scene_extrapolation`](https://github.com/etokheim/scene_extrapolation). Workflow: [`docs/GIT.md`](docs/GIT.md).

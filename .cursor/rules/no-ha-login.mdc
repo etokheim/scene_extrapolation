@@ -1,0 +1,24 @@
+---
+description: Never log into production Home Assistant from the agent browser (IP bans)
+alwaysApply: true
+---
+
+# Do not log into production Home Assistant
+
+Production HA has `ip_ban_enabled` and bans an IP after a handful of failed logins. The Cursor browser is a **separate, usually logged-out** profile. Opening the live home dashboard there hits `/auth/login`. Filling or retrying that form bans the egress IP.
+
+This repo’s integration is developed against the **local Docker sandbox**, not the live `/config` server.
+
+## Never
+
+- Navigate to production HA (`home-assistant.tokhe.im` or any public/live HA URL), `/auth/login`, onboarding, or any production URL that shows a login form.
+- Type, autofill, or submit username/password on **production** HA.
+- Retry a production login, “check if it worked”, or refresh a production login page.
+- Copy live-home `secrets.yaml` / `.storage` into this workspace.
+
+## Do this instead
+
+- Live state/services: REST/WS at `http://127.0.0.1:8123` (Docker sandbox) with `cursor_ha_token` only. See [`.cursor/skills/home-assistant-api/SKILL.md`](../skills/home-assistant-api/SKILL.md).
+- Visual checks of the **sandbox** panel: ask the user to look, or use a tab that is **already authenticated** on `http://localhost:8123`. Do not create a new navigation to production HA.
+- Invalid token → stop. Do not fall back to a production login form.
+- If the **sandbox** shows a login screen: ask the user (or use an already-authenticated tab). Do not brute-force credentials — HA’s default `ip_ban` still applies on localhost.

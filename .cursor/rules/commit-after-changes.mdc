@@ -1,0 +1,22 @@
+---
+description: Commit each logical change set in this repo (overrides global wait-to-ask)
+alwaysApply: true
+---
+
+# Commit after changes
+
+**This repo opts out of “only commit when asked.”** After every logical change set, commit before you finish the turn.
+
+A change set = one deployable unit (feature, fix, rule/docs update, or matched code+decision update). Do not batch unrelated prompts into one commit when they were separate user requests.
+
+## End of turn
+
+Before your final reply, if this turn touched files:
+
+1. `git status` — if the tree is dirty with your work, you are not done.
+2. `git diff` + `git log -5 --oneline` (match message style).
+3. Stage relevant files only (never secrets).
+4. Commit with HEREDOC; re-run `git status` (clean for that work).
+5. Prefer small focused commits. No amend / force-push / `--no-verify` unless the user asks.
+
+If a sandbox restart is part of verifying the change set, still commit the source (never `.storage` or `dev/config/secrets.yaml`) before finishing the turn.

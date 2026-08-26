@@ -10,3 +10,4 @@ dev/config/*
 !dev/config/apply_area_map.py
 !dev/config/packages/
 !dev/config/packages/**
+!dev/config/secrets.yaml.example

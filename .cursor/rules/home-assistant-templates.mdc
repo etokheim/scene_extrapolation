@@ -1,0 +1,12 @@
+---
+description: Use and maintain the Home Assistant templates skill when editing Jinja/templates
+globs: dev/config/**/*.yaml,custom_components/**/*.yaml,**/*template*.yaml
+alwaysApply: false
+---
+
+# Home Assistant templates
+
+When editing Jinja / `value_template` / template entities in this repo:
+
+1. Read and follow [`.cursor/skills/home-assistant-templates/SKILL.md`](../skills/home-assistant-templates/SKILL.md).
+2. If you hit a new template quirk, **update that skill in the same change set** (see its “Maintain this skill” section).
