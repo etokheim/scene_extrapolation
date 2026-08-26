@@ -33,6 +33,8 @@ PREVIOUS_EVENTS = {
 
 CURVE_STEP_MINUTES = 5
 SECONDS_PER_DAY = 24 * 3600
+# Earth's axial tilt; annual noon max is 90° inside the tropics.
+AXIAL_TILT_DEG = 23.44
 
 WINTER_FALLBACK = {
     "dawn": (8, 45),
@@ -78,6 +80,11 @@ def _parse_target_date(
         parsed = date.fromisoformat(target_date)
         return datetime(parsed.year, parsed.month, parsed.day, tzinfo=tz)
     return datetime(target_date.year, target_date.month, target_date.day, tzinfo=tz)
+
+
+def max_solar_elevation(latitude: float) -> float:
+    """Highest solar elevation at this latitude (zenith inside the tropics)."""
+    return 90.0 - max(0.0, abs(latitude) - AXIAL_TILT_DEG)
 
 
 def _fallback_clock(latitude: float, month: int) -> dict[str, tuple[int, int]]:
@@ -230,4 +237,5 @@ def build_sun_path(
         },
         "events": events,
         "curve": curve,
+        "max_elevation": round(max_solar_elevation(hass.config.latitude), 2),
     }

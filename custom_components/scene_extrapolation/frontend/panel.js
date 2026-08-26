@@ -6,6 +6,8 @@ const PLOT_TOP = 28;
 const PLOT_BOTTOM = 168;
 const PLOT_LEFT = 16;
 const PLOT_RIGHT = 984;
+const SUN_LINE_DAY = "#ffb74d";
+const SUN_LINE_NIGHT = "#5a2e0a";
 const LIGHT_BAR_HEIGHT = 60;
 const LIGHT_BAR_TOP = 0;
 const LIGHT_BAR_BOTTOM = 60;
@@ -2376,9 +2378,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     for (const event of events) {
       elevations.push(event.elevation);
     }
-    const minElev = Math.min(...elevations);
-    const maxElev = Math.max(...elevations);
-    const span = Math.max(maxElev - minElev, 1);
+    // Y scale is this location's annual max, not today's peak — a winter noon
+    // that only just clears the horizon must sit near 0°, not the top of the plot.
+    const peakElev = this._sunPath.max_elevation;
+    const minElev = Math.min(-peakElev, ...elevations);
+    const maxElev = Math.max(peakElev, ...elevations);
+    const span = maxElev - minElev;
     const xOf = (seconds) =>
       PLOT_LEFT + (seconds / SECONDS_PER_DAY) * (PLOT_RIGHT - PLOT_LEFT);
     const yOf = (elevation) =>
@@ -2392,24 +2397,28 @@ class SceneExtrapolationPanel extends HTMLElement {
       .join(" ");
     const area = `${line} L${xOf(curve[curve.length - 1][0]).toFixed(1)},${PLOT_BOTTOM} L${xOf(curve[0][0]).toFixed(1)},${PLOT_BOTTOM} Z`;
     const nowElev = interpolateElevation(curve, nowSeconds);
-    const showHorizon = minElev < 0 && maxElev > 0;
+    const horizonY = yOf(0);
+    const horizonOffset = ((horizonY - PLOT_TOP) / (PLOT_BOTTOM - PLOT_TOP)) * 100;
     const hourLabels = ["00:00", "06:00", "12:00", "18:00", "24:00"];
 
     const svg = `
       <svg viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
         <defs>
-          <linearGradient id="sun-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#ffb74d" stop-opacity="0.35"/>
-            <stop offset="100%" stop-color="#ffb74d" stop-opacity="0"/>
+          <linearGradient id="sun-fill" gradientUnits="userSpaceOnUse" x1="0" y1="${PLOT_TOP}" x2="0" y2="${PLOT_BOTTOM}">
+            <stop offset="0%" stop-color="${SUN_LINE_DAY}" stop-opacity="0.35"/>
+            <stop offset="${horizonOffset}%" stop-color="${SUN_LINE_DAY}" stop-opacity="0.12"/>
+            <stop offset="${horizonOffset}%" stop-color="${SUN_LINE_NIGHT}" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="${SUN_LINE_NIGHT}" stop-opacity="0"/>
           </linearGradient>
         </defs>
         <path d="${area}" fill="url(#sun-fill)"></path>
-        ${
-          showHorizon
-            ? `<line x1="${PLOT_LEFT}" x2="${PLOT_RIGHT}" y1="${yOf(0)}" y2="${yOf(0)}" stroke="var(--divider-color)" stroke-dasharray="4 4" stroke-width="1"/>`
-            : ""
-        }
-        <path d="${line}" fill="none" stroke="#ffb74d" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
+        <line x1="${PLOT_LEFT}" x2="${PLOT_RIGHT}" y1="${horizonY}" y2="${horizonY}" stroke="var(--divider-color)" stroke-dasharray="4 4" stroke-width="1"/>
+        ${sunStrokePaths(curve, xOf, yOf)
+          .map(
+            ({ d, night }) =>
+              `<path d="${d}" fill="none" stroke="${night ? SUN_LINE_NIGHT : SUN_LINE_DAY}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>`
+          )
+          .join("")}
         ${
           isToday
             ? `<line x1="${xOf(nowSeconds)}" x2="${xOf(nowSeconds)}" y1="${PLOT_TOP}" y2="${PLOT_BOTTOM}" stroke="var(--primary-color)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
@@ -2872,6 +2881,44 @@ function formatClock(seconds) {
   const hours = Math.floor(seconds / 3600) % 24;
   const minutes = Math.floor((seconds % 3600) / 60);
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function sunStrokePaths(curve, xOf, yOf) {
+  const paths = [];
+  if (curve.length < 2) {
+    return paths;
+  }
+  const point = (seconds, elevation) =>
+    `${xOf(seconds).toFixed(1)},${yOf(elevation).toFixed(1)}`;
+  let night = curve[0][1] < 0;
+  let current = [point(curve[0][0], curve[0][1])];
+  const flush = () => {
+    if (current.length >= 2) {
+      paths.push({
+        night,
+        d: current.map((xy, index) => `${index === 0 ? "M" : "L"}${xy}`).join(" "),
+      });
+    }
+    current = [];
+  };
+  for (let index = 1; index < curve.length; index += 1) {
+    const [leftSeconds, leftElev] = curve[index - 1];
+    const [rightSeconds, rightElev] = curve[index];
+    const rightNight = rightElev < 0;
+    if (rightNight === night) {
+      current.push(point(rightSeconds, rightElev));
+      continue;
+    }
+    const span = rightElev - leftElev;
+    const ratio = (0 - leftElev) / span;
+    const crossSeconds = leftSeconds + (rightSeconds - leftSeconds) * ratio;
+    current.push(point(crossSeconds, 0));
+    flush();
+    night = rightNight;
+    current.push(point(crossSeconds, 0), point(rightSeconds, rightElev));
+  }
+  flush();
+  return paths;
 }
 
 function interpolateElevation(curve, seconds) {

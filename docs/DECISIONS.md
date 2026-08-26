@@ -50,8 +50,16 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 
 - **Date:** 2026-08-26
 - **Superseded in part:** 2026-08-26 — no static vertical grid or event lines; hover shows a second cursor line and a fixed readout.
+- **Superseded in part:** 2026-08-26 — Y scale is the location’s annual max elevation; the stroke is darker below the horizon.
 - **Decision:** The create/edit screen shows a full-width sun elevation curve for today, with dawn / sunrise / noon / sunset / dusk plotted (icons + times). Dusk on the chart respects the configured earliest-dusk override.
 - **Why:** Makes the solar events the scenes interpolate between visible instead of abstract form fields.
+- **Do not reverse without user ask.**
+
+## Sun-path Y scale is annual max; night stroke is darker
+
+- **Date:** 2026-08-26
+- **Decision:** The sun chart’s vertical domain is ± this location’s maximum solar elevation (`90° − max(0, |lat| − 23.44)`), expanded only if that day’s samples fall outside. Do not auto-fit to the day’s min/max. The polyline (and fill) uses the day amber above 0° and a darker amber below. Horizon stays drawn as the 0° dashed line.
+- **Why:** Auto-fitting put a 5° winter noon at the top of the plot, so a sun that barely clears the horizon looked overhead. A day-relative scale also made June and December incomparable. Darker night stroke makes below-horizon the same curve, not a second series.
 - **Do not reverse without user ask.**
 
 ## Hover inspects time and brightness in a fixed readout
