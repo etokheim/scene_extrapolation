@@ -155,10 +155,16 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-toolbar {
           display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 4px;
+          padding: 12px 16px 0;
+        }
+        .sun-toolbar-row {
+          display: flex;
           flex-wrap: wrap;
           align-items: center;
           gap: 8px;
-          padding: 12px 16px 0;
         }
         .sun-date-nav {
           display: flex;
@@ -168,6 +174,76 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-date-nav ha-selector {
           min-width: 168px;
+        }
+        .sun-year-scrub {
+          position: relative;
+          width: 100%;
+          margin: 4px 0 8px;
+          touch-action: none;
+          user-select: none;
+          outline: none;
+          cursor: pointer;
+        }
+        .sun-year-scrub:focus-visible {
+          box-shadow: 0 0 0 2px var(--primary-color);
+          border-radius: 8px;
+        }
+        .sun-year-months {
+          position: relative;
+          height: 16px;
+          margin-bottom: 2px;
+        }
+        .sun-year-months span {
+          position: absolute;
+          top: 0;
+          font-size: 11px;
+          line-height: 16px;
+          color: var(--secondary-text-color);
+          pointer-events: none;
+          white-space: nowrap;
+        }
+        .sun-year-track {
+          position: relative;
+          height: 20px;
+        }
+        .sun-year-bar,
+        .sun-year-fill {
+          position: absolute;
+          left: 0;
+          top: 8px;
+          height: 4px;
+          border-radius: 2px;
+        }
+        .sun-year-bar {
+          right: 0;
+          background: var(--divider-color);
+        }
+        .sun-year-fill {
+          background: var(--primary-color);
+          opacity: 0.35;
+        }
+        .sun-year-today {
+          position: absolute;
+          top: 4px;
+          width: 2px;
+          height: 12px;
+          margin-left: -1px;
+          background: var(--secondary-text-color);
+          pointer-events: none;
+        }
+        .sun-year-today[hidden] {
+          display: none;
+        }
+        .sun-year-thumb {
+          position: absolute;
+          top: 4px;
+          width: 12px;
+          height: 12px;
+          margin-left: -6px;
+          border-radius: 50%;
+          background: var(--primary-color);
+          box-shadow: 0 0 0 2px var(--card-background-color);
+          pointer-events: none;
         }
         .sun-chip {
           background: transparent;
@@ -1752,14 +1828,32 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _shiftPreviewDate(days) {
-    this._previewDate = shiftIsoDate(this._previewDate, days);
+    this._setPreviewDate(shiftIsoDate(this._previewDate, days));
+  }
+
+  _setPreviewDate(iso, { debounce = false } = {}) {
+    if (!iso) {
+      return;
+    }
+    const changed = iso !== this._previewDate;
+    this._previewDate = iso;
+    this._syncDateToolbar();
+    if (!changed) {
+      return;
+    }
     this._sunPathKey = undefined;
-    this._ensureSunPath();
+    if (debounce) {
+      this._schedulePreview();
+    } else {
+      this._ensureSunPath();
+    }
   }
 
   _buildDateToolbar() {
     const toolbar = document.createElement("div");
     toolbar.className = "sun-toolbar";
+    const row = document.createElement("div");
+    row.className = "sun-toolbar-row";
     const nav = document.createElement("div");
     nav.className = "sun-date-nav";
 
@@ -1787,12 +1881,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     picker.value = this._previewDate;
     picker.addEventListener("value-changed", (ev) => {
       const value = ev.detail?.value;
-      if (!value) {
+      if (!value || value === this._previewDate) {
         return;
       }
-      this._previewDate = value;
-      this._sunPathKey = undefined;
-      this._ensureSunPath();
+      this._setPreviewDate(value);
     });
 
     const next = customElements.get("ha-icon-button-next")
@@ -1810,7 +1902,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
 
     nav.append(prev, picker, next);
-    toolbar.appendChild(nav);
+    row.appendChild(nav);
     const year = new Date().getFullYear();
     const presets = [
       ["Today", todayIso()],
@@ -1823,16 +1915,104 @@ class SceneExtrapolationPanel extends HTMLElement {
       chip.className = "sun-chip";
       chip.textContent = name;
       chip.addEventListener("click", () => {
-        this._previewDate = value;
-        picker.value = value;
-        this._sunPathKey = undefined;
-        this._ensureSunPath();
+        this._setPreviewDate(value);
       });
-      toolbar.appendChild(chip);
+      row.appendChild(chip);
     }
     this._datePicker = picker;
-    this._dateChips = toolbar.querySelectorAll(".sun-chip");
+    this._dateChips = row.querySelectorAll(".sun-chip");
+    toolbar.append(row, this._buildYearScrub());
     return toolbar;
+  }
+
+  _buildYearScrub() {
+    const scrub = document.createElement("div");
+    scrub.className = "sun-year-scrub";
+    scrub.tabIndex = 0;
+    scrub.setAttribute("role", "slider");
+    scrub.setAttribute("aria-label", "Preview day");
+    const months = document.createElement("div");
+    months.className = "sun-year-months";
+    const track = document.createElement("div");
+    track.className = "sun-year-track";
+    const bar = document.createElement("div");
+    bar.className = "sun-year-bar";
+    const fill = document.createElement("div");
+    fill.className = "sun-year-fill";
+    const todayMark = document.createElement("div");
+    todayMark.className = "sun-year-today";
+    const thumb = document.createElement("div");
+    thumb.className = "sun-year-thumb";
+    track.append(bar, fill, todayMark, thumb);
+    scrub.append(months, track);
+
+    const dateFromEvent = (ev) => {
+      const rect = track.getBoundingClientRect();
+      const t = rect.width ? (ev.clientX - rect.left) / rect.width : 0;
+      const year = isoYear(this._previewDate);
+      const days = daysInYear(year);
+      const dayIndex = Math.max(0, Math.min(days - 1, Math.floor(t * days)));
+      return isoFromDayOfYear(year, dayIndex);
+    };
+
+    scrub.addEventListener("pointerdown", (ev) => {
+      if (ev.button != null && ev.button !== 0) {
+        return;
+      }
+      ev.preventDefault();
+      scrub.focus();
+      scrub.setPointerCapture(ev.pointerId);
+      this._yearScrubbing = true;
+      this._setPreviewDate(dateFromEvent(ev), { debounce: true });
+    });
+    scrub.addEventListener("pointermove", (ev) => {
+      if (!scrub.hasPointerCapture(ev.pointerId)) {
+        return;
+      }
+      this._setPreviewDate(dateFromEvent(ev), { debounce: true });
+    });
+    const endScrub = (ev) => {
+      if (!this._yearScrubbing) {
+        return;
+      }
+      this._yearScrubbing = false;
+      if (ev?.pointerId != null && scrub.hasPointerCapture(ev.pointerId)) {
+        scrub.releasePointerCapture(ev.pointerId);
+      }
+      this._ensureSunPath();
+    };
+    scrub.addEventListener("pointerup", endScrub);
+    scrub.addEventListener("pointercancel", endScrub);
+    scrub.addEventListener("keydown", (ev) => {
+      const year = isoYear(this._previewDate);
+      if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") {
+        ev.preventDefault();
+        this._shiftPreviewDate(-1);
+      } else if (ev.key === "ArrowRight" || ev.key === "ArrowUp") {
+        ev.preventDefault();
+        this._shiftPreviewDate(1);
+      } else if (ev.key === "PageDown") {
+        ev.preventDefault();
+        this._shiftPreviewDate(30);
+      } else if (ev.key === "PageUp") {
+        ev.preventDefault();
+        this._shiftPreviewDate(-30);
+      } else if (ev.key === "Home") {
+        ev.preventDefault();
+        this._setPreviewDate(`${year}-01-01`);
+      } else if (ev.key === "End") {
+        ev.preventDefault();
+        this._setPreviewDate(`${year}-12-31`);
+      }
+    });
+
+    this._yearScrub = scrub;
+    this._yearMonths = months;
+    this._yearFill = fill;
+    this._yearTodayMark = todayMark;
+    this._yearThumb = thumb;
+    this._yearMonthsYear = undefined;
+    return scrub;
   }
 
   _syncDateToolbar() {
@@ -1849,6 +2029,57 @@ class SceneExtrapolationPanel extends HTMLElement {
         chip.removeAttribute("selected");
       }
     });
+    this._syncYearScrub();
+  }
+
+  _syncYearScrub() {
+    if (!this._yearScrub) {
+      return;
+    }
+    const iso = this._previewDate;
+    const year = isoYear(iso);
+    const days = daysInYear(year);
+    const dayIndex = dayOfYear(iso);
+    const thumbT = ((dayIndex + 0.5) / days) * 100;
+    this._yearThumb.style.left = `${thumbT}%`;
+    this._yearFill.style.width = `${thumbT}%`;
+    this._yearScrub.setAttribute("aria-valuemin", "1");
+    this._yearScrub.setAttribute("aria-valuemax", String(days));
+    this._yearScrub.setAttribute("aria-valuenow", String(dayIndex + 1));
+    this._yearScrub.setAttribute("aria-valuetext", iso);
+    this._yearScrub.title = iso;
+
+    const today = todayIso();
+    if (isoYear(today) === year) {
+      this._yearTodayMark.hidden = false;
+      this._yearTodayMark.style.left = `${((dayOfYear(today) + 0.5) / days) * 100}%`;
+    } else {
+      this._yearTodayMark.hidden = true;
+    }
+
+    if (this._yearMonthsYear === year) {
+      return;
+    }
+    this._yearMonthsYear = year;
+    const locale = this._hass?.locale?.language || this._hass?.language || "en";
+    this._yearMonths.replaceChildren();
+    for (let month = 0; month < 12; month += 1) {
+      const label = document.createElement("span");
+      label.textContent = new Date(year, month, 1).toLocaleDateString(locale, {
+        month: "short",
+      });
+      const startDay = dayOfYear(`${year}-${String(month + 1).padStart(2, "0")}-01`);
+      const left = (startDay / days) * 100;
+      label.style.left = `${left}%`;
+      if (month === 0) {
+        label.style.transform = "none";
+      } else if (month === 11) {
+        label.style.transform = "translateX(-100%)";
+      } else {
+        label.style.transform = "translateX(-50%)";
+      }
+      this._yearMonths.appendChild(label);
+    }
   }
 
   _drawSunPath() {
@@ -2147,6 +2378,27 @@ class SceneExtrapolationPanel extends HTMLElement {
     row.appendChild(bar);
     return row;
   }
+}
+
+function isoYear(iso) {
+  return Number(iso.slice(0, 4));
+}
+
+function daysInYear(year) {
+  return new Date(year, 1, 29).getDate() === 29 ? 366 : 365;
+}
+
+function dayOfYear(iso) {
+  const [year, month, day] = iso.split("-").map(Number);
+  return Math.round((Date.UTC(year, month - 1, day) - Date.UTC(year, 0, 1)) / 86400000);
+}
+
+function isoFromDayOfYear(year, dayIndex) {
+  const date = new Date(Date.UTC(year, 0, 1 + dayIndex));
+  const nextYear = date.getUTCFullYear();
+  const nextMonth = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const nextDay = String(date.getUTCDate()).padStart(2, "0");
+  return `${nextYear}-${nextMonth}-${nextDay}`;
 }
 
 function todayIso() {

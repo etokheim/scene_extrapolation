@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Earliest dusk time is set in the dusk event dialog
 - Click a solar event above the chart to assign its native scene (optional link for dawn / sunrise / sunset)
 - Pencil on each light timeline to edit that lamp in the scene for that event, with optional live preview
+- Year-long scrubber under the preview date to drag between days
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)

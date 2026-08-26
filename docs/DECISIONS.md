@@ -89,6 +89,13 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Why:** Logbook’s widget is a range. The single-day native widget is `ha-date-input`. `ha-selector` already knows how to lazy-load that chunk from HA’s bundle; our `panel.js` cannot `import()` those files.
 - **Do not reverse without user ask.**
 
+## Year scrubber under the preview date
+
+- **Date:** 2026-08-26
+- **Decision:** Under the date row, show a custom year timeline (month labels + draggable thumb) for the year of the selected preview day. Pointer drag/click maps to calendar days; keyboard arrows / Home / End work on the slider. Do not use `<input type="range">` — it cannot host month ticks. Debounce the preview websocket while dragging so each pointer move does not wait on a round trip.
+- **Why:** Jumping between solstices with chips is coarse; the calendar picker is precise but slow for seasonal comparison. A year strip is the missing middle.
+- **Do not reverse without user ask.**
+
 ## Opaque light-graph fills
 
 - **Date:** 2026-08-26
