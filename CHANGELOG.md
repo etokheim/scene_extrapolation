@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Click a solar event above the chart to assign its native scene (optional link for dawn / sunrise / sunset)
 - Pencil on each light timeline to edit that lamp in the scene for that event, with optional live preview
 - Year-long scrubber under the preview date to drag between days
+- Hover a sun or light graph to inspect time, sun elevation, and per-light brightness in a fixed readout (cursor line; today’s “now” line stays)
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
@@ -28,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light graphs fill the area under the brightness line opaquely, with a 50% opacity color wash behind the whole row
 - Scene light and event editors use Home Assistant’s automation-style right sidebar (bottom sheet on narrow screens)
 - Scene pickers moved onto the solar event row; the form keeps nightlights
+- Sun and light graphs no longer draw static vertical hour/event lines
 
 ### Fixed
 - Transition progress went negative at exact solar event times, which broke winter-date previews

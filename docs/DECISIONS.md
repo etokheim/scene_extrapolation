@@ -49,8 +49,16 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Sun-path chart on create/edit
 
 - **Date:** 2026-08-26
+- **Superseded in part:** 2026-08-26 — no static vertical grid or event lines; hover shows a second cursor line and a fixed readout.
 - **Decision:** The create/edit screen shows a full-width sun elevation curve for today, with dawn / sunrise / noon / sunset / dusk plotted (icons + times). Dusk on the chart respects the configured earliest-dusk override.
 - **Why:** Makes the solar events the scenes interpolate between visible instead of abstract form fields.
+- **Do not reverse without user ask.**
+
+## Hover inspects time and brightness in a fixed readout
+
+- **Date:** 2026-08-26
+- **Decision:** Sun and light graphs have no static vertical grid or event drop-lines. Today still draws the “now” line. Hovering any plot shows a second full-height cursor. Time, sun elevation, and each light’s brightness % plus color swatch update in a readout **above** the plots — not a tooltip that follows the pointer.
+- **Why:** Hour/event verticals competed with the now line. A follow-cursor tooltip covers the curves you are reading.
 - **Do not reverse without user ask.**
 
 ## Per-light brightness curves and date preview

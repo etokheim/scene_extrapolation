@@ -140,6 +140,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       window.cancelAnimationFrame(this._scrubRaf);
       this._scrubRaf = undefined;
     }
+    if (this._hoverRaf) {
+      window.cancelAnimationFrame(this._hoverRaf);
+      this._hoverRaf = undefined;
+    }
   }
 
   async _build() {
@@ -512,6 +516,60 @@ class SceneExtrapolationPanel extends HTMLElement {
           color: var(--secondary-text-color);
           font-size: 11px;
           font-variant-numeric: tabular-nums;
+        }
+        .sun-hover-readout {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px 16px;
+          min-height: 36px;
+          padding: 4px 16px 8px;
+          font-size: 13px;
+          font-variant-numeric: tabular-nums;
+          color: var(--secondary-text-color);
+        }
+        .sun-hover-readout[data-active] {
+          color: var(--primary-text-color);
+        }
+        .sun-hover-time {
+          font-weight: 500;
+        }
+        .sun-hover-lights {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px 14px;
+        }
+        .sun-hover-light {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;
+        }
+        .sun-hover-swatch {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+          flex-shrink: 0;
+        }
+        .sun-plots {
+          position: relative;
+          cursor: crosshair;
+        }
+        .sun-hover-line {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          width: 2px;
+          margin-left: -1px;
+          background: var(--primary-text-color);
+          opacity: 0.55;
+          pointer-events: none;
+          z-index: 3;
+          display: none;
+        }
+        .sun-plots[data-hovering] .sun-hover-line {
+          display: block;
         }
         .sun-now {
           position: absolute;
@@ -2351,20 +2409,7 @@ class SceneExtrapolationPanel extends HTMLElement {
             ? `<line x1="${PLOT_LEFT}" x2="${PLOT_RIGHT}" y1="${yOf(0)}" y2="${yOf(0)}" stroke="var(--divider-color)" stroke-dasharray="4 4" stroke-width="1"/>`
             : ""
         }
-        ${hourLabels
-          .map((_, index) => {
-            const x = xOf((index / 4) * SECONDS_PER_DAY);
-            return `<line x1="${x}" x2="${x}" y1="${PLOT_TOP}" y2="${PLOT_BOTTOM}" stroke="var(--divider-color)" stroke-opacity="0.45" stroke-width="1"/>`;
-          })
-          .join("")}
         <path d="${line}" fill="none" stroke="#ffb74d" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
-        ${events
-          .map((event) => {
-            const x = xOf(event.seconds);
-            const y = yOf(event.elevation);
-            return `<line x1="${x}" x2="${x}" y1="${y}" y2="${PLOT_BOTTOM}" stroke="var(--secondary-text-color)" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="2 4"/>`;
-          })
-          .join("")}
         ${
           isToday
             ? `<line x1="${xOf(nowSeconds)}" x2="${xOf(nowSeconds)}" y1="${PLOT_TOP}" y2="${PLOT_BOTTOM}" stroke="var(--primary-color)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
@@ -2459,6 +2504,26 @@ class SceneExtrapolationPanel extends HTMLElement {
       hours.appendChild(span);
     }
 
+    const readout = document.createElement("div");
+    readout.className = "sun-hover-readout";
+    readout.setAttribute("aria-live", "polite");
+    this._hoverReadout = readout;
+
+    const plots = document.createElement("div");
+    plots.className = "sun-plots";
+    const hoverLine = document.createElement("div");
+    hoverLine.className = "sun-hover-line";
+    this._hoverLine = hoverLine;
+    plots.append(chart, hours);
+    if (this._view === "edit") {
+      const lights = this._buildLightBars(xOf, events, isToday, nowSeconds);
+      if (lights) {
+        plots.appendChild(lights);
+      }
+    }
+    plots.appendChild(hoverLine);
+    this._bindPlotHover(plots);
+
     const children = [];
     if (this._view === "edit") {
       if (!this._dateToolbar) {
@@ -2483,16 +2548,108 @@ class SceneExtrapolationPanel extends HTMLElement {
         "* Time uses a seasonal fallback because the sun does not rise or set that day.";
       children.push(note);
     }
-    children.push(chart, hours);
-    if (this._view === "edit") {
-      const lights = this._buildLightBars(xOf, events, isToday, nowSeconds);
-      if (lights) {
-        children.push(lights);
-      }
-    }
+    children.push(readout, plots);
 
     this._sunPathEl.hidden = false;
     this._sunPathBodyEl.replaceChildren(...children);
+    this._fillHoverReadout(
+      this._sunPath.today ? nowSecondsSinceMidnight() : null,
+      { hovering: false }
+    );
+  }
+
+  _secondsFromPlotPointer(ev, plots) {
+    const rect = plots.getBoundingClientRect();
+    const viewX = rect.width
+      ? ((ev.clientX - rect.left) / rect.width) * CHART_WIDTH
+      : PLOT_LEFT;
+    const t = (viewX - PLOT_LEFT) / (PLOT_RIGHT - PLOT_LEFT);
+    return Math.max(0, Math.min(SECONDS_PER_DAY, t * SECONDS_PER_DAY));
+  }
+
+  _bindPlotHover(plots) {
+    const apply = (seconds) => {
+      this._hoverSeconds = seconds;
+      const left = `${((PLOT_LEFT + (seconds / SECONDS_PER_DAY) * (PLOT_RIGHT - PLOT_LEFT)) / CHART_WIDTH) * 100}%`;
+      this._hoverLine.style.left = left;
+      plots.setAttribute("data-hovering", "");
+      this._fillHoverReadout(seconds, { hovering: true });
+    };
+    const clear = () => {
+      this._hoverSeconds = undefined;
+      plots.removeAttribute("data-hovering");
+      this._fillHoverReadout(
+        this._sunPath?.today ? nowSecondsSinceMidnight() : null,
+        { hovering: false }
+      );
+    };
+    plots.addEventListener("pointermove", (ev) => {
+      this._pendingHoverX = ev.clientX;
+      if (this._hoverRaf) {
+        return;
+      }
+      this._hoverRaf = window.requestAnimationFrame(() => {
+        this._hoverRaf = undefined;
+        if (this._pendingHoverX == null) {
+          return;
+        }
+        apply(this._secondsFromPlotPointer({ clientX: this._pendingHoverX }, plots));
+      });
+    });
+    plots.addEventListener("pointerleave", () => {
+      this._pendingHoverX = undefined;
+      if (this._hoverRaf) {
+        window.cancelAnimationFrame(this._hoverRaf);
+        this._hoverRaf = undefined;
+      }
+      clear();
+    });
+  }
+
+  _fillHoverReadout(seconds, { hovering }) {
+    const readout = this._hoverReadout;
+    if (!readout) {
+      return;
+    }
+    readout.replaceChildren();
+    if (seconds == null) {
+      readout.removeAttribute("data-active");
+      readout.textContent = "Hover a graph to inspect time and brightness";
+      return;
+    }
+    if (hovering) {
+      readout.setAttribute("data-active", "");
+    } else {
+      readout.removeAttribute("data-active");
+    }
+    const time = document.createElement("span");
+    time.className = "sun-hover-time";
+    time.textContent = hovering
+      ? formatClock(seconds)
+      : `Now ${formatClock(seconds)}`;
+    const sun = document.createElement("span");
+    const elev = interpolateElevation(this._sunPath.curve, seconds);
+    sun.textContent = `Sun ${elev.toFixed(1)}°`;
+    readout.append(time, sun);
+    const lights = this._sunPath.lights || [];
+    if (!lights.length) {
+      return;
+    }
+    const list = document.createElement("div");
+    list.className = "sun-hover-lights";
+    for (const light of lights) {
+      const sample = interpolateLightSample(light.samples || [], seconds);
+      const item = document.createElement("span");
+      item.className = "sun-hover-light";
+      const swatch = document.createElement("span");
+      swatch.className = "sun-hover-swatch";
+      swatch.style.background = `rgb(${sample.rgb[0]}, ${sample.rgb[1]}, ${sample.rgb[2]})`;
+      const label = document.createElement("span");
+      label.textContent = `${light.name} ${Math.round(sample.brightness)}%`;
+      item.append(swatch, label);
+      list.appendChild(item);
+    }
+    readout.appendChild(list);
   }
 
   _buildLightBars(xOf, events, isToday, nowSeconds) {
@@ -2538,12 +2695,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         return `<stop offset="${offset.toFixed(2)}%" stop-color="rgb(${sample[2]},${sample[3]},${sample[4]})"/>`;
       })
       .join("");
-    const eventLines = events
-      .map((event) => {
-        const x = xOf(event.seconds);
-        return `<line x1="${x}" x2="${x}" y1="${LIGHT_BAR_TOP}" y2="${LIGHT_BAR_BOTTOM}" stroke="var(--secondary-text-color)" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="2 4"/>`;
-      })
-      .join("");
     const nowLine =
       isToday
         ? `<line x1="${xOf(nowSeconds)}" x2="${xOf(nowSeconds)}" y1="${LIGHT_BAR_TOP}" y2="${LIGHT_BAR_BOTTOM}" stroke="var(--primary-color)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`
@@ -2559,7 +2710,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         ${bg}
         <path d="${area}" fill="url(#${gradientId})" fill-opacity="1"></path>
         <path d="${line}" fill="none" stroke="url(#${gradientId})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
-        ${eventLines}
         ${nowLine}
       </svg>
     `;
@@ -2741,6 +2891,36 @@ function interpolateElevation(curve, seconds) {
     }
   }
   return curve[curve.length - 1][1];
+}
+
+function interpolateLightSample(samples, seconds) {
+  if (!samples.length) {
+    return { brightness: 0, rgb: [0, 0, 0] };
+  }
+  const at = (row) => ({
+    brightness: row[1],
+    rgb: [row[2], row[3], row[4]],
+  });
+  if (seconds <= samples[0][0]) {
+    return at(samples[0]);
+  }
+  for (let index = 1; index < samples.length; index += 1) {
+    const right = samples[index];
+    if (seconds <= right[0]) {
+      const left = samples[index - 1];
+      const span = right[0] - left[0] || 1;
+      const ratio = (seconds - left[0]) / span;
+      return {
+        brightness: left[1] + (right[1] - left[1]) * ratio,
+        rgb: [
+          Math.round(left[2] + (right[2] - left[2]) * ratio),
+          Math.round(left[3] + (right[3] - left[3]) * ratio),
+          Math.round(left[4] + (right[4] - left[4]) * ratio),
+        ],
+      };
+    }
+  }
+  return at(samples[samples.length - 1]);
 }
 
 if (!customElements.get("scene-extrapolation-panel")) {
