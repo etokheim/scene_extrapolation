@@ -8,7 +8,7 @@ const PLOT_LEFT = 16;
 const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
-const SIDEBAR_ANIMATION_MS = 300;
+const SIDEBAR_ANIMATION_MS = 200;
 const LIGHT_BAR_HEIGHT = 60;
 const LIGHT_BAR_TOP = 0;
 const LIGHT_BAR_BOTTOM = 60;
@@ -373,27 +373,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
           transform: translateX(100%);
           opacity: 0;
-          /* Same 300ms ease-out as ha-bottom-sheet / wa-drawer. */
-          transition:
-            transform ${SIDEBAR_ANIMATION_MS}ms ease-out,
-            opacity ${SIDEBAR_ANIMATION_MS}ms ease-out;
+          /* Transform only — padding/max-width on .page must not animate or
+             the centered column overshoots and the charts reflow every frame. */
+          transition: transform ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         }
         .scene-sidebar.desktop.open {
           pointer-events: auto;
           transform: translateX(0);
           opacity: 1;
         }
-        .page,
-        .fab {
-          transition:
-            padding-inline-end ${SIDEBAR_ANIMATION_MS}ms ease-out,
-            max-width ${SIDEBAR_ANIMATION_MS}ms ease-out,
-            right ${SIDEBAR_ANIMATION_MS}ms ease-out;
-        }
         @media (prefers-reduced-motion: reduce) {
-          .scene-sidebar.desktop,
-          .page,
-          .fab {
+          .scene-sidebar.desktop {
             transition-duration: 1ms;
           }
         }

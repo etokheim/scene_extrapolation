@@ -108,7 +108,8 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Scene editors use the automation sidebar / bottom sheet
 
 - **Date:** 2026-08-26
-- **Decision:** Pencil (light at a solar event) and solar-event scene assignment open an automation-style editor: a right-hand outlined `ha-card` with `ha-dialog-header` on wide viewports (375px, 2px `--primary-color` border, content/FAB shift left), and `ha-bottom-sheet` when `narrow` or `(max-width: 870px), (max-height: 500px)`. Desktop open/close uses the same 300ms `ease-out` slide as `ha-bottom-sheet` (from the right; 1ms when reduced-motion). Do not use `ha-automation-sidebar` / `ha-automation-sidebar-card` / `ha-resizable-bottom-sheet` — those stay unregistered until the automation editor chunk loads. Save / Rename / area / delete stay centered `ha-dialog`s.
+- **Superseded in part:** 2026-08-26 — desktop open/close is a 200ms transform-only slide (`cubic-bezier(0.2, 0, 0, 1)`). Do not transition `.page` max-width/padding or `.fab` right — that reflows the graphs every frame and the centered column overshoots.
+- **Decision:** Pencil (light at a solar event) and solar-event scene assignment open an automation-style editor: a right-hand outlined `ha-card` with `ha-dialog-header` on wide viewports (375px, 2px `--primary-color` border, content/FAB shift left), and `ha-bottom-sheet` when `narrow` or `(max-width: 870px), (max-height: 500px)`. Reduced-motion uses 1ms. Do not use `ha-automation-sidebar` / `ha-automation-sidebar-card` / `ha-resizable-bottom-sheet` — those stay unregistered until the automation editor chunk loads. Save / Rename / area / delete stay centered `ha-dialog`s.
 - **Why:** The chart should stay visible while tuning a lamp or assigning a scene, the same split as Settings → Automations. Custom panels cannot import the automation-only elements.
 - **Do not reverse without user ask.**
 
