@@ -1,0 +1,16 @@
+---
+description: Never hard-reload the HA/Cursor browser from the agent
+alwaysApply: true
+---
+
+# Do not hard-reload the browser from the agent
+
+Do **not** hard-reload the Cursor-owned HA tab. CDP `Page.reload` with `ignoreCache`, Ctrl+Shift+R / Cmd+Shift+R, or any “empty cache and hard refresh” equivalent can reload the **whole Cursor window**.
+
+## Do this instead
+
+- Pick up new `panel.js` by bumping `PANEL_ASSET_REV` in `panel.py` and `docker compose restart`. The versioned asset URL is the cache-bust — see [`docs/DECISIONS.md`](../../docs/DECISIONS.md).
+- In-page Home Assistant navigation is fine (sidebar, hash routes, `browser_navigate` to an HA URL).
+- A **normal** refresh (`browser_navigate` to the same page, or the user hitting reload) is fine. Do not add `ignoreCache` / hard-reload flags.
+
+Prefer measuring the already-open sandbox tab after a restart plus a normal navigation.
