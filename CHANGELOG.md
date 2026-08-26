@@ -34,7 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scene pickers moved onto the solar event row; the form keeps nightlights
 - Sun and light graphs no longer draw static vertical hour/event lines
 - Sun-path height is scaled to the location’s annual max elevation; the curve is darker below the horizon
-- Sidebar scene and light drafts update the graphs immediately; Cancel restores the last saved preview
+- Event scene picks apply immediately; the sidebar has Close (no Done). Light-edit Cancel still restores the previous overlay
+- Light graphs interpolate from whatever solar events already have a scene
 - Hover brightness % is appended to each light name on its graph; the readout no longer lists lamps or color swatches
 - 🚨 `scene_extrapolation.turn_on` replaces `transition_modifier` (−100…100 time shift) with `transition_percent` (0–100 along the day: dawn 0, sunrise 25, noon 50, sunset 75, dusk 100). Scene entities expose `transition_percent` and `transition_percent_manual` instead of `transition_modifier`
 

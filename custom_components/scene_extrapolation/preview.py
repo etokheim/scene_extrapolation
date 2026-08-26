@@ -126,8 +126,11 @@ def _light_series(
         entity_id = scene_ids.get(SCENE_KEYS[event["id"]])
         scene = native.get(entity_id) if entity_id else None
         if not scene:
-            return [], []
+            # Unassigned events are skipped so graphs fill in as scenes are picked.
+            continue
         bound.append({**event, "scene": scene})
+    if not bound:
+        return [], []
 
     light_ids: set[str] = set()
     for item in bound:

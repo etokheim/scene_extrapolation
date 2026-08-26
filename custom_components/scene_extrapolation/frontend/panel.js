@@ -1410,16 +1410,6 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _openEventSceneDialog(event) {
     const canLink = LINKED_EVENTS.includes(event.id);
-    const snapshot = {
-      display_scenes_combined: this._formData.display_scenes_combined,
-      scene_dawn_sunrise_sunset: this._formData.scene_dawn_sunrise_sunset,
-      scene_dawn: this._formData.scene_dawn,
-      scene_sunrise: this._formData.scene_sunrise,
-      scene_sunset: this._formData.scene_sunset,
-      scene_noon: this._formData.scene_noon,
-      scene_dusk: this._formData.scene_dusk,
-      scene_dusk_minimum_time_of_day: this._formData.scene_dusk_minimum_time_of_day,
-    };
     const data = {
       scene: this._eventSceneId(event.id),
       linked: Boolean(canLink && this._formData.display_scenes_combined),
@@ -1434,11 +1424,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     const { host, body, footer } = this._openSceneSidebar({
       title: event.name,
       className: "event-dialog",
-      onDismiss: () => {
-        Object.assign(this._formData, snapshot);
-        this._sunPathKey = undefined;
-        this._ensureSunPath();
-      },
     });
 
     const picker = document.createElement("ha-selector");
@@ -1488,15 +1473,11 @@ class SceneExtrapolationPanel extends HTMLElement {
       body.appendChild(row);
     }
 
-    const cancel = document.createElement("ha-button");
-    cancel.appearance = "plain";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => this._requestCloseSceneSidebar(host));
-    const done = document.createElement("ha-button");
-    done.variant = "brand";
-    done.textContent = "Done";
-    done.addEventListener("click", () => this._commitSceneSidebar(host));
-    footer.append(cancel, done);
+    const close = document.createElement("ha-button");
+    close.appearance = "plain";
+    close.textContent = "Close";
+    close.addEventListener("click", () => this._requestCloseSceneSidebar(host));
+    footer.append(close);
   }
 
   _lightServicePayload(entityId, stored) {
