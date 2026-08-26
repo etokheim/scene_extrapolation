@@ -8,6 +8,7 @@ const PLOT_LEFT = 16;
 const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
+const SIDEBAR_ANIMATION_MS = 300;
 const LIGHT_BAR_HEIGHT = 60;
 const LIGHT_BAR_TOP = 0;
 const LIGHT_BAR_BOTTOM = 60;
@@ -365,6 +366,34 @@ class SceneExtrapolationPanel extends HTMLElement {
               var(--safe-area-inset-bottom, 0px)
           );
           outline: none;
+          pointer-events: none;
+          transform: translateX(100%);
+          opacity: 0;
+          /* Same 300ms ease-out as ha-bottom-sheet / wa-drawer. */
+          transition:
+            transform ${SIDEBAR_ANIMATION_MS}ms ease-out,
+            opacity ${SIDEBAR_ANIMATION_MS}ms ease-out;
+        }
+        .scene-sidebar.desktop.open {
+          pointer-events: auto;
+          transform: translateX(0);
+          opacity: 1;
+        }
+        .sun-path,
+        .content.wide,
+        .fab {
+          transition:
+            padding-inline-end ${SIDEBAR_ANIMATION_MS}ms ease-out,
+            margin-inline-end ${SIDEBAR_ANIMATION_MS}ms ease-out,
+            right ${SIDEBAR_ANIMATION_MS}ms ease-out;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .scene-sidebar.desktop,
+          .sun-path,
+          .content.wide,
+          .fab {
+            transition-duration: 1ms;
+          }
         }
         .scene-sidebar.mobile {
           --ha-bottom-sheet-surface-background: var(--card-background-color);
@@ -1073,14 +1102,49 @@ class SceneExtrapolationPanel extends HTMLElement {
     );
   }
 
-  _closeSceneSidebar() {
+  _closeSceneSidebar({ animate = false } = {}) {
     const el = this.shadowRoot?.querySelector(".scene-sidebar");
     if (!el) {
+      return;
+    }
+    if (
+      animate &&
+      el.classList.contains("desktop") &&
+      el.classList.contains("open")
+    ) {
+      this._animateDesktopSidebarClose(el);
       return;
     }
     el.dispatchEvent(new Event("closed"));
     el.remove();
     this.classList.remove("has-scene-sidebar");
+  }
+
+  _animateDesktopSidebarClose(el) {
+    if (el._closing) {
+      return;
+    }
+    el._closing = true;
+    el.classList.remove("open");
+    this.classList.remove("has-scene-sidebar");
+    let finished = false;
+    const finish = () => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      el.removeEventListener("transitionend", onEnd);
+      el.dispatchEvent(new Event("closed"));
+      el.remove();
+    };
+    const onEnd = (ev) => {
+      if (ev.target !== el) {
+        return;
+      }
+      finish();
+    };
+    el.addEventListener("transitionend", onEnd);
+    window.setTimeout(finish, SIDEBAR_ANIMATION_MS + 50);
   }
 
   _commitSceneSidebar(el) {
@@ -1095,7 +1159,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       el.open = false;
       return;
     }
-    this._closeSceneSidebar();
+    this._closeSceneSidebar({ animate: true });
   }
 
   _openSceneSidebar({ title, subtitle, className, onDismiss }) {
@@ -1165,6 +1229,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     } else {
       this.classList.add("has-scene-sidebar");
       host.focus();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          host.classList.add("open");
+        });
+      });
     }
     return { host, body, footer };
   }
