@@ -785,15 +785,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         .fab[hidden] {
           display: none;
         }
-        :host(.has-scene-sidebar) .page {
-          max-width: calc(
-            var(--page-max-width) + var(--scene-sidebar-width, 375px) +
-              var(--ha-space-4)
-          );
-          padding-inline-end: calc(
-            var(--scene-sidebar-width, 375px) + var(--ha-space-4)
-          );
-        }
+        /* Do not grow .page max-width or pad it when the drawer opens.
+           That dropped the 1540px cap, squeezed the charts, then the
+           slide started two frames later — the column jumped. The
+           drawer overlays; only the FAB moves aside. */
         :host(.has-scene-sidebar) .fab {
           right: calc(
             16px + var(--safe-area-inset-right, 0px) +
@@ -1231,7 +1226,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     el._closing = true;
     el.classList.remove("open");
-    this.classList.remove("has-scene-sidebar");
     let finished = false;
     const finish = () => {
       if (finished) {
@@ -1239,6 +1233,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       finished = true;
       el.removeEventListener("transitionend", onEnd);
+      this.classList.remove("has-scene-sidebar");
       el.dispatchEvent(new Event("closed"));
       el.remove();
     };
@@ -1332,10 +1327,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (useSheet) {
       host.open = true;
     } else {
-      this.classList.add("has-scene-sidebar");
       host.focus();
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+          this.classList.add("has-scene-sidebar");
           host.classList.add("open");
         });
       });
