@@ -9,8 +9,9 @@ const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
 const SIDEBAR_ANIMATION_MS = 200;
-const LIGHT_BAR_HEIGHT = 84;
-const LIGHT_ROW_OVERLAP = 0.33;
+const LIGHT_BAR_HEIGHT = 108;
+const LIGHT_FEATHER_PX = 36;
+const LIGHT_BAR_EDGE_HEIGHT = LIGHT_BAR_HEIGHT - LIGHT_FEATHER_PX;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
 const EVENT_SCENE_KEYS = {
   dawn: "scene_dawn",
@@ -357,7 +358,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-row {
           position: relative;
           z-index: 0;
-          margin-top: calc(${LIGHT_BAR_HEIGHT}px * ${-LIGHT_ROW_OVERLAP});
+          margin-top: -${LIGHT_FEATHER_PX}px;
           pointer-events: none;
         }
         .light-row:first-child {
@@ -367,56 +368,34 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           height: ${LIGHT_BAR_HEIGHT}px;
         }
+        .light-row:first-child .light-bar,
+        .light-row:last-child .light-bar {
+          height: ${LIGHT_BAR_EDGE_HEIGHT}px;
+        }
+        .light-row:only-child .light-bar {
+          height: ${LIGHT_BAR_HEIGHT}px;
+        }
         .light-bar svg {
           display: block;
           width: 100%;
-          height: ${LIGHT_BAR_HEIGHT}px;
-          /* Vertical edge mask only — not filter:blur — so the horizontal
-             color gradient stays sharp. Fade width matches the overlap. */
-          --light-feather: ${LIGHT_ROW_OVERLAP * 100}%;
+          height: 100%;
+          /* Fade only the incoming top over an opaque previous row. Fading
+             both edges left two ~50% layers over the dark card, so seams
+             went dark. */
           -webkit-mask-image: linear-gradient(
             to bottom,
             transparent 0%,
-            #000 var(--light-feather),
-            #000 calc(100% - var(--light-feather)),
-            transparent 100%
-          );
-          mask-image: linear-gradient(
-            to bottom,
-            transparent 0%,
-            #000 var(--light-feather),
-            #000 calc(100% - var(--light-feather)),
-            transparent 100%
-          );
-        }
-        .light-row:first-child .light-bar svg {
-          -webkit-mask-image: linear-gradient(
-            to bottom,
-            #000 0%,
-            #000 calc(100% - var(--light-feather)),
-            transparent 100%
-          );
-          mask-image: linear-gradient(
-            to bottom,
-            #000 0%,
-            #000 calc(100% - var(--light-feather)),
-            transparent 100%
-          );
-        }
-        .light-row:last-child .light-bar svg {
-          -webkit-mask-image: linear-gradient(
-            to bottom,
-            transparent 0%,
-            #000 var(--light-feather),
+            #000 ${LIGHT_FEATHER_PX}px,
             #000 100%
           );
           mask-image: linear-gradient(
             to bottom,
             transparent 0%,
-            #000 var(--light-feather),
+            #000 ${LIGHT_FEATHER_PX}px,
             #000 100%
           );
         }
+        .light-row:first-child .light-bar svg,
         .light-row:only-child .light-bar svg {
           -webkit-mask-image: none;
           mask-image: none;

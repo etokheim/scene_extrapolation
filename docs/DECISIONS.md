@@ -169,8 +169,8 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Light brightness darkens the band; rows feather
 
 - **Date:** 2026-08-27
-- **Decision:** Each light is a full-height horizontal color band. Sample RGB is multiplied by brightness/100 (off is black). Adjacent rows overlap by a third of their height and mask only the shared edge (first row’s top and last row’s bottom stay opaque). No `filter: blur()`, no brightness polyline. Hover % on the name stays.
-- **Why:** A Y-axis sparkline plus a separate color wash made stacked lamps read as separate charts. Darkening keeps hue and level on one surface. A tent mask on every row looked like a blur and washed the left-to-right color.
+- **Decision:** Each light is a full-height horizontal color band. Sample RGB is multiplied by brightness/100 (off is black). Middle rows are 108px; first and last are 72px (one overlap shorter). Rows overlap by 36px. Only the incoming top is masked; the row underneath stays opaque so the dark card cannot show through the seam. First top and last bottom stay opaque. No `filter: blur()`, no brightness polyline. Hover % on the name stays.
+- **Why:** A Y-axis sparkline plus a separate color wash made stacked lamps read as separate charts. Darkening keeps hue and level on one surface. Fading both edges left two ~50% layers over the card, so blend zones went dark.
 - **Do not reverse without user ask.**
 
 ## Panel FAB matches hass-subpage, not ha-fab
