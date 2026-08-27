@@ -9,6 +9,7 @@ const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
 const SIDEBAR_ANIMATION_MS = 200;
+const SIDEBAR_SWAP_MS = 160;
 const LIGHT_BAR_HEIGHT = 108;
 const LIGHT_FEATHER_PX = 36;
 const LIGHT_BAR_EDGE_HEIGHT = LIGHT_BAR_HEIGHT - LIGHT_FEATHER_PX;
@@ -167,6 +168,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: hidden;
           background: var(--primary-background-color);
           color: var(--primary-text-color);
+          --scene-sidebar-gutter: 0px;
         }
         /* ha-panel-custom often computes to 0 height, so 100% on the app bar
            collapses. Fill the viewport, then stretch the bar to this host. */
@@ -386,11 +388,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-size: 13px;
           color: var(--secondary-text-color);
         }
+        @property --light-feather {
+          syntax: "<length>";
+          inherits: true;
+          initial-value: ${LIGHT_FEATHER_PX}px;
+        }
         .sun-lights {
           display: flex;
           flex-direction: column;
           gap: 0;
           padding: 0;
+          --light-feather: ${LIGHT_FEATHER_PX}px;
         }
         .light-row {
           position: relative;
@@ -412,8 +420,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           cursor: pointer;
           pointer-events: auto;
         }
-        .light-row:first-child .light-bar,
-        .light-row:last-child .light-bar {
+        /* First row has no incoming overlap to hide, so it is one feather
+           shorter. Last row stays full height so its visible band matches
+           the others. */
+        .light-row:first-child .light-bar {
           height: ${LIGHT_BAR_EDGE_HEIGHT}px;
         }
         .light-row:only-child .light-bar {
@@ -427,37 +437,37 @@ class SceneExtrapolationPanel extends HTMLElement {
              incoming edge and unpainted gutters ate row clicks. The bar
              is the hit target. */
           pointer-events: none;
-          /* Fade only the incoming top over an opaque previous row. Fading
-             both edges left two ~50% layers over the dark card, so seams
-             went dark. */
+          /* Fade only the incoming top over an opaque previous row. Hover
+             shortens the fade; the opaque start stays at 36px so the
+             visible band does not grow into the overlap. */
           -webkit-mask-image: linear-gradient(
             to bottom,
             transparent 0%,
+            transparent calc(${LIGHT_FEATHER_PX}px - var(--light-feather)),
             #000 ${LIGHT_FEATHER_PX}px,
             #000 100%
           );
           mask-image: linear-gradient(
             to bottom,
             transparent 0%,
+            transparent calc(${LIGHT_FEATHER_PX}px - var(--light-feather)),
             #000 ${LIGHT_FEATHER_PX}px,
             #000 100%
           );
+          transition: --light-feather 220ms cubic-bezier(0.2, 0, 0, 1);
         }
         .light-row:first-child .light-bar svg,
         .light-row:only-child .light-bar svg {
           -webkit-mask-image: none;
           mask-image: none;
         }
-        /* Keep the overlap, but drop the incoming-edge fade so a hovered
-           stack reads as solid bands instead of blended seams. */
-        .sun-lights:hover .light-bar svg {
-          -webkit-mask-image: none;
-          mask-image: none;
+        .sun-lights:hover {
+          --light-feather: 1px;
         }
         .light-name {
           position: absolute;
           left: 16px;
-          top: 50%;
+          top: calc(${LIGHT_FEATHER_PX}px + (100% - ${LIGHT_FEATHER_PX}px) / 2);
           z-index: 1;
           margin: 0;
           padding: 0;
@@ -471,44 +481,64 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform: translateY(-50%);
           text-shadow: 0 0 6px var(--card-background-color);
         }
+        .light-row:first-child .light-name,
+        .light-row:only-child .light-name {
+          top: 50%;
+        }
         .light-name .light-brightness {
           font-weight: 400;
           font-variant-numeric: tabular-nums;
         }
         .light-edits {
           position: absolute;
-          inset: 0;
+          left: 0;
+          right: 0;
+          top: calc(${LIGHT_FEATHER_PX}px + (100% - ${LIGHT_FEATHER_PX}px) / 2);
+          height: 0;
           pointer-events: none;
           z-index: 2;
         }
+        .light-row:first-child .light-edits,
+        .light-row:only-child .light-edits {
+          top: 50%;
+        }
         .light-edit {
           position: absolute;
-          top: 50%;
+          top: 0;
           width: 16px;
           height: 16px;
-          margin: 0;
+          /* Negative margin pins the 16px hit on the time point. Do not
+             translate the parent: nested scale would grow from a corner. */
+          margin: -8px 0 0 -8px;
           padding: 0;
-          transform: translate(-50%, -50%);
+          overflow: visible;
           pointer-events: auto;
           cursor: pointer;
-          display: grid;
-          place-items: center;
         }
         .light-edit-dot {
-          grid-area: 1 / 1;
+          position: absolute;
+          left: 50%;
+          top: 50%;
           width: 5px;
           height: 5px;
+          margin: -2.5px 0 0 -2.5px;
           border-radius: 50%;
           background: var(--primary-text-color);
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
           pointer-events: none;
+          transform: scale(1);
+          transform-origin: 50% 50%;
           transition:
-            width 140ms cubic-bezier(0.2, 0, 0, 1),
-            height 140ms cubic-bezier(0.2, 0, 0, 1),
+            transform 140ms cubic-bezier(0.2, 0, 0, 1),
             box-shadow 140ms cubic-bezier(0.2, 0, 0, 1);
         }
         .light-edit-action {
-          grid-area: 1 / 1;
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 40px;
+          height: 40px;
+          margin: -20px 0 0 -20px;
           display: grid;
           place-items: center;
           opacity: 0;
@@ -522,14 +552,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 50%;
         }
         .light-edit.expanded {
-          width: 40px;
-          height: 40px;
           z-index: 5;
         }
         .light-edit-dot.expanded {
-          width: 40px;
-          height: 40px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+          /* 5px x 8 = 40px. Shadow is pre-divided because scale multiplies it. */
+          transform: scale(8);
+          box-shadow: 0 0.25px 1px rgba(0, 0, 0, 0.35);
         }
         .light-edit-action.expanded {
           opacity: 1;
@@ -785,8 +813,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
           transform: translateX(100%);
           opacity: 0;
-          /* Transform only — padding/max-width on .page must not animate or
-             the centered column overshoots and the charts reflow every frame. */
           transition: transform ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         }
         .scene-sidebar.desktop.open {
@@ -798,6 +824,26 @@ class SceneExtrapolationPanel extends HTMLElement {
           .scene-sidebar.desktop {
             transition-duration: 1ms;
           }
+          .page-shell,
+          .fab {
+            transition-duration: 1ms;
+          }
+          .light-bar svg,
+          .light-edit-dot,
+          .scene-sidebar-body,
+          .scene-sidebar-footer {
+            transition-duration: 1ms;
+          }
+        }
+        .scene-sidebar-body,
+        .scene-sidebar-footer {
+          transition: opacity ${SIDEBAR_SWAP_MS}ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .scene-sidebar-body.sidebar-pane-leave,
+        .scene-sidebar-footer.sidebar-pane-leave,
+        .scene-sidebar-body.sidebar-pane-enter,
+        .scene-sidebar-footer.sidebar-pane-enter {
+          opacity: 0;
         }
         .scene-sidebar.mobile {
           --ha-bottom-sheet-surface-background: var(--card-background-color);
@@ -846,7 +892,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-warn {
           position: absolute;
           right: 16px;
-          top: 50%;
+          top: calc(${LIGHT_FEATHER_PX}px + (100% - ${LIGHT_FEATHER_PX}px) / 2);
           z-index: 1;
           pointer-events: none;
           transform: translateY(-50%);
@@ -856,6 +902,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-size: 12px;
           color: var(--warning-color, var(--error-color));
           text-shadow: 0 0 6px var(--card-background-color);
+        }
+        .light-row:first-child .light-warn,
+        .light-row:only-child .light-warn {
+          top: 50%;
         }
         .light-warn ha-icon {
           --mdc-icon-size: 14px;
@@ -1048,9 +1098,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           box-sizing: border-box;
           pointer-events: none;
         }
+        .page-shell {
+          box-sizing: border-box;
+          width: 100%;
+          padding-right: var(--scene-sidebar-gutter);
+          transition: padding-right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
+        }
         .page {
-          /* Narrower than HA’s automation editor so the overlay drawer
-             does not sit on top of the charts on a typical laptop. */
           --page-max-width: 1024px;
           max-width: var(--page-max-width);
           width: 100%;
@@ -1109,10 +1163,14 @@ class SceneExtrapolationPanel extends HTMLElement {
            no fab slot, so this sits as a sibling of the app bar. */
         .fab {
           position: absolute;
-          right: calc(16px + var(--safe-area-inset-right, 0px));
+          right: calc(
+            16px + var(--safe-area-inset-right, 0px) +
+              var(--scene-sidebar-gutter)
+          );
           bottom: calc(16px + var(--safe-area-inset-bottom, 0px));
           z-index: 6;
           --ha-button-box-shadow: var(--ha-box-shadow-l);
+          transition: right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         }
         .fab[hidden] {
           display: none;
@@ -1156,11 +1214,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       </style>
       <ha-top-app-bar-fixed>
         <div slot="title"></div>
+        <div class="page-shell">
         <div class="page">
           <div class="sun-path" hidden>
             <div class="sun-path-body"></div>
           </div>
           <div class="content"></div>
+        </div>
         </div>
       </ha-top-app-bar-fixed>
       <div class="fab" hidden></div>
@@ -1581,9 +1641,66 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._closeSceneSidebar();
   }
 
+  _setSidebarDocked(docked) {
+    const gutter =
+      docked && !this._isEditorNarrow()
+        ? "calc(var(--scene-sidebar-width, 375px) + 32px)"
+        : "0px";
+    this.style.setProperty("--scene-sidebar-gutter", gutter);
+  }
+
+  _fillSidebarHeader(header, { title, subtitle, actionItems, host }) {
+    header.replaceChildren();
+    const closeBtn = document.createElement("ha-icon-button");
+    closeBtn.slot = "navigationIcon";
+    closeBtn.label = this._loc("ui.dialogs.generic.close", "Close");
+    const closeIcon = document.createElement("ha-icon");
+    closeIcon.setAttribute("icon", "mdi:close");
+    closeBtn.appendChild(closeIcon);
+    closeBtn.addEventListener("click", () => this._requestCloseSceneSidebar(host));
+    const titleEl = document.createElement("span");
+    titleEl.slot = "title";
+    titleEl.textContent = title;
+    header.append(closeBtn, titleEl);
+    if (subtitle) {
+      const sub = document.createElement("span");
+      sub.slot = "subtitle";
+      sub.textContent = subtitle;
+      header.appendChild(sub);
+    }
+    for (const item of actionItems || []) {
+      item.slot = "actionItems";
+      header.appendChild(item);
+    }
+  }
+
+  async _swapSidebarPanes(host) {
+    const oldBody = host.querySelector(".scene-sidebar-body");
+    const oldFooter = host.querySelector(".scene-sidebar-footer");
+    const body = document.createElement("div");
+    body.className = "scene-sidebar-body";
+    const footer = document.createElement("div");
+    footer.className = "scene-sidebar-footer";
+    oldBody?.classList.add("sidebar-pane-leave");
+    oldFooter?.classList.add("sidebar-pane-leave");
+    await new Promise((resolve) => window.setTimeout(resolve, SIDEBAR_SWAP_MS));
+    oldBody?.replaceWith(body);
+    oldFooter?.replaceWith(footer);
+    body.classList.add("sidebar-pane-enter");
+    footer.classList.add("sidebar-pane-enter");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        body.classList.remove("sidebar-pane-enter");
+        footer.classList.remove("sidebar-pane-enter");
+      });
+    });
+    return { body, footer };
+  }
+
   _closeSceneSidebar({ animate = false } = {}) {
     const el = this.shadowRoot?.querySelector(".scene-sidebar");
     if (!el) {
+      this._setSidebarDocked(false);
       return;
     }
     if (
@@ -1594,6 +1711,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._animateDesktopSidebarClose(el);
       return;
     }
+    this._setSidebarDocked(false);
     el.dispatchEvent(new Event("closed"));
     el.remove();
   }
@@ -1604,6 +1722,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     el._closing = true;
     el.classList.remove("open");
+    this._setSidebarDocked(false);
     let finished = false;
     const finish = () => {
       if (finished) {
@@ -1649,43 +1768,57 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   async _openSceneSidebar({ title, subtitle, className, onDismiss, actionItems }) {
     const existing = this.shadowRoot?.querySelector(".scene-sidebar");
+    const useSheet =
+      this._isEditorNarrow() &&
+      customElements.get("ha-bottom-sheet") !== undefined;
+    const canReuse =
+      existing &&
+      !existing._closing &&
+      existing.classList.contains(useSheet ? "mobile" : "desktop");
+    if (canReuse) {
+      if (existing._isDirty?.() && !(await existing._confirmIfDirty())) {
+        return null;
+      }
+      if (!existing._committed) {
+        existing._onDismiss?.();
+      }
+      existing._committed = false;
+      existing._isDirty = undefined;
+      existing._confirmIfDirty = undefined;
+      existing._switchLightEvent = undefined;
+      existing._lightEntityId = undefined;
+      existing._onDismiss = onDismiss;
+      existing.className = `scene-sidebar ${className} ${
+        useSheet ? "mobile" : "desktop open"
+      }`;
+      if (!useSheet) {
+        this._setSidebarDocked(true);
+      }
+      const header = existing.querySelector("ha-dialog-header");
+      this._fillSidebarHeader(header, {
+        title,
+        subtitle,
+        actionItems,
+        host: existing,
+      });
+      const panes = await this._swapSidebarPanes(existing);
+      return { host: existing, header, ...panes };
+    }
     if (existing && !existing._closing && existing._isDirty?.()) {
       if (!(await existing._confirmIfDirty())) {
         return null;
       }
     }
     this._closeSceneSidebar();
-    const useSheet =
-      this._isEditorNarrow() &&
-      customElements.get("ha-bottom-sheet") !== undefined;
     const host = useSheet
       ? document.createElement("ha-bottom-sheet")
       : document.createElement("div");
     host.className = `scene-sidebar ${className} ${useSheet ? "mobile" : "desktop"}`;
     host.tabIndex = -1;
+    host._onDismiss = onDismiss;
 
     const header = document.createElement("ha-dialog-header");
-    const closeBtn = document.createElement("ha-icon-button");
-    closeBtn.slot = "navigationIcon";
-    closeBtn.label = this._loc("ui.dialogs.generic.close", "Close");
-    const closeIcon = document.createElement("ha-icon");
-    closeIcon.setAttribute("icon", "mdi:close");
-    closeBtn.appendChild(closeIcon);
-    closeBtn.addEventListener("click", () => this._requestCloseSceneSidebar(host));
-    const titleEl = document.createElement("span");
-    titleEl.slot = "title";
-    titleEl.textContent = title;
-    header.append(closeBtn, titleEl);
-    if (subtitle) {
-      const sub = document.createElement("span");
-      sub.slot = "subtitle";
-      sub.textContent = subtitle;
-      header.appendChild(sub);
-    }
-    for (const item of actionItems || []) {
-      item.slot = "actionItems";
-      header.appendChild(item);
-    }
+    this._fillSidebarHeader(header, { title, subtitle, actionItems, host });
 
     const body = document.createElement("div");
     body.className = "scene-sidebar-body";
@@ -1713,8 +1846,9 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     host.addEventListener("closed", () => {
       host.remove();
+      this._setSidebarDocked(false);
       if (!host._committed && this.isConnected) {
-        onDismiss?.();
+        host._onDismiss?.();
       }
     });
     this.shadowRoot.appendChild(host);
@@ -1725,6 +1859,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           host.classList.add("open");
+          this._setSidebarDocked(true);
         });
       });
     }

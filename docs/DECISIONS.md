@@ -102,7 +102,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Date:** 2026-08-26
 - **Superseded in part:** 2026-08-26 — the editor is an automation-style sidebar, not a centered modal.
 - **Superseded in part:** 2026-08-26 — drafts update the graphs immediately; YAML is still written only on Save.
-- **Superseded in part:** 2026-08-27 — pencils are small shadowed dots that expand on hover into the same color with a native `ha-icon-button` on top; click the row to edit the closest assigned scene; more-info is on the sidebar, not the name. The SVG is not a hit target (`pointer-events: none`) so the band click reaches the bar.
+- **Superseded in part:** 2026-08-27 — pencils are small shadowed dots that expand on hover (`scale` from the 5px center; the 16px hit box is centered with negative margin) into the same color with a native `ha-icon-button` on top; click the row to edit the closest assigned scene; more-info is on the sidebar, not the name. The SVG is not a hit target (`pointer-events: none`) so the band click reaches the bar.
 - **Superseded in part:** 2026-08-27 — the sidebar lists each unique native scene once (compact solar-event-style chips), not one row per solar event. Subtitle names the YAML scene. Close / Cancel / back / hash change with unsaved edits prompts to discard the whole session. Opening the sidebar does not overlay the charts until the user edits.
 - **Superseded in part:** 2026-08-27 — color and temperature use a Huemane-style wheel (teardrop pin = selected scene, dots = the others; click a dot to focus it). Switching unique scenes does not prompt. Save writes every dirty native scene for that lamp in one YAML reload; Cancel drops all drafts.
 - **Decision:** Each light timeline has a pencil per solar event. The dialog edits that lamp’s **stored** state in the native YAML scene for that event (via `scenes.yaml`, same as HA’s scene editor), not the live entity. While the sidebar is open, preview samples overlay dirty drafts onto those scenes without writing YAML. Cancel / close drops the overlay and restores the last saved preview. Optional **Live edit** applies the current scene’s draft to the lamp only while the dialog is open; save and cancel both restore the lamp to the snapshot taken on open. After save, scenes reload and the preview refreshes.
@@ -112,9 +112,9 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Scene editors use the automation sidebar / bottom sheet
 
 - **Date:** 2026-08-26
-- **Superseded in part:** 2026-08-26 — desktop open/close is a 200ms transform-only slide (`cubic-bezier(0.2, 0, 0, 1)`). Do not transition `.page` max-width/padding or `.fab` right — that reflows the graphs every frame and the centered column overshoots.
-- **Superseded in part:** 2026-08-27 — do not grow `.page` max-width, pad it, or move the FAB when the drawer opens. Those “make room” tweaks jumped the column (and the Save button) before the slide. The drawer overlays; focus the host with `preventScroll` so the off-screen `translateX(100%)` drawer cannot scroll the page.
-- **Decision:** Pencil (light at a solar event) and solar-event scene assignment open an automation-style editor: a right-hand outlined `ha-card` with `ha-dialog-header` on wide viewports (375px, 2px `--primary-color` border; the drawer overlays the 1024px column), and `ha-bottom-sheet` when `narrow` or `(max-width: 870px), (max-height: 500px)`. Reduced-motion uses 1ms. Do not use `ha-automation-sidebar` / `ha-automation-sidebar-card` / `ha-resizable-bottom-sheet` — those stay unregistered until the automation editor chunk loads. Save / Rename / area / delete stay centered `ha-dialog`s.
+- **Superseded in part:** 2026-08-26 — desktop open/close is a 200ms transform-only slide (`cubic-bezier(0.2, 0, 0, 1)`). Do not transition `.page` max-width — that reflows the graphs every frame.
+- **Superseded in part:** 2026-08-27 — opening the drawer pads `.page-shell` by the gutter (sidebar width + 32px) and moves the Save button with `--scene-sidebar-gutter`, same 200ms curve as the slide. The 1024px column recenters in the remaining space. Do not animate `max-width`. A second editor reuses the open drawer and fades body/footer; it does not close and re-slide.
+- **Decision:** Pencil (light at a solar event) and solar-event scene assignment open an automation-style editor: a right-hand outlined `ha-card` with `ha-dialog-header` on wide viewports (375px, 2px `--primary-color` border), and `ha-bottom-sheet` when `narrow` or `(max-width: 870px), (max-height: 500px)`. Reduced-motion uses 1ms. Do not use `ha-automation-sidebar` / `ha-automation-sidebar-card` / `ha-resizable-bottom-sheet` — those stay unregistered until the automation editor chunk loads. Save / Rename / area / delete stay centered `ha-dialog`s.
 - **Why:** The chart should stay visible while tuning a lamp or assigning a scene, the same split as Settings → Automations. Custom panels cannot import the automation-only elements.
 - **Do not reverse without user ask.**
 
@@ -122,8 +122,9 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 
 - **Date:** 2026-08-26
 - **Superseded:** 2026-08-27 — restore `--page-max-width: 1024px`. Matching `manual-automation-editor` (1540px) made the charts full-bleed on a typical laptop and put the overlay drawer on top of the graphs.
+- **Superseded in part:** 2026-08-27 — the open drawer pads the editor shell so the 1024px column sits in the remaining space. Width stays 1024px when it still fits.
 - **Decision:** List and editor `.page` are a centered 1024px column with 12px inline padding. The sun path is a card on that canvas; the nightlights form is in `ha-card`. Do not use `--ha-automation-editor-width` / 1540px, and do not grow max-width when the drawer opens.
-- **Why:** The drawer overlays; a 1024px column leaves a gutter so the charts stay readable. 1540px was wider than the visible panel on common desktop widths.
+- **Why:** A 1024px column stays readable. Sliding it in the remaining space keeps the drawer off the charts without a width reflow.
 - **Do not reverse without user ask.**
 
 ## Legacy per-room entries migrate; this is not a breaking reconfigure
@@ -174,8 +175,8 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Light brightness darkens the band; rows feather
 
 - **Date:** 2026-08-27
-- **Superseded in part:** 2026-08-27 — hovering the light-row stack drops the incoming-edge mask so seams read as solid bands. Overlap stays; do not grow the stack on hover.
-- **Decision:** Each light is a full-height horizontal color band. Sample RGB is multiplied by brightness/100 (off is black). Middle rows are 108px; first and last are 72px (one overlap shorter). Rows overlap by 36px. Only the incoming top is masked; the row underneath stays opaque so the dark card cannot show through the seam. First top and last bottom stay opaque. No `filter: blur()`, no brightness polyline. Hover % on the name stays.
+- **Superseded in part:** 2026-08-27 — hovering the stack shortens the incoming-edge fade to 1px, but the opaque start stays at 36px. Tightening the fade from the top of the 108px bar revealed the overlap and made rows look taller. Last row keeps the full 108px bar so its visible band matches the others. Names, dots, and warnings sit on the visible band, not the faded overlap. Edit dots use `scale` on the 5px circle (parent hit box is centered with negative margin, not `translate(-50%, -50%)`).
+- **Decision:** Each light is a full-height horizontal color band. Sample RGB is multiplied by brightness/100 (off is black). Middle and last rows are 108px; the first is 72px (no incoming overlap). Rows overlap by 36px. Only the incoming top is masked; the row underneath stays opaque so the dark card cannot show through the seam. First top stays opaque. No `filter: blur()`, no brightness polyline. Hover % on the name stays.
 - **Why:** A Y-axis sparkline plus a separate color wash made stacked lamps read as separate charts. Darkening keeps hue and level on one surface. Fading both edges left two ~50% layers over the card, so blend zones went dark.
 - **Do not reverse without user ask.**
 

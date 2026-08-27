@@ -33,10 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview day uses HA’s date selector instead of a raw browser date input
 - Light graphs encode brightness by darkening each lamp’s color band; adjacent rows overlap and the incoming edge feathers over an opaque neighbor
 - Scene light and event editors use Home Assistant’s automation-style right sidebar (bottom sheet on narrow screens)
-- Desktop sidebar open/close is a 200ms transform-only slide; the 1024px editor column and Save button stay put (the drawer overlays)
+- Desktop sidebar open/close is a 200ms slide; the editor column and Save button move aside (padding / right, not max-width)
+- Opening a second sidebar reuses the open drawer and fades its body instead of closing and re-sliding
+- Light-row hover sharpens the feathered seam with an animated mask; visible band height stays the same
+- Light-row names, dots, and warnings sit on the visible band; edit dots scale from their center
 - Editor graphs and form use a 1024px column (12px padding) instead of Home Assistant’s 1540px automation-editor canvas
 - Light-edit Save writes every changed native scene for that lamp; switching scenes keeps drafts without a prompt
-- Hovering the light-row stack drops the feathered seams so bands read as solid
 - Solar-event scene buttons look like controls, warn when empty, and no longer outline linked events
 - Scene pickers moved onto the solar event row; the form keeps nightlights
 - Sun and light graphs no longer draw static vertical hour/event lines
