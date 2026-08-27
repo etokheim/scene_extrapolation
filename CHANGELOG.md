@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New extrapolation scene prompts for an area before opening the editor
 - Earliest dusk time is set in the dusk event dialog
 - Click a solar event above the chart to assign its native scene (optional link for dawn / sunrise / sunset)
-- Pencil on each light timeline to edit that lamp in the scene for that event, with optional live preview
+- Dots on each light timeline expand to a pencil on hover; click the row to edit the closest solar-event scene
+- Light-edit sidebar lists assigned scenes so you can switch, and an info button opens the entity more-info dialog
 - Year-long scrubber under the preview date to drag between days
 - Hover a sun or light graph to inspect time and sun elevation in a fixed readout (cursor line; today’s “now” line stays)
 - Preview another latitude/longitude on create/edit (quiet map pin until active, then a banner)
@@ -24,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
 - Panel uses Home Assistant’s `ha-top-app-bar-fixed` (header outside the scroll container)
-- Light preview draws one color band per lamp (not a strip of bars); names sit on the chart and open more-info
+- Light preview draws one color band per lamp (not a strip of bars); names sit on the chart
 - Create/save use a sticky native HA button (New extrapolation scene / Save) instead of inline form actions
 - Preview day uses HA’s date selector instead of a raw browser date input
 - Light graphs encode brightness by darkening each lamp’s color band; adjacent rows overlap and the incoming edge feathers over an opaque neighbor

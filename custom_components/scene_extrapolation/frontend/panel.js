@@ -367,6 +367,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-bar {
           position: relative;
           height: ${LIGHT_BAR_HEIGHT}px;
+          cursor: pointer;
         }
         .light-row:first-child .light-bar,
         .light-row:last-child .light-bar {
@@ -413,13 +414,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-size: 13px;
           font-weight: 500;
           color: var(--primary-text-color);
-          cursor: pointer;
-          pointer-events: auto;
+          pointer-events: none;
           transform: translateY(-50%);
           text-shadow: 0 0 6px var(--card-background-color);
-        }
-        .light-name:hover {
-          text-decoration: underline;
         }
         .light-name .light-brightness {
           font-weight: 400;
@@ -429,16 +426,88 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: absolute;
           inset: 0;
           pointer-events: none;
+          z-index: 2;
         }
         .light-edit {
           position: absolute;
           top: 50%;
+          width: 44px;
+          height: 44px;
+          margin: 0;
+          padding: 0;
+          border: 0;
+          background: none;
           transform: translate(-50%, -50%);
           pointer-events: auto;
-          --mdc-icon-button-size: 28px;
+          cursor: pointer;
+          display: grid;
+          place-items: center;
+        }
+        .light-edit-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: var(--primary-text-color);
+          box-shadow: 0 0 0 2px var(--card-background-color);
+          display: grid;
+          place-items: center;
+          color: var(--text-primary-color, #fff);
+          transition:
+            width 140ms cubic-bezier(0.2, 0, 0, 1),
+            height 140ms cubic-bezier(0.2, 0, 0, 1),
+            background-color 140ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .light-edit-dot ha-icon {
           --mdc-icon-size: 16px;
-          color: var(--primary-text-color);
-          filter: drop-shadow(0 0 4px var(--card-background-color));
+          opacity: 0;
+          transition: opacity 140ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .light-edit:hover .light-edit-dot,
+        .light-edit:focus-visible .light-edit-dot {
+          width: 28px;
+          height: 28px;
+          background: var(--primary-color);
+        }
+        .light-edit:hover .light-edit-dot ha-icon,
+        .light-edit:focus-visible .light-edit-dot ha-icon {
+          opacity: 1;
+        }
+        .light-scene-list {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin: 0 0 8px;
+        }
+        .light-scene-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 8px;
+          width: 100%;
+          margin: 0;
+          padding: 8px 12px;
+          border: 1px solid var(--divider-color);
+          border-radius: var(--ha-border-radius-lg, 12px);
+          background: transparent;
+          color: inherit;
+          font: inherit;
+          text-align: start;
+          cursor: pointer;
+        }
+        .light-scene-item .event {
+          font-weight: 500;
+        }
+        .light-scene-item .scene {
+          font-size: 12px;
+          color: var(--secondary-text-color);
+        }
+        .light-scene-item[aria-current="true"] {
+          border-color: var(--primary-color);
+          background: color-mix(
+            in srgb,
+            var(--primary-color) 14%,
+            var(--card-background-color)
+          );
         }
         .light-dialog ha-selector,
         .light-dialog ha-switch,
@@ -530,7 +599,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           right: 16px;
           top: 50%;
           z-index: 1;
-          pointer-events: auto;
+          pointer-events: none;
           transform: translateY(-50%);
           display: flex;
           align-items: center;
@@ -1177,10 +1246,14 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _showMoreInfo(view) {
-    if (!this._entityId) {
+    this._showEntityMoreInfo(this._entityId, view);
+  }
+
+  _showEntityMoreInfo(entityId, view) {
+    if (!entityId) {
       return;
     }
-    const detail = { entityId: this._entityId };
+    const detail = { entityId };
     if (view) {
       detail.view = view;
     }
@@ -1276,7 +1349,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._closeSceneSidebar({ animate: true });
   }
 
-  _openSceneSidebar({ title, subtitle, className, onDismiss }) {
+  _openSceneSidebar({ title, subtitle, className, onDismiss, actionItems }) {
     this._closeSceneSidebar();
     const useSheet =
       this._isEditorNarrow() &&
@@ -1304,6 +1377,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       sub.slot = "subtitle";
       sub.textContent = subtitle;
       header.appendChild(sub);
+    }
+    for (const item of actionItems || []) {
+      item.slot = "actionItems";
+      header.appendChild(item);
     }
 
     const body = document.createElement("div");
@@ -1349,7 +1426,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         });
       });
     }
-    return { host, body, footer };
+    return { host, header, body, footer };
   }
 
   _renderEditor() {
@@ -1628,22 +1705,57 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
   }
 
+  _closestEvent(events, seconds) {
+    let best = events[0];
+    let bestDist = Infinity;
+    for (const event of events) {
+      const dist = Math.abs(event.seconds - seconds);
+      if (dist < bestDist) {
+        best = event;
+        bestDist = dist;
+      }
+    }
+    return best;
+  }
+
+  _secondsFromElementPointer(ev, el) {
+    const rect = el.getBoundingClientRect();
+    const viewX = rect.width
+      ? ((ev.clientX - rect.left) / rect.width) * CHART_WIDTH
+      : PLOT_LEFT;
+    const t = (viewX - PLOT_LEFT) / (PLOT_RIGHT - PLOT_LEFT);
+    return Math.max(0, Math.min(SECONDS_PER_DAY, t * SECONDS_PER_DAY));
+  }
+
   async _openLightEditDialog(light, event) {
-    const sceneEntityId = this._eventSceneId(event.id);
-    if (!sceneEntityId) {
+    if (!this._eventSceneId(event.id)) {
       this._openEventSceneDialog(event);
       return;
     }
-    const eventState = (light.event_states || []).find(
-      (item) => item.event === event.id
-    );
-    const draft = { ...(eventState?.state || { state: "off" }) };
+    const existing = this.shadowRoot?.querySelector(".scene-sidebar.light-dialog");
+    if (
+      existing &&
+      !existing._closing &&
+      existing._lightEntityId === light.entity_id &&
+      existing._switchLightEvent
+    ) {
+      existing._switchLightEvent(event);
+      return;
+    }
+
     const snapshot = this._snapshotLight(light.entity_id);
-    let liveEdit = false;
-    let liveApplied = false;
     const supported =
       this._hass.states[light.entity_id]?.attributes?.supported_color_modes || [];
+    const events = this._sunPath?.events || [];
+    let currentEvent = event;
+    let draft = {
+      ...((light.event_states || []).find((item) => item.event === event.id)
+        ?.state || { state: "off" }),
+    };
+    let liveEdit = false;
+    let liveApplied = false;
 
+    const sceneEntityId = () => this._eventSceneId(currentEvent.id);
     const restoreLive = async () => {
       if (liveApplied) {
         await this._applyLightState(light.entity_id, snapshot);
@@ -1659,17 +1771,25 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
     const previewDraft = () => {
       this._previewOverlay = {
-        scene_entity_id: sceneEntityId,
+        scene_entity_id: sceneEntityId(),
         entity_id: light.entity_id,
         entity_state: { ...draft },
       };
       this._schedulePreview();
     };
 
-    const { host, body, footer } = this._openSceneSidebar({
+    const infoBtn = document.createElement("ha-icon-button");
+    infoBtn.label = this._loc("ui.dialogs.helper_settings.dialog.more_info", "More info");
+    const infoIcon = document.createElement("ha-icon");
+    infoIcon.setAttribute("icon", "mdi:information-outline");
+    infoBtn.appendChild(infoIcon);
+    infoBtn.addEventListener("click", () => this._showEntityMoreInfo(light.entity_id));
+
+    const { host, header, body, footer } = this._openSceneSidebar({
       title: light.name,
       subtitle: event.name,
       className: "light-dialog",
+      actionItems: [infoBtn],
       onDismiss: () => {
         this._previewOverlay = null;
         this._sunPathKey = undefined;
@@ -1677,140 +1797,195 @@ class SceneExtrapolationPanel extends HTMLElement {
         restoreLive();
       },
     });
+    host._lightEntityId = light.entity_id;
+    const subtitleEl = header.querySelector("[slot='subtitle']");
 
-    const sceneLine = document.createElement("p");
-    sceneLine.className = "sun-fallback-note";
-    sceneLine.style.margin = "0 0 8px";
-    sceneLine.textContent = `Saved to ${this._sceneName(sceneEntityId)}`;
-    body.appendChild(sceneLine);
+    const paint = () => {
+      body.replaceChildren();
+      footer.replaceChildren();
+      if (subtitleEl) {
+        subtitleEl.textContent = currentEvent.name;
+      }
 
-    const liveRow = document.createElement("label");
-    liveRow.className = "dialog-row";
-    const liveLabel = document.createElement("span");
-    liveLabel.textContent = "Live edit";
-    const liveSwitch = document.createElement("ha-switch");
-    liveSwitch.checked = false;
-    liveSwitch.addEventListener("change", async () => {
-      liveEdit = Boolean(liveSwitch.checked);
-      if (liveEdit) {
+      const list = document.createElement("div");
+      list.className = "light-scene-list";
+      list.setAttribute("role", "listbox");
+      list.setAttribute("aria-label", "Scene");
+      for (const item of events) {
+        const sceneId = this._eventSceneId(item.id);
+        if (!sceneId) {
+          continue;
+        }
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "light-scene-item";
+        btn.setAttribute("role", "option");
+        if (item.id === currentEvent.id) {
+          btn.setAttribute("aria-current", "true");
+        }
+        const evName = document.createElement("span");
+        evName.className = "event";
+        evName.textContent = item.name;
+        const scName = document.createElement("span");
+        scName.className = "scene";
+        scName.textContent = this._sceneName(sceneId);
+        btn.append(evName, scName);
+        btn.addEventListener("click", () => {
+          if (item.id !== currentEvent.id) {
+            host._switchLightEvent(item);
+          }
+        });
+        list.appendChild(btn);
+      }
+      body.appendChild(list);
+
+      const liveRow = document.createElement("label");
+      liveRow.className = "dialog-row";
+      const liveLabel = document.createElement("span");
+      liveLabel.textContent = "Live edit";
+      const liveSwitch = document.createElement("ha-switch");
+      liveSwitch.checked = liveEdit;
+      liveSwitch.addEventListener("change", async () => {
+        liveEdit = Boolean(liveSwitch.checked);
+        if (liveEdit) {
+          await applyLive();
+        } else if (liveApplied) {
+          await this._applyLightState(light.entity_id, snapshot);
+          liveApplied = false;
+        }
+      });
+      liveRow.append(liveLabel, liveSwitch);
+      body.appendChild(liveRow);
+
+      const onField = document.createElement("ha-selector");
+      onField.hass = this._hass;
+      onField.label = "On";
+      onField.value = draft.state !== "off";
+      onField.selector = { boolean: {} };
+      onField.addEventListener("value-changed", async (ev) => {
+        ev.stopPropagation();
+        draft.state = ev.detail.value ? "on" : "off";
+        previewDraft();
         await applyLive();
-      } else if (liveApplied) {
-        await this._applyLightState(light.entity_id, snapshot);
-        liveApplied = false;
-      }
-    });
-    liveRow.append(liveLabel, liveSwitch);
-    body.appendChild(liveRow);
+      });
+      body.appendChild(onField);
 
-    const onField = document.createElement("ha-selector");
-    onField.hass = this._hass;
-    onField.label = "On";
-    onField.value = draft.state !== "off";
-    onField.selector = { boolean: {} };
-    onField.addEventListener("value-changed", async (ev) => {
-      ev.stopPropagation();
-      draft.state = ev.detail.value ? "on" : "off";
-      previewDraft();
-      await applyLive();
-    });
-    body.appendChild(onField);
-
-    const brightness = document.createElement("ha-selector");
-    brightness.hass = this._hass;
-    brightness.label = "Brightness";
-    brightness.value = Math.round(((draft.brightness || 0) / 255) * 100);
-    brightness.selector = {
-      number: {
-        min: 0,
-        max: 100,
-        step: 1,
-        mode: "slider",
-        unit_of_measurement: "%",
-      },
-    };
-    brightness.addEventListener("value-changed", async (ev) => {
-      ev.stopPropagation();
-      draft.brightness = Math.round((Number(ev.detail.value) / 100) * 255);
-      if (draft.brightness > 0) {
-        draft.state = "on";
-      }
-      previewDraft();
-      await applyLive();
-    });
-    body.appendChild(brightness);
-
-    const hasTemp = supported.includes("color_temp");
-    const hasColor = supported.some((mode) =>
-      ["hs", "rgb", "rgbw", "rgbww", "xy"].includes(mode)
-    );
-    if (hasTemp) {
-      const attrs = this._hass.states[light.entity_id]?.attributes || {};
-      const temp = document.createElement("ha-selector");
-      temp.hass = this._hass;
-      temp.label = "Color temperature";
-      temp.value = draft.color_temp_kelvin || attrs.min_color_temp_kelvin || 2700;
-      temp.selector = {
-        color_temp: {
-          unit: "kelvin",
-          min: attrs.min_color_temp_kelvin,
-          max: attrs.max_color_temp_kelvin,
+      const brightness = document.createElement("ha-selector");
+      brightness.hass = this._hass;
+      brightness.label = "Brightness";
+      brightness.value = Math.round(((draft.brightness || 0) / 255) * 100);
+      brightness.selector = {
+        number: {
+          min: 0,
+          max: 100,
+          step: 1,
+          mode: "slider",
+          unit_of_measurement: "%",
         },
       };
-      temp.addEventListener("value-changed", async (ev) => {
+      brightness.addEventListener("value-changed", async (ev) => {
         ev.stopPropagation();
-        draft.color_temp_kelvin = ev.detail.value;
-        draft.rgb_color = undefined;
-        draft.hs_color = undefined;
-        draft.state = "on";
+        draft.brightness = Math.round((Number(ev.detail.value) / 100) * 255);
+        if (draft.brightness > 0) {
+          draft.state = "on";
+        }
         previewDraft();
         await applyLive();
       });
-      body.appendChild(temp);
-    }
-    if (hasColor) {
-      const color = document.createElement("ha-selector");
-      color.hass = this._hass;
-      color.label = "Color";
-      color.value = draft.rgb_color || [255, 214, 170];
-      color.selector = { color_rgb: {} };
-      color.addEventListener("value-changed", async (ev) => {
-        ev.stopPropagation();
-        draft.rgb_color = ev.detail.value;
-        draft.color_temp_kelvin = undefined;
-        draft.state = "on";
-        previewDraft();
-        await applyLive();
-      });
-      body.appendChild(color);
-    }
+      body.appendChild(brightness);
 
-    const cancel = document.createElement("ha-button");
-    cancel.appearance = "plain";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => this._requestCloseSceneSidebar(host));
-    const save = document.createElement("ha-button");
-    save.variant = "brand";
-    save.textContent = "Save";
-    save.addEventListener("click", async () => {
-      try {
-        await this._hass.callWS({
-          type: `${DOMAIN}/update_native_scene`,
-          scene_entity_id: sceneEntityId,
-          entity_id: light.entity_id,
-          entity_state: draft,
+      const hasTemp = supported.includes("color_temp");
+      const hasColor = supported.some((mode) =>
+        ["hs", "rgb", "rgbw", "rgbww", "xy"].includes(mode)
+      );
+      if (hasTemp) {
+        const attrs = this._hass.states[light.entity_id]?.attributes || {};
+        const temp = document.createElement("ha-selector");
+        temp.hass = this._hass;
+        temp.label = "Color temperature";
+        temp.value = draft.color_temp_kelvin || attrs.min_color_temp_kelvin || 2700;
+        temp.selector = {
+          color_temp: {
+            unit: "kelvin",
+            min: attrs.min_color_temp_kelvin,
+            max: attrs.max_color_temp_kelvin,
+          },
+        };
+        temp.addEventListener("value-changed", async (ev) => {
+          ev.stopPropagation();
+          draft.color_temp_kelvin = ev.detail.value;
+          draft.rgb_color = undefined;
+          draft.hs_color = undefined;
+          draft.state = "on";
+          previewDraft();
+          await applyLive();
         });
-        await restoreLive();
-        this._previewOverlay = null;
-        this._clearPreviewCache();
-        this._commitSceneSidebar(host);
-        this._ensureSunPath();
-      } catch (err) {
-        this._error = err.message || String(err);
-        this._requestCloseSceneSidebar(host);
-        this._renderEditor();
+        body.appendChild(temp);
       }
-    });
-    footer.append(cancel, save);
+      if (hasColor) {
+        const color = document.createElement("ha-selector");
+        color.hass = this._hass;
+        color.label = "Color";
+        color.value = draft.rgb_color || [255, 214, 170];
+        color.selector = { color_rgb: {} };
+        color.addEventListener("value-changed", async (ev) => {
+          ev.stopPropagation();
+          draft.rgb_color = ev.detail.value;
+          draft.color_temp_kelvin = undefined;
+          draft.state = "on";
+          previewDraft();
+          await applyLive();
+        });
+        body.appendChild(color);
+      }
+
+      const cancel = document.createElement("ha-button");
+      cancel.appearance = "plain";
+      cancel.textContent = "Cancel";
+      cancel.addEventListener("click", () => this._requestCloseSceneSidebar(host));
+      const save = document.createElement("ha-button");
+      save.variant = "brand";
+      save.textContent = "Save";
+      save.addEventListener("click", async () => {
+        try {
+          await this._hass.callWS({
+            type: `${DOMAIN}/update_native_scene`,
+            scene_entity_id: sceneEntityId(),
+            entity_id: light.entity_id,
+            entity_state: draft,
+          });
+          await restoreLive();
+          this._previewOverlay = null;
+          this._clearPreviewCache();
+          this._commitSceneSidebar(host);
+          this._ensureSunPath();
+        } catch (err) {
+          this._error = err.message || String(err);
+          this._requestCloseSceneSidebar(host);
+          this._renderEditor();
+        }
+      });
+      footer.append(cancel, save);
+    };
+
+    host._switchLightEvent = async (next) => {
+      if (!this._eventSceneId(next.id)) {
+        this._openEventSceneDialog(next);
+        return;
+      }
+      await restoreLive();
+      liveEdit = false;
+      currentEvent = next;
+      draft = {
+        ...((light.event_states || []).find((item) => item.event === next.id)
+          ?.state || { state: "off" }),
+      };
+      previewDraft();
+      paint();
+    };
+
+    previewDraft();
+    paint();
   }
 
   async _openSaveDialog({ rename = false, focus } = {}) {
@@ -3066,20 +3241,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         <rect x="${PLOT_LEFT}" y="0" width="${PLOT_RIGHT - PLOT_LEFT}" height="${LIGHT_BAR_HEIGHT}" fill="url(#${gradientId})"></rect>
       </svg>
     `;
-    const name = document.createElement("button");
-    name.type = "button";
+    const name = document.createElement("span");
     name.className = "light-name";
     name.textContent = light.name;
     this._lightNameLabels.push({ light, el: name });
-    name.addEventListener("click", () => {
-      this.dispatchEvent(
-        new CustomEvent("hass-more-info", {
-          bubbles: true,
-          composed: true,
-          detail: { entityId: light.entity_id },
-        })
-      );
-    });
     bar.appendChild(name);
     if (this._view === "edit") {
       const edits = document.createElement("div");
@@ -3088,13 +3253,17 @@ class SceneExtrapolationPanel extends HTMLElement {
         if (!this._eventSceneId(event.id)) {
           continue;
         }
-        const button = document.createElement("ha-icon-button");
+        const button = document.createElement("button");
+        button.type = "button";
         button.className = "light-edit";
-        button.label = `Edit ${light.name} at ${event.name}`;
+        button.setAttribute("aria-label", `Edit ${light.name} at ${event.name}`);
         button.style.left = `${(xOf(event.seconds) / CHART_WIDTH) * 100}%`;
+        const dot = document.createElement("span");
+        dot.className = "light-edit-dot";
         const icon = document.createElement("ha-icon");
         icon.setAttribute("icon", "mdi:pencil");
-        button.appendChild(icon);
+        dot.appendChild(icon);
+        button.appendChild(dot);
         button.addEventListener("click", (ev) => {
           ev.stopPropagation();
           this._openLightEditDialog(light, event);
@@ -3102,6 +3271,18 @@ class SceneExtrapolationPanel extends HTMLElement {
         edits.appendChild(button);
       }
       bar.appendChild(edits);
+      bar.addEventListener("click", (ev) => {
+        if (ev.target.closest(".light-edit")) {
+          return;
+        }
+        const closest = this._closestEvent(
+          events,
+          this._secondsFromElementPointer(ev, bar)
+        );
+        if (closest) {
+          this._openLightEditDialog(light, closest);
+        }
+      });
     }
     if (light.gaps?.length) {
       const warn = document.createElement("div");
