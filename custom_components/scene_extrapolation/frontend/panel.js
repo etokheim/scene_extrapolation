@@ -401,6 +401,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-row:first-child {
           margin-top: 0;
         }
+        /* Bring the hovered band above its overlapping neighbors so a click
+           hits that lamp, not the next row’s incoming edge. */
+        .light-row:hover {
+          z-index: 2;
+        }
         .light-bar {
           position: relative;
           height: ${LIGHT_BAR_HEIGHT}px;
@@ -418,6 +423,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: block;
           width: 100%;
           height: 100%;
+          /* SVG default pointer-events is visiblePainted, so the masked
+             incoming edge and unpainted gutters ate row clicks. The bar
+             is the hit target. */
+          pointer-events: none;
           /* Fade only the incoming top over an opaque previous row. Fading
              both edges left two ~50% layers over the dark card, so seams
              went dark. */
@@ -475,12 +484,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-edit {
           position: absolute;
           top: 50%;
-          width: 44px;
-          height: 44px;
+          width: 16px;
+          height: 16px;
           margin: 0;
           padding: 0;
-          border: 0;
-          background: none;
           transform: translate(-50%, -50%);
           pointer-events: auto;
           cursor: pointer;
@@ -488,33 +495,45 @@ class SceneExtrapolationPanel extends HTMLElement {
           place-items: center;
         }
         .light-edit-dot {
-          width: 8px;
-          height: 8px;
+          grid-area: 1 / 1;
+          width: 5px;
+          height: 5px;
           border-radius: 50%;
           background: var(--primary-text-color);
-          box-shadow: 0 0 0 2px var(--card-background-color);
-          display: grid;
-          place-items: center;
-          color: var(--text-primary-color, #fff);
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+          pointer-events: none;
           transition:
             width 140ms cubic-bezier(0.2, 0, 0, 1),
             height 140ms cubic-bezier(0.2, 0, 0, 1),
-            background-color 140ms cubic-bezier(0.2, 0, 0, 1);
+            box-shadow 140ms cubic-bezier(0.2, 0, 0, 1);
         }
-        .light-edit-dot ha-icon {
-          --mdc-icon-size: 16px;
+        .light-edit-action {
+          grid-area: 1 / 1;
+          display: grid;
+          place-items: center;
           opacity: 0;
+          pointer-events: none;
           transition: opacity 140ms cubic-bezier(0.2, 0, 0, 1);
         }
-        .light-edit:hover .light-edit-dot,
-        .light-edit:focus-visible .light-edit-dot {
-          width: 28px;
-          height: 28px;
-          background: var(--primary-color);
+        .light-edit-action ha-icon-button {
+          --mdc-icon-button-size: 40px;
+          --mdc-icon-size: 20px;
+          color: var(--card-background-color);
+          border-radius: 50%;
         }
-        .light-edit:hover .light-edit-dot ha-icon,
-        .light-edit:focus-visible .light-edit-dot ha-icon {
+        .light-edit.expanded {
+          width: 40px;
+          height: 40px;
+          z-index: 5;
+        }
+        .light-edit-dot.expanded {
+          width: 40px;
+          height: 40px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+        }
+        .light-edit-action.expanded {
           opacity: 1;
+          pointer-events: auto;
         }
         .light-scene-list {
           display: flex;
@@ -1829,6 +1848,9 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _closestEvent(events, seconds) {
+    if (!events?.length) {
+      return null;
+    }
     let best = events[0];
     let bestDist = Infinity;
     for (const event of events) {
@@ -3552,28 +3574,47 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._lightNameLabels.push({ light, el: name });
     bar.appendChild(name);
     if (this._view === "edit") {
+      const assigned = events.filter((item) => this._eventSceneId(item.id));
       const edits = document.createElement("div");
       edits.className = "light-edits";
-      for (const event of events) {
-        if (!this._eventSceneId(event.id)) {
-          continue;
-        }
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "light-edit";
-        button.setAttribute("aria-label", `Edit ${light.name} at ${event.name}`);
-        button.style.left = `${(xOf(event.seconds) / CHART_WIDTH) * 100}%`;
+      for (const event of assigned) {
+        const hit = document.createElement("div");
+        hit.className = "light-edit";
+        hit.style.left = `${(xOf(event.seconds) / CHART_WIDTH) * 100}%`;
         const dot = document.createElement("span");
         dot.className = "light-edit-dot";
+        const button = document.createElement("ha-icon-button");
+        button.label = `Edit ${light.name} at ${event.name}`;
         const icon = document.createElement("ha-icon");
         icon.setAttribute("icon", "mdi:pencil");
-        dot.appendChild(icon);
-        button.appendChild(dot);
-        button.addEventListener("click", (ev) => {
+        button.appendChild(icon);
+        const action = document.createElement("span");
+        action.className = "light-edit-action";
+        action.appendChild(button);
+        const setExpanded = (on) => {
+          /* Class on each node: :hover descendant rules do not restyle
+             children inside this shadow tree. */
+          hit.classList.toggle("expanded", on);
+          dot.classList.toggle("expanded", on);
+          action.classList.toggle("expanded", on);
+        };
+        hit.addEventListener("pointerenter", () => setExpanded(true));
+        hit.addEventListener("pointerleave", () => setExpanded(false));
+        hit.addEventListener("focusin", () => setExpanded(true));
+        hit.addEventListener("focusout", () => {
+          window.requestAnimationFrame(() => {
+            if (!hit.contains(hit.getRootNode().activeElement)) {
+              setExpanded(false);
+            }
+          });
+        });
+        const open = (ev) => {
           ev.stopPropagation();
           this._openLightEditDialog(light, event);
-        });
-        edits.appendChild(button);
+        };
+        hit.addEventListener("click", open);
+        hit.append(dot, action);
+        edits.appendChild(hit);
       }
       bar.appendChild(edits);
       bar.addEventListener("click", (ev) => {
@@ -3581,7 +3622,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           return;
         }
         const closest = this._closestEvent(
-          events,
+          assigned,
           this._secondsFromElementPointer(ev, bar)
         );
         if (closest) {
