@@ -649,6 +649,29 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 2;
           color: white;
         }
+        .hue-wheel-paths {
+          pointer-events: none;
+        }
+        .hue-wheel-svg .hue-path-under {
+          fill: none;
+          stroke: rgba(0, 0, 0, 0.65);
+          stroke-width: 6;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+        .hue-wheel-svg .hue-path-mid {
+          fill: none;
+          stroke: rgba(255, 255, 255, 0.92);
+          stroke-width: 4;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+        .hue-wheel-svg .hue-path-seg {
+          fill: none;
+          stroke-width: 2;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
         .hue-wheel-svg .gm {
           cursor: pointer;
         }
@@ -2476,6 +2499,9 @@ class SceneExtrapolationPanel extends HTMLElement {
               event: item.event,
             };
           }),
+          sequence: events
+            .map((item) => this._eventSceneId(item.id))
+            .filter(Boolean),
           activeId: sceneEntityId(),
         }),
         onSelect: (sceneId) => {
@@ -4047,6 +4073,7 @@ const HUE_PIN_PATH =
   "M 24,0 C 10.745166,0 0,10.575951 0,23.622046 0,39.566928 21,57.578739 22.05,58.346457 L 24,60 25.95,58.346457 C 27,57.578739 48,39.566928 48,23.622046 48,10.575951 37.254834,0 24,0 Z";
 const HUE_DOT_PATH = "M6 0A6 6 0 006 12 6 6 0 006 0Z";
 const HUE_DOT_OUTLINE_PATH = "M8 0A8 8 0 008 16 8 8 0 008 0Z";
+const HUE_PATH_STEPS = 24;
 const _hueWheelImageCache = new Map();
 
 function hueLinearScale(t, min, max) {
@@ -4312,6 +4339,121 @@ function applyTempToDraft(draft, kelvin) {
   draft.state = "on";
 }
 
+function inferDraftColorKind(draft) {
+  if (draft?.rgbww_color) {
+    return "rgbww";
+  }
+  if (draft?.rgbw_color) {
+    return "rgbw";
+  }
+  if (draft?.rgb_color) {
+    return "rgb";
+  }
+  if (draft?.hs_color) {
+    return "hs";
+  }
+  if (draft?.color_temp_kelvin != null) {
+    return "temp";
+  }
+  return null;
+}
+
+function collapseSceneCycle(sequence) {
+  const ids = [];
+  for (const id of sequence || []) {
+    if (!id) {
+      continue;
+    }
+    if (!ids.length || ids[ids.length - 1] !== id) {
+      ids.push(id);
+    }
+  }
+  if (ids.length > 1 && ids[0] === ids[ids.length - 1]) {
+    ids.pop();
+  }
+  return ids;
+}
+
+function lerpNumber(from, to, t) {
+  return from + (to - from) * t;
+}
+
+function interpolateDraftSample(fromDraft, toDraft, t) {
+  const fromKind = inferDraftColorKind(fromDraft);
+  const toKind = inferDraftColorKind(toDraft);
+  const kind = t >= 0.5 ? toKind || fromKind : fromKind || toKind;
+  if (kind === "temp") {
+    const fromK = fromDraft?.color_temp_kelvin;
+    const toK = toDraft?.color_temp_kelvin;
+    const start = fromK != null ? fromK : toK;
+    const end = toK != null ? toK : fromK;
+    if (start == null || end == null) {
+      return { rgb: draftRgb(t < 0.5 ? fromDraft : toDraft) };
+    }
+    const kelvin = lerpNumber(start, end, t);
+    return { kelvin, rgb: hueTempToRgb(kelvin) };
+  }
+  if (kind === "hs") {
+    const start = fromDraft?.hs_color || toDraft?.hs_color;
+    const end = toDraft?.hs_color || fromDraft?.hs_color;
+    if (!start || !end) {
+      return { rgb: draftRgb(t < 0.5 ? fromDraft : toDraft) };
+    }
+    const hs = [lerpNumber(start[0], end[0], t), lerpNumber(start[1], end[1], t)];
+    return { hs, rgb: hsv2rgb(hs[0], hs[1] / 100, 1) };
+  }
+  if (kind === "rgbw" && fromDraft?.rgbw_color && toDraft?.rgbw_color) {
+    const rgbw = fromDraft.rgbw_color.map((value, index) =>
+      lerpNumber(value, toDraft.rgbw_color[index], t)
+    );
+    return { rgb: rgbw.slice(0, 3) };
+  }
+  if (kind === "rgbww" && fromDraft?.rgbww_color && toDraft?.rgbww_color) {
+    const rgbww = fromDraft.rgbww_color.map((value, index) =>
+      lerpNumber(value, toDraft.rgbww_color[index], t)
+    );
+    return { rgb: rgbww.slice(0, 3) };
+  }
+  const start = draftRgb(fromDraft);
+  const end = draftRgb(toDraft);
+  return {
+    rgb: [
+      lerpNumber(start[0], end[0], t),
+      lerpNumber(start[1], end[1], t),
+      lerpNumber(start[2], end[2], t),
+    ],
+  };
+}
+
+function colorWheelXY(hue, saturation, radius) {
+  const phi = deg2rad(degFromHue(hue));
+  const r = rFromSaturation(saturation, radius);
+  const [x, y] = polar2xy(r, phi);
+  return { x, y };
+}
+
+function wheelPointForSample(sample, wheelMode, radius, tempMin, tempMax) {
+  if (wheelMode === "temp") {
+    if (sample.kelvin == null) {
+      return null;
+    }
+    const coords = coordinatesForTemp(sample.kelvin, radius, tempMin, tempMax);
+    return { x: coords.x + radius, y: coords.y + radius, rgb: sample.rgb };
+  }
+  let hue;
+  let saturation;
+  if (sample.hs) {
+    hue = sample.hs[0];
+    saturation = sample.hs[1] / 100;
+  } else {
+    const hsv = rgb2hsv(sample.rgb[0], sample.rgb[1], sample.rgb[2]);
+    hue = hsv[0];
+    saturation = hsv[1];
+  }
+  const coords = colorWheelXY(hue, saturation, radius);
+  return { x: coords.x + radius, y: coords.y + radius, rgb: sample.rgb };
+}
+
 function hueColorAt(x, y, radius) {
   const [r, phi] = xy2polar(x, y);
   if (r - 2 > radius) {
@@ -4447,6 +4589,9 @@ function createSceneColorWheel({
       </filter>
     </defs>
   `;
+  const pathLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  pathLayer.setAttribute("class", "hue-wheel-paths");
+  svg.appendChild(pathLayer);
   canvasWrap.append(glow, svg, bg);
   const chrome = document.createElement("div");
   chrome.className = "hue-wheel-chrome";
@@ -4693,7 +4838,102 @@ function createSceneColorWheel({
         markers.delete(id);
       }
     }
+    syncPath();
     syncPresets();
+  };
+
+  const syncPath = () => {
+    pathLayer.replaceChildren();
+    const radius = radiusPx();
+    if (!radius) {
+      return;
+    }
+    const { scenes, sequence } = getState();
+    const byId = new Map(scenes.map((item) => [item.id, item]));
+    const cycle = collapseSceneCycle(sequence || scenes.map((item) => item.id));
+    if (cycle.length < 2) {
+      return;
+    }
+    const edgeCount = cycle.length === 2 ? 1 : cycle.length;
+    const edges = [];
+    for (let index = 0; index < edgeCount; index += 1) {
+      const from = byId.get(cycle[index]);
+      const to = byId.get(cycle[(index + 1) % cycle.length]);
+      if (!from || !to) {
+        continue;
+      }
+      const pts = [];
+      for (let step = 0; step <= HUE_PATH_STEPS; step += 1) {
+        const sample = interpolateDraftSample(
+          from.draft,
+          to.draft,
+          step / HUE_PATH_STEPS
+        );
+        const point = wheelPointForSample(
+          sample,
+          mode,
+          radius,
+          tempMin,
+          tempMax
+        );
+        if (point) {
+          pts.push(point);
+        }
+      }
+      if (pts.length >= 2) {
+        edges.push(pts);
+      }
+    }
+    const ns = "http://www.w3.org/2000/svg";
+    for (const pts of edges) {
+      const under = document.createElementNS(ns, "path");
+      under.setAttribute("class", "hue-path-under");
+      under.setAttribute(
+        "d",
+        pts
+          .map(
+            (pt, index) =>
+              `${index ? "L" : "M"}${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`
+          )
+          .join(" ")
+      );
+      pathLayer.appendChild(under);
+    }
+    for (const pts of edges) {
+      const mid = document.createElementNS(ns, "path");
+      mid.setAttribute("class", "hue-path-mid");
+      mid.setAttribute(
+        "d",
+        pts
+          .map(
+            (pt, index) =>
+              `${index ? "L" : "M"}${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`
+          )
+          .join(" ")
+      );
+      pathLayer.appendChild(mid);
+    }
+    for (const pts of edges) {
+      for (let index = 1; index < pts.length; index += 1) {
+        const start = pts[index - 1];
+        const end = pts[index];
+        const seg = document.createElementNS(ns, "path");
+        seg.setAttribute("class", "hue-path-seg");
+        seg.setAttribute(
+          "d",
+          `M${start.x.toFixed(2)} ${start.y.toFixed(2)} L${end.x.toFixed(2)} ${end.y.toFixed(2)}`
+        );
+        seg.setAttribute(
+          "stroke",
+          rgbCss([
+            Math.round((start.rgb[0] + end.rgb[0]) / 2),
+            Math.round((start.rgb[1] + end.rgb[1]) / 2),
+            Math.round((start.rgb[2] + end.rgb[2]) / 2),
+          ])
+        );
+        pathLayer.appendChild(seg);
+      }
+    }
   };
 
   const pointFromEvent = (ev) => {
@@ -4727,6 +4967,7 @@ function createSceneColorWheel({
       marker.icon.style.fill = pinForeground(draftRgb(item.draft));
       placeMarker(marker, limited.x, limited.y, true);
     }
+    syncPath();
     onChange();
   };
 
@@ -4775,6 +5016,7 @@ function createSceneColorWheel({
     if (marker) {
       placeMarker(marker, limited.x, limited.y, true);
     }
+    syncPath();
     onChange();
   });
 

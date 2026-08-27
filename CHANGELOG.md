@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Click a solar event above the chart to assign its native scene (optional link for dawn / sunrise / sunset)
 - Dots on each light timeline expand to a native icon button on hover; click the row to edit the closest assigned scene
 - Light-edit sidebar lists each unique native scene as a compact chip (not one row per solar event)
-- Light-edit sidebar uses a Huemane-style hue/temperature wheel: pin for the selected scene, dots for the others
+- Light-edit sidebar uses a Huemane-style hue/temperature wheel: pin for the selected scene, dots for the others, and a sampled line for the extrapolation path between them
 - Search in the preview-location dialog jumps the map pin
 - Discard confirmation when leaving the light editor with unsaved edits (all scenes for that lamp)
 - Year-long scrubber under the preview date to drag between days
