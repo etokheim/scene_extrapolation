@@ -73,6 +73,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._previewInFlight = false;
     this._previewQueued = false;
     this._yearScrubbing = false;
+    this._hashConfirming = false;
     this._onHashChange = () => this._syncHash();
   }
 
@@ -344,6 +345,42 @@ class SceneExtrapolationPanel extends HTMLElement {
           color: var(--secondary-text-color);
           font-size: 14px;
         }
+        .location-search {
+          display: flex;
+          gap: 8px;
+          align-items: flex-end;
+          margin: 8px 0;
+        }
+        .location-search ha-textfield,
+        .location-search ha-selector,
+        .location-search input {
+          flex: 1;
+          min-width: 0;
+        }
+        .location-search-results {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin: 0 0 8px;
+        }
+        .location-search-results button {
+          margin: 0;
+          padding: 8px 12px;
+          border: 1px solid var(--divider-color);
+          border-radius: var(--ha-border-radius-lg, 12px);
+          background: var(--secondary-background-color, var(--card-background-color));
+          color: inherit;
+          font: inherit;
+          font-size: 13px;
+          text-align: start;
+          cursor: pointer;
+        }
+        .location-search-results button:hover {
+          border-color: var(--primary-color);
+        }
+        .location-dialog .error {
+          margin: 0 0 8px;
+        }
         .sun-fallback-note {
           margin: 8px 16px 0;
           font-size: 13px;
@@ -368,6 +405,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           height: ${LIGHT_BAR_HEIGHT}px;
           cursor: pointer;
+          pointer-events: auto;
         }
         .light-row:first-child .light-bar,
         .light-row:last-child .light-bar {
@@ -398,6 +436,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .light-row:first-child .light-bar svg,
         .light-row:only-child .light-bar svg {
+          -webkit-mask-image: none;
+          mask-image: none;
+        }
+        /* Keep the overlap, but drop the incoming-edge fade so a hovered
+           stack reads as solid bands instead of blended seams. */
+        .sun-lights:hover .light-bar svg {
           -webkit-mask-image: none;
           mask-image: none;
         }
@@ -474,40 +518,41 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .light-scene-list {
           display: flex;
-          flex-direction: column;
-          gap: 4px;
-          margin: 0 0 8px;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin: 0 0 12px;
         }
-        .light-scene-item {
-          display: flex;
-          justify-content: space-between;
-          align-items: baseline;
-          gap: 8px;
-          width: 100%;
-          margin: 0;
-          padding: 8px 12px;
-          border: 1px solid var(--divider-color);
-          border-radius: var(--ha-border-radius-lg, 12px);
-          background: transparent;
-          color: inherit;
-          font: inherit;
-          text-align: start;
-          cursor: pointer;
+        .light-scene-list .sun-event {
+          flex: 1 1 calc(50% - 6px);
+          min-width: 5.5rem;
+          max-width: none;
+          padding: 6px 8px;
+          gap: 1px;
         }
-        .light-scene-item .event {
-          font-weight: 500;
+        .light-scene-list .sun-event ha-icon {
+          --mdc-icon-size: 16px;
         }
-        .light-scene-item .scene {
-          font-size: 12px;
-          color: var(--secondary-text-color);
+        .light-scene-list .sun-event .name {
+          font-size: 11px;
+          white-space: normal;
         }
-        .light-scene-item[aria-current="true"] {
+        .light-scene-list .sun-event .time {
+          font-size: 10px;
+          white-space: normal;
+        }
+        .light-scene-list .sun-event[aria-current="true"] {
           border-color: var(--primary-color);
           background: color-mix(
             in srgb,
             var(--primary-color) 14%,
             var(--card-background-color)
           );
+        }
+        .sidebar-note {
+          margin: 0 0 8px;
+          font-size: 13px;
+          line-height: 1.4;
+          color: var(--secondary-text-color);
         }
         .light-dialog ha-selector,
         .light-dialog ha-switch,
@@ -800,9 +845,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
         }
         .page {
-          /* Same canvas as Settings → Automations editor
-             (manual-automation-editor). */
-          --page-max-width: var(--ha-automation-editor-width, 1540px);
+          /* Narrower than HA’s automation editor so the overlay drawer
+             does not sit on top of the charts on a typical laptop. */
+          --page-max-width: 1024px;
           max-width: var(--page-max-width);
           width: 100%;
           margin-inline: auto;
@@ -868,16 +913,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         .fab[hidden] {
           display: none;
         }
-        /* Do not grow .page max-width or pad it when the drawer opens.
-           That dropped the 1540px cap, squeezed the charts, then the
-           slide started two frames later — the column jumped. The
-           drawer overlays; only the FAB moves aside. */
-        :host(.has-scene-sidebar) .fab {
-          right: calc(
-            16px + var(--safe-area-inset-right, 0px) +
-              var(--scene-sidebar-width, 375px) + 16px
-          );
-        }
         .save-dialog ha-input,
         .save-dialog ha-textarea,
         .save-dialog ha-labels-picker,
@@ -936,8 +971,44 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._syncHash();
   }
 
-  _syncHash() {
+  _currentHash() {
+    if (this._view === "edit") {
+      return this._editId ? `edit/${this._editId}` : "new";
+    }
+    return "";
+  }
+
+  _hashHref(hash) {
+    const suffix = hash ? `#${hash}` : "";
+    return `${window.location.pathname}${window.location.search}${suffix}`;
+  }
+
+  async _go(hash) {
+    if (!(await this._confirmLeaveLightEdit())) {
+      return;
+    }
+    this._forceCloseSceneSidebar();
+    window.location.hash = hash;
+  }
+
+  async _syncHash() {
+    if (this._hashConfirming) {
+      return;
+    }
     const hash = (window.location.hash || "#").replace(/^#/, "");
+    const current = this._currentHash();
+    if (hash !== current && this._lightEditIsDirty()) {
+      this._hashConfirming = true;
+      history.replaceState(null, "", this._hashHref(current));
+      const leave = await this._confirmLeaveLightEdit();
+      this._hashConfirming = false;
+      if (!leave) {
+        return;
+      }
+      this._forceCloseSceneSidebar();
+      window.location.hash = hash;
+      return;
+    }
     if (hash === "new") {
       const pending = this._pendingNewForm;
       this._pendingNewForm = null;
@@ -992,10 +1063,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._formData = emptyFormData();
     }
     this._render();
-  }
-
-  _go(hash) {
-    window.location.hash = hash;
   }
 
   _loc(key, fallback, vars) {
@@ -1289,6 +1356,27 @@ class SceneExtrapolationPanel extends HTMLElement {
     );
   }
 
+  _lightEditIsDirty() {
+    const el = this.shadowRoot?.querySelector(".scene-sidebar.light-dialog");
+    return Boolean(el && !el._closing && el._isDirty?.());
+  }
+
+  async _confirmLeaveLightEdit() {
+    const el = this.shadowRoot?.querySelector(".scene-sidebar.light-dialog");
+    if (!el?._isDirty?.()) {
+      return true;
+    }
+    return el._confirmIfDirty();
+  }
+
+  _forceCloseSceneSidebar() {
+    const el = this.shadowRoot?.querySelector(".scene-sidebar");
+    if (el) {
+      el._isDirty = () => false;
+    }
+    this._closeSceneSidebar();
+  }
+
   _closeSceneSidebar({ animate = false } = {}) {
     const el = this.shadowRoot?.querySelector(".scene-sidebar");
     if (!el) {
@@ -1304,7 +1392,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     el.dispatchEvent(new Event("closed"));
     el.remove();
-    this.classList.remove("has-scene-sidebar");
   }
 
   _animateDesktopSidebarClose(el) {
@@ -1320,7 +1407,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       finished = true;
       el.removeEventListener("transitionend", onEnd);
-      this.classList.remove("has-scene-sidebar");
       el.dispatchEvent(new Event("closed"));
       el.remove();
     };
@@ -1337,19 +1423,33 @@ class SceneExtrapolationPanel extends HTMLElement {
   _commitSceneSidebar(el) {
     if (el) {
       el._committed = true;
+      el._isDirty = () => false;
     }
     this._requestCloseSceneSidebar(el);
   }
 
-  _requestCloseSceneSidebar(el) {
-    if (el?.localName === "ha-bottom-sheet") {
-      el.open = false;
+  async _requestCloseSceneSidebar(el) {
+    const target = el || this.shadowRoot?.querySelector(".scene-sidebar");
+    if (target?._isDirty?.() && !(await target._confirmIfDirty())) {
+      return;
+    }
+    if (target) {
+      target._isDirty = () => false;
+    }
+    if (target?.localName === "ha-bottom-sheet") {
+      target.open = false;
       return;
     }
     this._closeSceneSidebar({ animate: true });
   }
 
-  _openSceneSidebar({ title, subtitle, className, onDismiss, actionItems }) {
+  async _openSceneSidebar({ title, subtitle, className, onDismiss, actionItems }) {
+    const existing = this.shadowRoot?.querySelector(".scene-sidebar");
+    if (existing && !existing._closing && existing._isDirty?.()) {
+      if (!(await existing._confirmIfDirty())) {
+        return null;
+      }
+    }
     this._closeSceneSidebar();
     const useSheet =
       this._isEditorNarrow() &&
@@ -1408,7 +1508,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
 
     host.addEventListener("closed", () => {
-      this.classList.remove("has-scene-sidebar");
       host.remove();
       if (!host._committed && this.isConnected) {
         onDismiss?.();
@@ -1418,10 +1517,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (useSheet) {
       host.open = true;
     } else {
-      host.focus();
+      host.focus({ preventScroll: true });
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          this.classList.add("has-scene-sidebar");
           host.classList.add("open");
         });
       });
@@ -1565,6 +1663,21 @@ class SceneExtrapolationPanel extends HTMLElement {
     return state?.attributes?.friendly_name || entityId.replace(/^scene\./, "");
   }
 
+  _uniqueAssignedScenes(events) {
+    const seen = new Map();
+    for (const event of events || []) {
+      const sceneId = this._eventSceneId(event.id);
+      if (!sceneId) {
+        continue;
+      }
+      if (!seen.has(sceneId)) {
+        seen.set(sceneId, { sceneId, event, events: [] });
+      }
+      seen.get(sceneId).events.push(event);
+    }
+    return [...seen.values()];
+  }
+
   _setEventScene(eventId, sceneId, linked) {
     if (LINKED_EVENTS.includes(eventId)) {
       if (linked) {
@@ -1589,7 +1702,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._ensureSunPath();
   }
 
-  _openEventSceneDialog(event) {
+  async _openEventSceneDialog(event) {
     const canLink = LINKED_EVENTS.includes(event.id);
     const data = {
       scene: this._eventSceneId(event.id),
@@ -1602,10 +1715,20 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       this._setEventScene(event.id, data.scene, canLink ? data.linked : false);
     };
-    const { host, body, footer } = this._openSceneSidebar({
+    const opened = await this._openSceneSidebar({
       title: event.name,
       className: "event-dialog",
     });
+    if (!opened) {
+      return;
+    }
+    const { host, body, footer } = opened;
+
+    const note = document.createElement("p");
+    note.className = "sidebar-note";
+    note.textContent =
+      "This assigns a native Home Assistant scene to this solar event. Graphs update immediately. Save the extrapolation scene to keep the assignment.";
+    body.appendChild(note);
 
     const picker = document.createElement("ha-selector");
     picker.hass = this._hass;
@@ -1752,10 +1875,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       ...((light.event_states || []).find((item) => item.event === event.id)
         ?.state || { state: "off" }),
     };
+    let savedFingerprint = lightDraftFingerprint(draft);
     let liveEdit = false;
     let liveApplied = false;
 
     const sceneEntityId = () => this._eventSceneId(currentEvent.id);
+    const isDirty = () => lightDraftFingerprint(draft) !== savedFingerprint;
     const restoreLive = async () => {
       if (liveApplied) {
         await this._applyLightState(light.entity_id, snapshot);
@@ -1777,6 +1902,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       };
       this._schedulePreview();
     };
+    const dropPreviewOverlay = () => {
+      if (!this._previewOverlay) {
+        return;
+      }
+      this._previewOverlay = null;
+      this._sunPathKey = undefined;
+      this._ensureSunPath();
+    };
 
     const infoBtn = document.createElement("ha-icon-button");
     infoBtn.label = this._loc("ui.dialogs.helper_settings.dialog.more_info", "More info");
@@ -1785,9 +1918,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     infoBtn.appendChild(infoIcon);
     infoBtn.addEventListener("click", () => this._showEntityMoreInfo(light.entity_id));
 
-    const { host, header, body, footer } = this._openSceneSidebar({
+    const opened = await this._openSceneSidebar({
       title: light.name,
-      subtitle: event.name,
+      subtitle: this._sceneName(sceneEntityId()),
       className: "light-dialog",
       actionItems: [infoBtn],
       onDismiss: () => {
@@ -1797,47 +1930,69 @@ class SceneExtrapolationPanel extends HTMLElement {
         restoreLive();
       },
     });
+    if (!opened) {
+      return;
+    }
+    const { host, header, body, footer } = opened;
     host._lightEntityId = light.entity_id;
+    host._isDirty = isDirty;
+    host._confirmIfDirty = () => {
+      if (!isDirty()) {
+        return Promise.resolve(true);
+      }
+      return this._confirmDiscard({
+        title: "Discard unsaved changes?",
+        text: `You have unsaved edits to ${light.name} in “${this._sceneName(sceneEntityId())}”. Closing drops them from that Home Assistant scene.`,
+      });
+    };
     const subtitleEl = header.querySelector("[slot='subtitle']");
 
     const paint = () => {
       body.replaceChildren();
       footer.replaceChildren();
+      const sceneName = this._sceneName(sceneEntityId());
       if (subtitleEl) {
-        subtitleEl.textContent = currentEvent.name;
+        subtitleEl.textContent = sceneName;
       }
 
-      const list = document.createElement("div");
-      list.className = "light-scene-list";
-      list.setAttribute("role", "listbox");
-      list.setAttribute("aria-label", "Scene");
-      for (const item of events) {
-        const sceneId = this._eventSceneId(item.id);
-        if (!sceneId) {
-          continue;
-        }
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "light-scene-item";
-        btn.setAttribute("role", "option");
-        if (item.id === currentEvent.id) {
-          btn.setAttribute("aria-current", "true");
-        }
-        const evName = document.createElement("span");
-        evName.className = "event";
-        evName.textContent = item.name;
-        const scName = document.createElement("span");
-        scName.className = "scene";
-        scName.textContent = this._sceneName(sceneId);
-        btn.append(evName, scName);
-        btn.addEventListener("click", () => {
-          if (item.id !== currentEvent.id) {
-            host._switchLightEvent(item);
+      const uniqueScenes = this._uniqueAssignedScenes(events);
+      if (uniqueScenes.length) {
+        const list = document.createElement("div");
+        list.className = "light-scene-list";
+        list.setAttribute("role", "listbox");
+        list.setAttribute("aria-label", "Scene");
+        for (const item of uniqueScenes) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "sun-event clickable";
+          btn.setAttribute("role", "option");
+          if (item.sceneId === sceneEntityId()) {
+            btn.setAttribute("aria-current", "true");
           }
-        });
-        list.appendChild(btn);
+          const icon = document.createElement("ha-icon");
+          const entity = this._hass?.states?.[item.sceneId];
+          icon.setAttribute("icon", entity?.attributes?.icon || "mdi:palette");
+          const name = document.createElement("span");
+          name.className = "name";
+          name.textContent = this._sceneName(item.sceneId);
+          const when = document.createElement("span");
+          when.className = "time";
+          when.textContent = item.events.map((entry) => entry.name).join(" · ");
+          btn.append(icon, name, when);
+          btn.addEventListener("click", () => {
+            if (item.sceneId !== sceneEntityId()) {
+              host._switchLightEvent(item.event);
+            }
+          });
+          list.appendChild(btn);
+        }
+        body.appendChild(list);
       }
-      body.appendChild(list);
+
+      const note = document.createElement("p");
+      note.className = "sidebar-note";
+      note.textContent = `Save writes this lamp into the Home Assistant scene “${sceneName}”. Automations that use that scene will pick up the change.`;
+      body.appendChild(note);
 
       const liveRow = document.createElement("label");
       liveRow.className = "dialog-row";
@@ -1945,7 +2100,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       cancel.addEventListener("click", () => this._requestCloseSceneSidebar(host));
       const save = document.createElement("ha-button");
       save.variant = "brand";
-      save.textContent = "Save";
+      save.textContent = "Save to scene";
       save.addEventListener("click", async () => {
         try {
           await this._hass.callWS({
@@ -1973,6 +2128,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._openEventSceneDialog(next);
         return;
       }
+      if (this._eventSceneId(next.id) === sceneEntityId()) {
+        currentEvent = next;
+        return;
+      }
+      if (isDirty() && !(await host._confirmIfDirty())) {
+        return;
+      }
       await restoreLive();
       liveEdit = false;
       currentEvent = next;
@@ -1980,11 +2142,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         ...((light.event_states || []).find((item) => item.event === next.id)
           ?.state || { state: "off" }),
       };
-      previewDraft();
+      savedFingerprint = lightDraftFingerprint(draft);
+      dropPreviewOverlay();
       paint();
     };
 
-    previewDraft();
     paint();
   }
 
@@ -2221,6 +2383,49 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._error = err.message || String(err);
       this._renderEditor();
     }
+  }
+
+  _confirmDiscard({ title, text }) {
+    return new Promise((resolve) => {
+      this.shadowRoot.querySelector("ha-dialog.discard-dialog")?.remove();
+      const dialog = document.createElement("ha-dialog");
+      dialog.className = "discard-dialog confirm-dialog";
+      dialog.setAttribute("header-title", title);
+      dialog.open = true;
+      const body = document.createElement("p");
+      body.textContent = text;
+      dialog.appendChild(body);
+      const footer = customElements.get("ha-dialog-footer")
+        ? document.createElement("ha-dialog-footer")
+        : document.createElement("div");
+      footer.slot = "footer";
+      const keep = document.createElement("ha-button");
+      keep.slot = "secondaryAction";
+      keep.appearance = "plain";
+      keep.textContent = "Keep editing";
+      const discard = document.createElement("ha-button");
+      discard.slot = "primaryAction";
+      discard.variant = "danger";
+      discard.textContent = "Discard";
+      let settled = false;
+      const settle = (value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        dialog.open = false;
+        resolve(value);
+      };
+      keep.addEventListener("click", () => settle(false));
+      discard.addEventListener("click", () => settle(true));
+      footer.append(keep, discard);
+      dialog.appendChild(footer);
+      dialog.addEventListener("closed", () => {
+        dialog.remove();
+        settle(false);
+      });
+      this.shadowRoot.appendChild(dialog);
+    });
   }
 
   _confirmDelete() {
@@ -2691,11 +2896,40 @@ class SceneExtrapolationPanel extends HTMLElement {
     const help = document.createElement("p");
     help.textContent =
       "Sun times and light graphs use this place. The clock stays on your Home Assistant timezone.";
+
+    const searchRow = document.createElement("div");
+    searchRow.className = "location-search";
+    const searchField = customElements.get("ha-textfield")
+      ? document.createElement("ha-textfield")
+      : document.createElement("input");
+    if (searchField.localName === "ha-textfield") {
+      searchField.label = "Search";
+      searchField.placeholder = "City or address";
+    } else {
+      searchField.type = "search";
+      searchField.placeholder = "City or address";
+      searchField.setAttribute("aria-label", "Search");
+    }
+    const searchBtn = document.createElement("ha-button");
+    searchBtn.textContent = "Search";
+    searchRow.append(searchField, searchBtn);
+
+    const searchError = document.createElement("p");
+    searchError.className = "error";
+    searchError.hidden = true;
+    const results = document.createElement("div");
+    results.className = "location-search-results";
+
     const picker = document.createElement("ha-selector");
     picker.hass = this._hass;
     picker.label = "Location";
     picker.selector = { location: { radius: false } };
     picker.value = { latitude: data.latitude, longitude: data.longitude };
+    const applyCoords = (latitude, longitude) => {
+      data.latitude = latitude;
+      data.longitude = longitude;
+      picker.value = { latitude, longitude };
+    };
     picker.addEventListener("value-changed", (ev) => {
       ev.stopPropagation();
       const value = ev.detail?.value;
@@ -2705,7 +2939,54 @@ class SceneExtrapolationPanel extends HTMLElement {
       data.latitude = value.latitude;
       data.longitude = value.longitude;
     });
-    dialog.append(help, picker);
+
+    const runSearch = async () => {
+      const query = (searchField.value || "").trim();
+      searchError.hidden = true;
+      results.replaceChildren();
+      if (!query) {
+        return;
+      }
+      searchBtn.disabled = true;
+      try {
+        const hits = await this._searchLocations(query);
+        if (!hits.length) {
+          searchError.textContent = "No matching places. Try a city name or move the map.";
+          searchError.hidden = false;
+          return;
+        }
+        if (hits.length === 1) {
+          applyCoords(hits[0].latitude, hits[0].longitude);
+          return;
+        }
+        for (const hit of hits) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = hit.label;
+          btn.addEventListener("click", () => {
+            applyCoords(hit.latitude, hit.longitude);
+            results.replaceChildren();
+          });
+          results.appendChild(btn);
+        }
+      } catch (err) {
+        searchError.textContent = err.message || String(err);
+        searchError.hidden = false;
+      } finally {
+        searchBtn.disabled = false;
+      }
+    };
+    searchBtn.addEventListener("click", () => {
+      runSearch();
+    });
+    searchField.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        runSearch();
+      }
+    });
+
+    dialog.append(help, searchRow, searchError, results, picker);
 
     const footer = customElements.get("ha-dialog-footer")
       ? document.createElement("ha-dialog-footer")
@@ -2730,6 +3011,30 @@ class SceneExtrapolationPanel extends HTMLElement {
     dialog.appendChild(footer);
     dialog.addEventListener("closed", () => dialog.remove());
     this.shadowRoot.appendChild(dialog);
+  }
+
+  async _searchLocations(query) {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5`;
+    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      throw new Error(`Location search failed (${response.status})`);
+    }
+    const payload = await response.json();
+    return (payload.features || []).map((feature) => {
+      const [longitude, latitude] = feature.geometry.coordinates;
+      const props = feature.properties || {};
+      const label = [
+        props.name,
+        props.street,
+        props.city || props.county,
+        props.state,
+        props.country,
+      ]
+        .filter(Boolean)
+        .filter((part, index, all) => all.indexOf(part) === index)
+        .join(", ");
+      return { latitude, longitude, label: label || `${latitude.toFixed(3)}, ${longitude.toFixed(3)}` };
+    });
   }
 
   _buildYearScrub() {
@@ -3319,6 +3624,16 @@ function isoFromDayOfYear(year, dayIndex) {
   const nextMonth = String(date.getUTCMonth() + 1).padStart(2, "0");
   const nextDay = String(date.getUTCDate()).padStart(2, "0");
   return `${nextYear}-${nextMonth}-${nextDay}`;
+}
+
+function lightDraftFingerprint(draft) {
+  return JSON.stringify({
+    state: draft?.state || "off",
+    brightness: draft?.brightness ?? null,
+    color_temp_kelvin: draft?.color_temp_kelvin ?? null,
+    rgb_color: draft?.rgb_color ?? null,
+    hs_color: draft?.hs_color ?? null,
+  });
 }
 
 function todayIso() {

@@ -103,24 +103,26 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Superseded in part:** 2026-08-26 — the editor is an automation-style sidebar, not a centered modal.
 - **Superseded in part:** 2026-08-26 — drafts update the graphs immediately; YAML is still written only on Save.
 - **Superseded in part:** 2026-08-27 — pencils are dots that expand on hover; click the row to edit the closest scene; more-info is on the sidebar, not the name.
+- **Superseded in part:** 2026-08-27 — the sidebar lists each unique native scene once (compact solar-event-style chips), not one row per solar event. Subtitle and Save (“Save to scene”) name the YAML scene being written. Close / Cancel / back / hash change with unsaved slider edits prompts to discard. Opening the sidebar does not overlay the charts until the user edits.
 - **Decision:** Each light timeline has a pencil per solar event. The dialog edits that lamp’s **stored** state in the native YAML scene for that event (via `scenes.yaml`, same as HA’s scene editor), not the live entity. While the sidebar is open, preview samples overlay the draft onto that scene without writing YAML. Cancel / close drops the overlay and restores the last saved preview. Optional **Live edit** applies the draft to the lamp only while the dialog is open; save and cancel both restore the lamp to the snapshot taken on open. After save, scenes reload and the preview refreshes.
-- **Why:** Tuning a circadian scene by watching the interpolated chart is faster than opening five HA scene editors. Writing YAML on every slider tick would reload scenes and fight Cancel. Live edit is opt-in so walking around the house is not required. Restoring on close avoids leaving the room stuck in a draft.
+- **Why:** Tuning a circadian scene by watching the interpolated chart is faster than opening five HA scene editors. Writing YAML on every slider tick would reload scenes and fight Cancel. Live edit is opt-in so walking around the house is not required. Restoring on close avoids leaving the room stuck in a draft. Dawn/sunrise/sunset often share one YAML scene, so listing solar events twice was the same target twice.
 - **Do not reverse without user ask.**
 
 ## Scene editors use the automation sidebar / bottom sheet
 
 - **Date:** 2026-08-26
 - **Superseded in part:** 2026-08-26 — desktop open/close is a 200ms transform-only slide (`cubic-bezier(0.2, 0, 0, 1)`). Do not transition `.page` max-width/padding or `.fab` right — that reflows the graphs every frame and the centered column overshoots.
-- **Superseded in part:** 2026-08-27 — do not grow `.page` max-width or add padding-inline-end for the drawer. That removed the 1540px cap and jumped the column before the slide. The drawer overlays; only the FAB snaps aside.
-- **Decision:** Pencil (light at a solar event) and solar-event scene assignment open an automation-style editor: a right-hand outlined `ha-card` with `ha-dialog-header` on wide viewports (375px, 2px `--primary-color` border; the drawer overlays the column, FAB snaps aside), and `ha-bottom-sheet` when `narrow` or `(max-width: 870px), (max-height: 500px)`. Reduced-motion uses 1ms. Do not use `ha-automation-sidebar` / `ha-automation-sidebar-card` / `ha-resizable-bottom-sheet` — those stay unregistered until the automation editor chunk loads. Save / Rename / area / delete stay centered `ha-dialog`s.
+- **Superseded in part:** 2026-08-27 — do not grow `.page` max-width, pad it, or move the FAB when the drawer opens. Those “make room” tweaks jumped the column (and the Save button) before the slide. The drawer overlays; focus the host with `preventScroll` so the off-screen `translateX(100%)` drawer cannot scroll the page.
+- **Decision:** Pencil (light at a solar event) and solar-event scene assignment open an automation-style editor: a right-hand outlined `ha-card` with `ha-dialog-header` on wide viewports (375px, 2px `--primary-color` border; the drawer overlays the 1024px column), and `ha-bottom-sheet` when `narrow` or `(max-width: 870px), (max-height: 500px)`. Reduced-motion uses 1ms. Do not use `ha-automation-sidebar` / `ha-automation-sidebar-card` / `ha-resizable-bottom-sheet` — those stay unregistered until the automation editor chunk loads. Save / Rename / area / delete stay centered `ha-dialog`s.
 - **Why:** The chart should stay visible while tuning a lamp or assigning a scene, the same split as Settings → Automations. Custom panels cannot import the automation-only elements.
 - **Do not reverse without user ask.**
 
-## Page content uses HA’s automation-editor container
+## Page column is 1024px, not the automation-editor canvas
 
 - **Date:** 2026-08-26
-- **Decision:** List and editor `.page` match `manual-automation-editor`: `max-width: var(--ha-automation-editor-width, 1540px)`, `padding-inline: 12px`, centered. The sun path is a card on that canvas; the nightlights form is in `ha-card`. Do not use a custom 1024px column.
-- **Why:** Settings pages and the automation editor already use that container. 1024px left empty side margins that the rest of HA does not.
+- **Superseded:** 2026-08-27 — restore `--page-max-width: 1024px`. Matching `manual-automation-editor` (1540px) made the charts full-bleed on a typical laptop and put the overlay drawer on top of the graphs.
+- **Decision:** List and editor `.page` are a centered 1024px column with 12px inline padding. The sun path is a card on that canvas; the nightlights form is in `ha-card`. Do not use `--ha-automation-editor-width` / 1540px, and do not grow max-width when the drawer opens.
+- **Why:** The drawer overlays; a 1024px column leaves a gutter so the charts stay readable. 1540px was wider than the visible panel on common desktop widths.
 - **Do not reverse without user ask.**
 
 ## Legacy per-room entries migrate; this is not a breaking reconfigure
@@ -147,8 +149,9 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Preview location override is session-only and quiet until used
 
 - **Date:** 2026-08-26
+- **Superseded in part:** 2026-08-27 — the location dialog has a search field (Photon geocoder) above HA’s map picker. The map still commits lat/lng; search only jumps the pin.
 - **Decision:** Create/edit can override the coordinates used for the sun path and light graphs. Idle state is a map-marker icon on the date row. Once a place other than Home Assistant’s configured lat/lng is applied, a warning-styled banner shows the coordinates, with Change and reset. The override is panel session state (not stored on the scene). Clock, “today”, and the now line stay on Home Assistant’s timezone — same as `scene_extrapolation.turn_on`’s location field. Use HA’s `{ location: { radius: false } }` selector, not a custom map.
-- **Why:** Polar / far-south sun times are the reason to preview another date; another latitude is the matching test. A always-visible map would crowd the date tools. Radius is unused for solar events.
+- **Why:** Polar / far-south sun times are the reason to preview another date; another latitude is the matching test. A always-visible map would crowd the date tools. Radius is unused for solar events. HA’s location selector has no search box of its own.
 - **Do not reverse without user ask.**
 
 ## Opaque light-graph fills
@@ -170,6 +173,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Light brightness darkens the band; rows feather
 
 - **Date:** 2026-08-27
+- **Superseded in part:** 2026-08-27 — hovering the light-row stack drops the incoming-edge mask so seams read as solid bands. Overlap stays; do not grow the stack on hover.
 - **Decision:** Each light is a full-height horizontal color band. Sample RGB is multiplied by brightness/100 (off is black). Middle rows are 108px; first and last are 72px (one overlap shorter). Rows overlap by 36px. Only the incoming top is masked; the row underneath stays opaque so the dark card cannot show through the seam. First top and last bottom stay opaque. No `filter: blur()`, no brightness polyline. Hover % on the name stays.
 - **Why:** A Y-axis sparkline plus a separate color wash made stacked lamps read as separate charts. Darkening keeps hue and level on one surface. Fading both edges left two ~50% layers over the card, so blend zones went dark.
 - **Do not reverse without user ask.**
