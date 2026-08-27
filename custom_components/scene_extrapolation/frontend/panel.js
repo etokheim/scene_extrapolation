@@ -9,9 +9,8 @@ const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
 const SIDEBAR_ANIMATION_MS = 200;
-const LIGHT_BAR_HEIGHT = 60;
-const LIGHT_BAR_TOP = 0;
-const LIGHT_BAR_BOTTOM = 60;
+const LIGHT_BAR_HEIGHT = 96;
+const LIGHT_ROW_OVERLAP = 0.7;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
 const EVENT_SCENE_KEYS = {
   dawn: "scene_dawn",
@@ -357,6 +356,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .light-row {
           position: relative;
+          z-index: 0;
+          margin-top: calc(${LIGHT_BAR_HEIGHT}px * ${-LIGHT_ROW_OVERLAP});
+          pointer-events: none;
+        }
+        .light-row:first-child {
+          margin-top: 0;
         }
         .light-bar {
           position: relative;
@@ -366,11 +371,25 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: block;
           width: 100%;
           height: ${LIGHT_BAR_HEIGHT}px;
+          /* Overlap plus a tent alpha so neighboring lamps mix instead
+             of stacking as separate sparklines. */
+          -webkit-mask-image: linear-gradient(
+            to bottom,
+            transparent 0%,
+            #000 50%,
+            transparent 100%
+          );
+          mask-image: linear-gradient(
+            to bottom,
+            transparent 0%,
+            #000 50%,
+            transparent 100%
+          );
         }
         .light-name {
           position: absolute;
           left: 16px;
-          top: 6px;
+          top: 50%;
           z-index: 1;
           margin: 0;
           padding: 0;
@@ -381,6 +400,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-weight: 500;
           color: var(--primary-text-color);
           cursor: pointer;
+          pointer-events: auto;
+          transform: translateY(-50%);
           text-shadow: 0 0 6px var(--card-background-color);
         }
         .light-name:hover {
@@ -397,8 +418,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .light-edit {
           position: absolute;
-          bottom: 0;
-          transform: translateX(-50%);
+          top: 50%;
+          transform: translate(-50%, -50%);
           pointer-events: auto;
           --mdc-icon-button-size: 28px;
           --mdc-icon-size: 16px;
@@ -493,8 +514,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-warn {
           position: absolute;
           right: 16px;
-          top: 6px;
+          top: 50%;
           z-index: 1;
+          pointer-events: auto;
+          transform: translateY(-50%);
           display: flex;
           align-items: center;
           gap: 4px;
@@ -3018,29 +3041,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     bar.className = "light-bar";
     const samples = light.samples || [];
     const gradientId = `light-grad-${light.entity_id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-    const plotHeight = LIGHT_BAR_BOTTOM - LIGHT_BAR_TOP;
-    const yOf = (brightness) =>
-      LIGHT_BAR_BOTTOM - (Math.max(0, brightness) / 100) * plotHeight;
-    const line = samples
-      .map((sample, index) => {
-        const command = index === 0 ? "M" : "L";
-        return `${command}${xOf(sample[0]).toFixed(1)},${yOf(sample[1]).toFixed(1)}`;
-      })
-      .join(" ");
-    const firstX = samples.length ? xOf(samples[0][0]).toFixed(1) : PLOT_LEFT;
-    const lastX = samples.length
-      ? xOf(samples[samples.length - 1][0]).toFixed(1)
-      : PLOT_RIGHT;
-    const area = samples.length
-      ? `${line} L${lastX},${LIGHT_BAR_BOTTOM} L${firstX},${LIGHT_BAR_BOTTOM} Z`
-      : "";
     const stops = samples
       .map((sample) => {
         const offset = (sample[0] / SECONDS_PER_DAY) * 100;
-        return `<stop offset="${offset.toFixed(2)}%" stop-color="rgb(${sample[2]},${sample[3]},${sample[4]})"/>`;
+        return `<stop offset="${offset.toFixed(2)}%" stop-color="${darkenedRgb(sample)}"/>`;
       })
       .join("");
-    const bg = `<rect x="${PLOT_LEFT}" y="${LIGHT_BAR_TOP}" width="${PLOT_RIGHT - PLOT_LEFT}" height="${plotHeight}" fill="url(#${gradientId})" fill-opacity="0.5"></rect>`;
     bar.innerHTML = `
       <svg viewBox="0 0 ${CHART_WIDTH} ${LIGHT_BAR_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
         <defs>
@@ -3048,9 +3054,7 @@ class SceneExtrapolationPanel extends HTMLElement {
             ${stops}
           </linearGradient>
         </defs>
-        ${bg}
-        <path d="${area}" fill="url(#${gradientId})" fill-opacity="1"></path>
-        <path d="${line}" fill="none" stroke="url(#${gradientId})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
+        <rect x="${PLOT_LEFT}" y="0" width="${PLOT_RIGHT - PLOT_LEFT}" height="${LIGHT_BAR_HEIGHT}" fill="url(#${gradientId})"></rect>
       </svg>
     `;
     const name = document.createElement("button");
@@ -3289,6 +3293,11 @@ function interpolateElevation(curve, seconds) {
     }
   }
   return curve[curve.length - 1][1];
+}
+
+function darkenedRgb(sample) {
+  const t = sample[1] / 100;
+  return `rgb(${Math.round(sample[2] * t)},${Math.round(sample[3] * t)},${Math.round(sample[4] * t)})`;
 }
 
 function interpolateLightSample(samples, seconds) {

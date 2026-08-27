@@ -74,6 +74,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Per-light brightness curves and date preview
 
 - **Date:** 2026-08-26
+- **Superseded in part:** 2026-08-27 — still one full-width row per light with the name on the plot, but Y is not brightness (see “Light brightness darkens the band”).
 - **Decision:** Under the sun chart on create/edit, list each light as a full-width brightness polyline (one SVG path + x-gradient from sample colors), not a strip of `<rect>` bars. The entity name sits on the chart and opens more-info. Graphs stack with no gap. Polar / no-rise events use the same seasonal fallbacks as scene activation. An entity present in one scene but not the next is a warning, not an error (treated as off during that transition).
 - **Why:** A single line matches the sun chart and stays cheap to paint. Labels on the plot save vertical space; clicking through to the entity is the usual HA pattern. Missing entities are supported on purpose (e.g. a lamp that only exists in the evening scene). Preview interpolates across whatever solar events already have a scene; unassigned events are skipped so graphs appear as soon as the first scene is picked.
 - **Do not reverse without user ask.**
@@ -151,7 +152,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Opaque light-graph fills
 
 - **Date:** 2026-08-26
-- **Superseded in part:** 2026-08-26 — keep the opaque brightness fill; add a 50% opacity full-height color wash behind it.
+- **Superseded:** 2026-08-27 — no area-under-curve; brightness darkens a full-height color band.
 - **Decision:** The area under each light brightness polyline is fully opaque (`fill-opacity: 1`). Keep the stroke on top of the fill.
 - **Why:** Semi-transparent fills made the curves look washed out against the card background.
 - **Do not reverse without user ask.**
@@ -159,8 +160,16 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Light-graph color wash is independent of brightness
 
 - **Date:** 2026-08-26
+- **Superseded:** 2026-08-27 — brightness *is* the darkening of the color band.
 - **Decision:** Each light row paints the same horizontal color gradient as a full-height rect at `fill-opacity: 0.5`, then the brightness-shaped area at `fill-opacity: 1`. Y-axis stays brightness. The stroke stays on top.
 - **Why:** A dim or off stretch still has a color. Clipping color to the brightness fill hid warm/cool shifts when the curve sat near the baseline.
+- **Do not reverse without user ask.**
+
+## Light brightness darkens the band; rows feather
+
+- **Date:** 2026-08-27
+- **Decision:** Each light is a full-height horizontal color band. Sample RGB is multiplied by brightness/100 (off is black). Adjacent rows overlap by 70% of their height and use a vertical tent alpha so they blend. No brightness polyline. Hover % on the name stays.
+- **Why:** A Y-axis sparkline plus a separate color wash made stacked lamps read as separate charts. Darkening keeps hue and level on one surface; feathering joins the stack.
 - **Do not reverse without user ask.**
 
 ## Panel FAB matches hass-subpage, not ha-fab
