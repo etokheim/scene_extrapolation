@@ -601,6 +601,23 @@ class SceneExtrapolationPanel extends HTMLElement {
           line-height: 1.4;
           color: var(--secondary-text-color);
         }
+        .scene-sidebar-footer .sidebar-note {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          margin: 0;
+        }
+        .scene-sidebar-footer .sidebar-note ha-icon {
+          --mdc-icon-size: 18px;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+        .scene-sidebar-actions {
+          display: flex;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 12px;
+        }
         .hue-wheel-stage {
           position: relative;
           margin: 8px -8px 0;
@@ -904,6 +921,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 12px;
           padding: 12px 16px 16px;
           flex-shrink: 0;
+        }
+        .scene-sidebar-footer:has(.sidebar-note) {
+          flex-direction: column;
+          align-items: stretch;
+          gap: 8px;
+          border-top: 1px solid var(--divider-color);
+          background: var(--card-background-color);
         }
         .dialog-row {
           display: flex;
@@ -2345,11 +2369,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
     const subtitleEl = header.querySelector("[slot='subtitle']");
     const chipsHost = document.createElement("div");
-    const note = document.createElement("p");
-    note.className = "sidebar-note";
     const fieldsHost = document.createElement("div");
     const wheelMount = document.createElement("div");
-    body.append(chipsHost, note, wheelMount, fieldsHost);
+    body.append(chipsHost, wheelMount, fieldsHost);
 
     const selectScene = async (next, { fromWheel = false } = {}) => {
       const nextId = this._eventSceneId(next.id);
@@ -2363,7 +2385,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       paintChips();
       paintFields();
-      paintNote();
       if (!fromWheel) {
         const mode = draftWheelMode(currentDraft(), hasColor, hasTemp);
         wheelCtl?.setMode(mode, { convertDraft: false });
@@ -2372,11 +2393,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (liveEdit) {
         await applyLive();
       }
-    };
-
-    const paintNote = () => {
-      note.textContent =
-        "Save writes this lamp into every scene you changed. Switching scenes keeps drafts until you Save or Cancel.";
     };
 
     const paintChips = () => {
@@ -2550,13 +2566,23 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._renderEditor();
       }
     });
-    footer.append(cancel, save);
+    const note = document.createElement("p");
+    note.className = "sidebar-note";
+    const noteIcon = document.createElement("ha-icon");
+    noteIcon.setAttribute("icon", "mdi:information-outline");
+    const noteText = document.createElement("span");
+    noteText.textContent =
+      "Save writes this lamp into every scene you changed. Switching scenes keeps drafts until you Save or Cancel.";
+    note.append(noteIcon, noteText);
+    const actions = document.createElement("div");
+    actions.className = "scene-sidebar-actions";
+    actions.append(cancel, save);
+    footer.append(note, actions);
 
     host._switchLightEvent = async (next) => {
       await selectScene(next);
     };
 
-    paintNote();
     paintChips();
     paintFields();
     wheelCtl?.sync();
