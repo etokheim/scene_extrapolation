@@ -174,7 +174,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-path {
           background: var(--card-background-color);
-          border-bottom: 1px solid var(--divider-color);
+          border-radius: var(--ha-card-border-radius, var(--ha-border-radius-lg));
+          border: var(--ha-card-border-width, 1px) solid
+            var(--ha-card-border-color, var(--divider-color));
+          margin-top: var(--ha-space-3);
+          overflow: hidden;
         }
         .sun-path[hidden] {
           display: none;
@@ -690,19 +694,24 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
         }
         .page {
-          /* Main column only; the editor sidebar sits outside this width. */
-          --page-max-width: 1024px;
+          /* Same canvas as Settings → Automations editor
+             (manual-automation-editor). */
+          --page-max-width: var(--ha-automation-editor-width, 1540px);
           max-width: var(--page-max-width);
           width: 100%;
           margin-inline: auto;
+          padding-inline: 12px;
           box-sizing: border-box;
         }
         .content {
-          padding: 16px 16px 88px;
+          padding: var(--ha-space-3) 0 88px;
         }
         .content.wide {
           width: 100%;
           box-sizing: border-box;
+        }
+        .card-content {
+          padding: 16px;
         }
         .empty {
           text-align: center;
@@ -755,9 +764,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         :host(.has-scene-sidebar) .page {
           max-width: calc(
-            var(--page-max-width) + var(--scene-sidebar-width, 375px) + 16px
+            var(--page-max-width) + var(--scene-sidebar-width, 375px) +
+              var(--ha-space-4)
           );
-          padding-inline-end: calc(var(--scene-sidebar-width, 375px) + 16px);
+          padding-inline-end: calc(
+            var(--scene-sidebar-width, 375px) + var(--ha-space-4)
+          );
         }
         :host(.has-scene-sidebar) .fab {
           right: calc(
@@ -1339,7 +1351,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._schedulePreview();
     });
     this._form = form;
-    wrap.appendChild(form);
+    const card = document.createElement("ha-card");
+    const cardContent = document.createElement("div");
+    cardContent.className = "card-content";
+    cardContent.appendChild(form);
+    card.appendChild(cardContent);
+    wrap.appendChild(card);
     this._contentEl.replaceChildren(wrap);
   }
 

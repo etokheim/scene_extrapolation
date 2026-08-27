@@ -20,8 +20,8 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Panel JS cache-bust via versioned static URL
 
 - **Date:** 2026-08-26
-- **Decision:** Serve `frontend/panel.js` from `/api/scene_extrapolation/assets/<manifest version>-<PANEL_ASSET_REV>/panel.js` with `cache_headers=False`. Bump `manifest.json` `version` on release; increment `PANEL_ASSET_REV` in `panel.py` for in-progress frontend changes.
-- **Why:** HA caches custom panel modules by URL. Python restarts do not pick up JS if the path is unchanged.
+- **Decision:** Serve `frontend/panel.js` from `/api/scene_extrapolation/assets/<manifest version>-<PANEL_ASSET_REV>/panel.js` with `cache_headers=False`. Bump `manifest.json` `version` on release; increment `PANEL_ASSET_REV` in `panel.py` for in-progress frontend changes. After restart, pick it up with a **normal** navigate/refresh on the already-open HA tab — not a new Cursor browser tab and not a hard-reload.
+- **Why:** HA caches custom panel modules by URL. Python restarts do not pick up JS if the path is unchanged. A hard-reload (or a new tab used as one) can reload the whole Cursor window.
 - **Do not reverse without user ask.**
 
 ## Sticky panel header with bottom border
@@ -111,6 +111,13 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Superseded in part:** 2026-08-26 — desktop open/close is a 200ms transform-only slide (`cubic-bezier(0.2, 0, 0, 1)`). Do not transition `.page` max-width/padding or `.fab` right — that reflows the graphs every frame and the centered column overshoots.
 - **Decision:** Pencil (light at a solar event) and solar-event scene assignment open an automation-style editor: a right-hand outlined `ha-card` with `ha-dialog-header` on wide viewports (375px, 2px `--primary-color` border, content/FAB shift left), and `ha-bottom-sheet` when `narrow` or `(max-width: 870px), (max-height: 500px)`. Reduced-motion uses 1ms. Do not use `ha-automation-sidebar` / `ha-automation-sidebar-card` / `ha-resizable-bottom-sheet` — those stay unregistered until the automation editor chunk loads. Save / Rename / area / delete stay centered `ha-dialog`s.
 - **Why:** The chart should stay visible while tuning a lamp or assigning a scene, the same split as Settings → Automations. Custom panels cannot import the automation-only elements.
+- **Do not reverse without user ask.**
+
+## Page content uses HA’s automation-editor container
+
+- **Date:** 2026-08-26
+- **Decision:** List and editor `.page` match `manual-automation-editor`: `max-width: var(--ha-automation-editor-width, 1540px)`, `padding-inline: 12px`, centered. The sun path is a card on that canvas; the nightlights form is in `ha-card`. Do not use a custom 1024px column.
+- **Why:** Settings pages and the automation editor already use that container. 1024px left empty side margins that the rest of HA does not.
 - **Do not reverse without user ask.**
 
 ## Legacy per-room entries migrate; this is not a breaking reconfigure
