@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light preview draws one color band per lamp (not a strip of bars); names sit on the chart and open more-info
 - Create/save use a sticky native HA button (New extrapolation scene / Save) instead of inline form actions
 - Preview day uses HA’s date selector instead of a raw browser date input
-- Light graphs encode brightness by darkening each lamp’s color band; adjacent rows feather into each other
+- Light graphs encode brightness by darkening each lamp’s color band; adjacent rows overlap and feather only at the shared edge
 - Scene light and event editors use Home Assistant’s automation-style right sidebar (bottom sheet on narrow screens)
 - Desktop sidebar open/close is a 200ms transform-only slide; the 1540px editor column stays put (the drawer overlays) instead of tweening width/padding
 - Editor graphs and form use Home Assistant’s automation-editor container (`max-width: 1540px`, 12px padding) instead of a 1024px column

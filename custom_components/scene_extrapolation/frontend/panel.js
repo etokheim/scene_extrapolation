@@ -9,8 +9,8 @@ const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
 const SIDEBAR_ANIMATION_MS = 200;
-const LIGHT_BAR_HEIGHT = 96;
-const LIGHT_ROW_OVERLAP = 0.7;
+const LIGHT_BAR_HEIGHT = 84;
+const LIGHT_ROW_OVERLAP = 0.33;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
 const EVENT_SCENE_KEYS = {
   dawn: "scene_dawn",
@@ -371,20 +371,55 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: block;
           width: 100%;
           height: ${LIGHT_BAR_HEIGHT}px;
-          /* Overlap plus a tent alpha so neighboring lamps mix instead
-             of stacking as separate sparklines. */
+          /* Vertical edge mask only — not filter:blur — so the horizontal
+             color gradient stays sharp. Fade width matches the overlap. */
+          --light-feather: ${LIGHT_ROW_OVERLAP * 100}%;
           -webkit-mask-image: linear-gradient(
             to bottom,
             transparent 0%,
-            #000 50%,
+            #000 var(--light-feather),
+            #000 calc(100% - var(--light-feather)),
             transparent 100%
           );
           mask-image: linear-gradient(
             to bottom,
             transparent 0%,
-            #000 50%,
+            #000 var(--light-feather),
+            #000 calc(100% - var(--light-feather)),
             transparent 100%
           );
+        }
+        .light-row:first-child .light-bar svg {
+          -webkit-mask-image: linear-gradient(
+            to bottom,
+            #000 0%,
+            #000 calc(100% - var(--light-feather)),
+            transparent 100%
+          );
+          mask-image: linear-gradient(
+            to bottom,
+            #000 0%,
+            #000 calc(100% - var(--light-feather)),
+            transparent 100%
+          );
+        }
+        .light-row:last-child .light-bar svg {
+          -webkit-mask-image: linear-gradient(
+            to bottom,
+            transparent 0%,
+            #000 var(--light-feather),
+            #000 100%
+          );
+          mask-image: linear-gradient(
+            to bottom,
+            transparent 0%,
+            #000 var(--light-feather),
+            #000 100%
+          );
+        }
+        .light-row:only-child .light-bar svg {
+          -webkit-mask-image: none;
+          mask-image: none;
         }
         .light-name {
           position: absolute;
