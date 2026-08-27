@@ -134,6 +134,13 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Why:** Jumping between solstices with chips is coarse; the calendar picker is precise but slow for seasonal comparison. A year strip is the missing middle. Re-inserting the scrubber on every preview cancelled the drag.
 - **Do not reverse without user ask.**
 
+## Preview location override is session-only and quiet until used
+
+- **Date:** 2026-08-26
+- **Decision:** Create/edit can override the coordinates used for the sun path and light graphs. Idle state is a map-marker icon on the date row. Once a place other than Home Assistant’s configured lat/lng is applied, a warning-styled banner shows the coordinates, with Change and reset. The override is panel session state (not stored on the scene). Clock, “today”, and the now line stay on Home Assistant’s timezone — same as `scene_extrapolation.turn_on`’s location field. Use HA’s `{ location: { radius: false } }` selector, not a custom map.
+- **Why:** Polar / far-south sun times are the reason to preview another date; another latitude is the matching test. A always-visible map would crowd the date tools. Radius is unused for solar events.
+- **Do not reverse without user ask.**
+
 ## Opaque light-graph fills
 
 - **Date:** 2026-08-26

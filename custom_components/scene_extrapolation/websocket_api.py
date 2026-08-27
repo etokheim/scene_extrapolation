@@ -221,6 +221,14 @@ async def ws_sun_path(
             vol.Required("entity_id"): str,
             vol.Required("entity_state"): dict,
         },
+        vol.Optional("location"): {
+            vol.Required("latitude"): vol.All(
+                vol.Coerce(float), vol.Range(min=-90, max=90)
+            ),
+            vol.Required("longitude"): vol.All(
+                vol.Coerce(float), vol.Range(min=-180, max=180)
+            ),
+        },
     }
 )
 @websocket_api.require_admin
@@ -238,6 +246,7 @@ async def ws_preview(
         target_date=msg.get("date"),
         scene_ids=scenes,
         overlay=msg.get("overlay"),
+        location=msg.get("location"),
     )
     connection.send_result(msg["id"], payload)
 

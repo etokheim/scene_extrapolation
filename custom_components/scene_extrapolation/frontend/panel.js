@@ -67,6 +67,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sunPath = null;
     this._sunPathKey = undefined;
     this._previewDate = todayIso();
+    this._previewLocation = null;
     this._previewCache = new Map();
     this._previewOverlay = null;
     this._previewInFlight = false;
@@ -284,6 +285,60 @@ class SceneExtrapolationPanel extends HTMLElement {
           background: var(--primary-color);
           color: var(--text-primary-color, #fff);
           border-color: var(--primary-color);
+        }
+        .sun-location-btn {
+          margin-inline-start: auto;
+          color: var(--secondary-text-color);
+        }
+        .sun-location-btn[hidden] {
+          display: none;
+        }
+        .sun-location-override {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 4px 0 8px;
+          padding: 10px 12px;
+          border-radius: var(--ha-border-radius-lg, 12px);
+          border: 1px solid var(--warning-color, var(--primary-color));
+          background: color-mix(
+            in srgb,
+            var(--warning-color, var(--primary-color)) 18%,
+            var(--card-background-color)
+          );
+        }
+        .sun-location-override[hidden] {
+          display: none;
+        }
+        .sun-location-override ha-icon {
+          --mdc-icon-size: 22px;
+          color: var(--warning-color, var(--primary-color));
+          flex-shrink: 0;
+        }
+        .sun-location-copy {
+          flex: 1 1 auto;
+          min-width: 0;
+        }
+        .sun-location-copy .title {
+          font-size: 13px;
+          font-weight: 600;
+        }
+        .sun-location-copy .coords {
+          font-size: 12px;
+          font-variant-numeric: tabular-nums;
+          color: var(--secondary-text-color);
+        }
+        .location-dialog {
+          --mdc-dialog-min-width: min(560px, 95vw);
+        }
+        .location-dialog ha-selector {
+          display: block;
+          margin-top: 8px;
+        }
+        .location-dialog p {
+          margin: 0 0 8px;
+          color: var(--secondary-text-color);
+          font-size: 14px;
         }
         .sun-fallback-note {
           margin: 8px 16px 0;
@@ -2097,6 +2152,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       dusk: this._duskMinimumSeconds(),
       scenes: this._sceneIdsFromForm(),
       overlay: this._previewOverlay,
+      location: this._previewLocation,
     });
   }
 
@@ -2161,6 +2217,9 @@ class SceneExtrapolationPanel extends HTMLElement {
             }
             if (this._previewOverlay) {
               msg.overlay = this._previewOverlay;
+            }
+            if (this._previewLocation) {
+              msg.location = this._previewLocation;
             }
             payload = await this._hass.callWS(msg);
           } else {
@@ -2295,10 +2354,158 @@ class SceneExtrapolationPanel extends HTMLElement {
       });
       row.appendChild(chip);
     }
+
+    const locationBtn = document.createElement("ha-icon-button");
+    locationBtn.className = "sun-location-btn";
+    locationBtn.label = "Preview another location";
+    const locationIcon = document.createElement("ha-icon");
+    locationIcon.setAttribute("icon", "mdi:map-marker-outline");
+    locationBtn.appendChild(locationIcon);
+    locationBtn.addEventListener("click", () => this._openLocationDialog());
+    row.appendChild(locationBtn);
+
+    const banner = document.createElement("div");
+    banner.className = "sun-location-override";
+    banner.hidden = true;
+    const bannerIcon = document.createElement("ha-icon");
+    bannerIcon.setAttribute("icon", "mdi:map-marker");
+    const copy = document.createElement("div");
+    copy.className = "sun-location-copy";
+    const title = document.createElement("div");
+    title.className = "title";
+    title.textContent = "Previewing another location";
+    const coords = document.createElement("div");
+    coords.className = "coords";
+    copy.append(title, coords);
+    const change = document.createElement("ha-button");
+    change.appearance = "plain";
+    change.textContent = "Change";
+    change.addEventListener("click", () => this._openLocationDialog());
+    const reset = document.createElement("ha-icon-button");
+    reset.label = "Use home location";
+    const resetIcon = document.createElement("ha-icon");
+    resetIcon.setAttribute("icon", "mdi:close");
+    reset.appendChild(resetIcon);
+    reset.addEventListener("click", () => this._setPreviewLocation(null));
+    banner.append(bannerIcon, copy, change, reset);
+
     this._datePicker = picker;
     this._dateChips = row.querySelectorAll(".sun-chip");
-    toolbar.append(row, this._buildYearScrub());
+    this._locationBtn = locationBtn;
+    this._locationBanner = banner;
+    this._locationCoords = coords;
+    toolbar.append(row, banner, this._buildYearScrub());
+    this._syncLocationToolbar();
     return toolbar;
+  }
+
+  _homeLocation() {
+    const cfg = this._hass?.config;
+    if (cfg?.latitude == null || cfg?.longitude == null) {
+      return null;
+    }
+    return {
+      latitude: Number(cfg.latitude),
+      longitude: Number(cfg.longitude),
+    };
+  }
+
+  _setPreviewLocation(location) {
+    const home = this._homeLocation();
+    const next =
+      location && !sameLocation(location, home)
+        ? {
+            latitude: Number(location.latitude),
+            longitude: Number(location.longitude),
+          }
+        : null;
+    const changed = !sameLocation(next, this._previewLocation);
+    this._previewLocation = next;
+    this._syncLocationToolbar();
+    if (!changed) {
+      return;
+    }
+    this._sunPathKey = undefined;
+    this._ensureSunPath();
+  }
+
+  _syncLocationToolbar() {
+    const active = Boolean(this._previewLocation);
+    if (this._locationBtn) {
+      this._locationBtn.hidden = active;
+    }
+    if (this._locationBanner) {
+      this._locationBanner.hidden = !active;
+    }
+    if (this._locationCoords && this._previewLocation) {
+      this._locationCoords.textContent = formatLatLng(
+        this._previewLocation.latitude,
+        this._previewLocation.longitude
+      );
+    }
+    const homeName = this._hass?.config?.location_name || "home";
+    if (this._locationBanner) {
+      const reset = this._locationBanner.querySelector("ha-icon-button");
+      if (reset) {
+        reset.label = `Use ${homeName} location`;
+      }
+    }
+  }
+
+  _openLocationDialog() {
+    this.shadowRoot.querySelector("ha-dialog.location-dialog")?.remove();
+    const home = this._homeLocation() || { latitude: 0, longitude: 0 };
+    const data = {
+      latitude: this._previewLocation?.latitude ?? home.latitude,
+      longitude: this._previewLocation?.longitude ?? home.longitude,
+    };
+    const dialog = document.createElement("ha-dialog");
+    dialog.className = "location-dialog";
+    dialog.setAttribute("header-title", "Preview location");
+    dialog.open = true;
+
+    const help = document.createElement("p");
+    help.textContent =
+      "Sun times and light graphs use this place. The clock stays on your Home Assistant timezone.";
+    const picker = document.createElement("ha-selector");
+    picker.hass = this._hass;
+    picker.label = "Location";
+    picker.selector = { location: { radius: false } };
+    picker.value = { latitude: data.latitude, longitude: data.longitude };
+    picker.addEventListener("value-changed", (ev) => {
+      ev.stopPropagation();
+      const value = ev.detail?.value;
+      if (value?.latitude == null || value?.longitude == null) {
+        return;
+      }
+      data.latitude = value.latitude;
+      data.longitude = value.longitude;
+    });
+    dialog.append(help, picker);
+
+    const footer = customElements.get("ha-dialog-footer")
+      ? document.createElement("ha-dialog-footer")
+      : document.createElement("div");
+    footer.slot = "footer";
+    const cancel = document.createElement("ha-button");
+    cancel.slot = "secondaryAction";
+    cancel.appearance = "plain";
+    cancel.textContent = this._loc("ui.common.cancel", "Cancel");
+    cancel.addEventListener("click", () => {
+      dialog.open = false;
+    });
+    const apply = document.createElement("ha-button");
+    apply.slot = "primaryAction";
+    apply.variant = "brand";
+    apply.textContent = "Preview";
+    apply.addEventListener("click", () => {
+      this._setPreviewLocation(data);
+      dialog.open = false;
+    });
+    footer.append(cancel, apply);
+    dialog.appendChild(footer);
+    dialog.addEventListener("closed", () => dialog.remove());
+    this.shadowRoot.appendChild(dialog);
   }
 
   _buildYearScrub() {
@@ -2428,6 +2635,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         chip.removeAttribute("selected");
       }
     });
+    this._syncLocationToolbar();
     this._syncYearScrub();
   }
 
@@ -2988,6 +3196,25 @@ function formatClock(seconds) {
   const hours = Math.floor(seconds / 3600) % 24;
   const minutes = Math.floor((seconds % 3600) / 60);
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function formatLatLng(lat, lng) {
+  const ns = lat >= 0 ? "N" : "S";
+  const ew = lng >= 0 ? "E" : "W";
+  return `${Math.abs(lat).toFixed(2)}° ${ns}, ${Math.abs(lng).toFixed(2)}° ${ew}`;
+}
+
+function sameLocation(a, b) {
+  if (!a && !b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return (
+    Math.abs(a.latitude - b.latitude) < 1e-6 &&
+    Math.abs(a.longitude - b.longitude) < 1e-6
+  );
 }
 
 function sunStrokePaths(curve, xOf, yOf) {

@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pencil on each light timeline to edit that lamp in the scene for that event, with optional live preview
 - Year-long scrubber under the preview date to drag between days
 - Hover a sun or light graph to inspect time and sun elevation in a fixed readout (cursor line; today’s “now” line stays)
+- Preview another latitude/longitude on create/edit (quiet map pin until active, then a banner)
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)

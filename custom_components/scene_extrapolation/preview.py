@@ -86,9 +86,10 @@ def build_preview(
     target_date: str | None,
     scene_ids: dict[str, str | None],
     overlay: dict[str, Any] | None = None,
+    location: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Sun path plus per-light brightness/color samples for the chosen date."""
-    sun_path = build_sun_path(hass, dusk_minimum, target_date)
+    sun_path = build_sun_path(hass, dusk_minimum, target_date, location)
     lights, warnings = _light_series(
         hass, sun_path["events"], scene_ids, overlay
     )

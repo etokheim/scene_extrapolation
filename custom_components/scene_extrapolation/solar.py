@@ -173,24 +173,35 @@ def build_sun_path(
     hass: HomeAssistant,
     dusk_minimum: int | None = None,
     target_date: date | datetime | str | None = None,
+    location: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return solar events and elevation samples for a calendar day."""
+    """Return solar events and elevation samples for a calendar day.
+
+    `location` may supply latitude/longitude for a preview override. The clock
+    and “today” stay on Home Assistant’s timezone — same as `turn_on`.
+    """
     time_zone = hass.config.time_zone or "UTC"
     tz = ZoneInfo(time_zone)
     now = datetime.now(tz)
     target = _parse_target_date(time_zone, target_date)
     start = target.replace(hour=0, minute=0, second=0, microsecond=0)
     today = target.date() == now.date()
-    location = LocationInfo(
-        timezone=time_zone,
-        latitude=hass.config.latitude,
-        longitude=hass.config.longitude,
+    latitude = (
+        float(location["latitude"]) if location else hass.config.latitude
     )
-    observer = location.observer
+    longitude = (
+        float(location["longitude"]) if location else hass.config.longitude
+    )
+    place = LocationInfo(
+        timezone=time_zone,
+        latitude=latitude,
+        longitude=longitude,
+    )
+    observer = place.observer
 
     events_by_name, fallbacks = resolve_solar_events(
-        latitude=hass.config.latitude,
-        longitude=hass.config.longitude,
+        latitude=latitude,
+        longitude=longitude,
         time_zone=time_zone,
         target=target,
     )
@@ -237,5 +248,5 @@ def build_sun_path(
         },
         "events": events,
         "curve": curve,
-        "max_elevation": round(max_solar_elevation(hass.config.latitude), 2),
+        "max_elevation": round(max_solar_elevation(latitude), 2),
     }
