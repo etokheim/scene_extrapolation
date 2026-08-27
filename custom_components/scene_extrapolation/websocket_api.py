@@ -19,7 +19,10 @@ from .const import (
     DATA_STORE,
     DOMAIN,
 )
-from .native_scene import async_update_native_scene_entity
+from .native_scene import (
+    async_update_native_scene_entities,
+    async_update_native_scene_entity,
+)
 from .preview import build_preview
 from .scene import async_create_or_update_entity, async_remove_entity
 from .solar import build_sun_path
@@ -37,6 +40,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_sun_path)
     websocket_api.async_register_command(hass, ws_preview)
     websocket_api.async_register_command(hass, ws_update_native_scene)
+    websocket_api.async_register_command(hass, ws_update_native_scenes)
 
 
 def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
@@ -210,17 +214,20 @@ async def ws_sun_path(
     connection.send_result(msg["id"], payload)
 
 
+_OVERLAY_PATCH = {
+    vol.Required("scene_entity_id"): str,
+    vol.Required("entity_id"): str,
+    vol.Required("entity_state"): dict,
+}
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/preview",
         vol.Optional("dusk_minimum"): int,
         vol.Optional("date"): str,
         vol.Optional("scenes"): dict,
-        vol.Optional("overlay"): {
-            vol.Required("scene_entity_id"): str,
-            vol.Required("entity_id"): str,
-            vol.Required("entity_state"): dict,
-        },
+        vol.Optional("overlay"): vol.Any(_OVERLAY_PATCH, [_OVERLAY_PATCH]),
         vol.Optional("location"): {
             vol.Required("latitude"): vol.All(
                 vol.Coerce(float), vol.Range(min=-90, max=90)
@@ -273,6 +280,41 @@ async def ws_update_native_scene(
             msg["scene_entity_id"],
             msg["entity_id"],
             msg["entity_state"],
+        )
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "update_failed", str(err))
+        return
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/update_native_scenes",
+        vol.Required("entity_id"): str,
+        vol.Required("updates"): [
+            {
+                vol.Required("scene_entity_id"): str,
+                vol.Required("entity_state"): dict,
+            }
+        ],
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_update_native_scenes(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Write one light into several native YAML scenes and reload once."""
+    try:
+        payload = await async_update_native_scene_entities(
+            hass,
+            msg["entity_id"],
+            [
+                (item["scene_entity_id"], item["entity_state"])
+                for item in msg["updates"]
+            ],
         )
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "update_failed", str(err))

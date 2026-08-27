@@ -17,9 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Earliest dusk time is set in the dusk event dialog
 - Click a solar event above the chart to assign its native scene (optional link for dawn / sunrise / sunset)
 - Dots on each light timeline expand to a native icon button on hover; click the row to edit the closest assigned scene
-- Light-edit sidebar lists each unique native scene as a compact chip (not one row per solar event); Save writes that Home Assistant scene
+- Light-edit sidebar lists each unique native scene as a compact chip (not one row per solar event)
+- Light-edit sidebar uses a Huemane-style hue/temperature wheel: pin for the selected scene, dots for the others
 - Search in the preview-location dialog jumps the map pin
-- Discard confirmation when leaving the light editor with unsaved slider edits
+- Discard confirmation when leaving the light editor with unsaved edits (all scenes for that lamp)
 - Year-long scrubber under the preview date to drag between days
 - Hover a sun or light graph to inspect time and sun elevation in a fixed readout (cursor line; today’s “now” line stays)
 - Preview another latitude/longitude on create/edit (quiet map pin until active, then a banner)
@@ -34,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scene light and event editors use Home Assistant’s automation-style right sidebar (bottom sheet on narrow screens)
 - Desktop sidebar open/close is a 200ms transform-only slide; the 1024px editor column and Save button stay put (the drawer overlays)
 - Editor graphs and form use a 1024px column (12px padding) instead of Home Assistant’s 1540px automation-editor canvas
-- Light-row edit marks are smaller shadowed dots; hover expands them in the same color with a native `ha-icon-button` pencil
+- Light-edit Save writes every changed native scene for that lamp; switching scenes keeps drafts without a prompt
 - Hovering the light-row stack drops the feathered seams so bands read as solid
 - Solar-event scene buttons look like controls, warn when empty, and no longer outline linked events
 - Scene pickers moved onto the solar event row; the form keeps nightlights

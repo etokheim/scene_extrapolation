@@ -573,6 +573,191 @@ class SceneExtrapolationPanel extends HTMLElement {
           line-height: 1.4;
           color: var(--secondary-text-color);
         }
+        .hue-wheel-stage {
+          position: relative;
+          margin: 8px -8px 0;
+          padding: 28px 8px 88px;
+        }
+        .hue-wheel-canvas {
+          position: relative;
+          width: 100%;
+          max-width: 320px;
+          margin: 0 auto;
+          overflow: visible;
+          user-select: none;
+          -webkit-user-select: none;
+          touch-action: none;
+        }
+        .hue-wheel-glow,
+        .hue-wheel-bg {
+          display: block;
+          width: 100%;
+          height: auto;
+          border-radius: 50%;
+        }
+        .hue-wheel-glow {
+          position: absolute;
+          left: 0;
+          top: 0;
+          pointer-events: none;
+          z-index: 0;
+          transform: scale(1.1);
+          transform-origin: center center;
+          filter: blur(54px) saturate(1.45);
+          opacity: 0.55;
+        }
+        .hue-wheel-bg {
+          position: relative;
+          z-index: 1;
+          box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
+        }
+        .hue-wheel-svg {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          height: 100%;
+          overflow: visible;
+          z-index: 2;
+          color: white;
+        }
+        .hue-wheel-svg .gm {
+          cursor: pointer;
+        }
+        .hue-wheel-svg .marker-outline {
+          fill: white;
+          filter: url(#se-dot-shadow);
+          transform: translate(-2px, -2px);
+        }
+        .hue-wheel-svg .marker {
+          fill: currentColor;
+        }
+        .hue-wheel-svg .icon.text {
+          font-size: 20px;
+          font-weight: bold;
+          paint-order: stroke fill;
+        }
+        .hue-wheel-svg .gm.off-mode {
+          opacity: 0.7;
+        }
+        .hue-wheel-svg .gm.off-mode .marker-outline {
+          display: none;
+        }
+        .hue-wheel-svg .gm.off-mode .marker {
+          filter: url(#se-dot-shadow);
+        }
+        .hue-wheel-svg .gm.active .marker-outline,
+        .hue-wheel-svg .gm.preview .marker-outline {
+          display: none;
+        }
+        .hue-wheel-svg .gm.active .marker,
+        .hue-wheel-svg .gm.preview .marker {
+          filter: url(#se-active-shadow);
+        }
+        .hue-wheel-svg .gm:not(.active) .icon {
+          display: none;
+        }
+        .hue-wheel-svg .gm.active.drag {
+          scale: 1.1;
+        }
+        .hue-wheel-svg .gm.boing {
+          animation: hue-marker-boing 150ms ease-in-out;
+        }
+        .hue-wheel-svg .gm.glide {
+          transition: transform 0.4s ease-out, color 0.4s ease-out;
+        }
+        @keyframes hue-marker-boing {
+          0% { scale: 0.7; }
+          50% { scale: 1.05; translate: 0 -5px; }
+          100% { scale: 1; }
+        }
+        .hue-wheel-chrome {
+          position: absolute;
+          left: 8px;
+          right: 8px;
+          bottom: 16px;
+          display: flex;
+          flex-wrap: nowrap;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 8px;
+          pointer-events: none;
+          z-index: 3;
+        }
+        .hue-mode-pill[hidden] {
+          display: none !important;
+        }
+        .hue-wheel-chrome > * {
+          pointer-events: auto;
+        }
+        .hue-mode-pill,
+        .hue-presets {
+          box-sizing: border-box;
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          align-items: center;
+          min-height: 40px;
+          padding: 8px;
+          gap: 8px;
+          margin-left: auto;
+          flex: 1 1 auto;
+          min-width: 0;
+          border-radius: 20px;
+          box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
+          background: var(--secondary-background-color, #242022);
+        }
+        .hue-mode-pill {
+          justify-content: flex-start;
+          flex-shrink: 0;
+        }
+        .hue-mode-btn,
+        .hue-preset {
+          box-sizing: border-box;
+          flex-shrink: 0;
+          width: 32px;
+          height: 32px;
+          margin: 0;
+          padding: 2px;
+          border-radius: 50%;
+          border: 2px solid transparent;
+          background: transparent;
+          cursor: pointer;
+          appearance: none;
+          -webkit-appearance: none;
+        }
+        .hue-mode-btn:hover,
+        .hue-preset:hover {
+          border-color: rgba(255, 255, 255, 0.45);
+        }
+        .hue-mode-btn.active,
+        .hue-preset.active {
+          border-color: #fff;
+        }
+        .hue-mode-swatch {
+          display: block;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+        }
+        .hue-mode-swatch.color {
+          background: conic-gradient(
+            #ff3b30,
+            #ffcc00,
+            #34c759,
+            #5ac8fa,
+            #007aff,
+            #af52de,
+            #ff3b30
+          );
+        }
+        .hue-mode-swatch.temp {
+          background: linear-gradient(#ffda95, #ffffff, #cbe4f3);
+        }
+        .hue-preset {
+          background-clip: content-box;
+          background-origin: content-box;
+        }
         .light-dialog ha-selector,
         .light-dialog ha-switch,
         .event-dialog ha-selector,
@@ -1889,20 +2074,47 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
 
     const snapshot = this._snapshotLight(light.entity_id);
-    const supported =
-      this._hass.states[light.entity_id]?.attributes?.supported_color_modes || [];
+    const attrs = this._hass.states[light.entity_id]?.attributes || {};
+    const supported = attrs.supported_color_modes || [];
+    const hasColor = supported.some((mode) =>
+      ["hs", "rgb", "rgbw", "rgbww", "xy"].includes(mode)
+    );
+    // rgbww exposes white channels, not always `color_temp` in supported_color_modes.
+    const hasTemp =
+      supported.includes("color_temp") ||
+      supported.includes("rgbww") ||
+      attrs.min_color_temp_kelvin != null;
     const events = this._sunPath?.events || [];
+    const uniqueScenes = this._uniqueAssignedScenes(events);
+    const drafts = new Map();
+    for (const item of uniqueScenes) {
+      const stored =
+        (light.event_states || []).find((row) => row.event === item.event.id)
+          ?.state ||
+        (light.event_states || []).find(
+          (row) => row.scene_entity_id === item.sceneId
+        )?.state ||
+        { state: "off" };
+      drafts.set(item.sceneId, {
+        draft: { ...stored },
+        saved: lightDraftFingerprint(stored),
+        event: item.event,
+        index: drafts.size + 1,
+      });
+    }
     let currentEvent = event;
-    let draft = {
-      ...((light.event_states || []).find((item) => item.event === event.id)
-        ?.state || { state: "off" }),
-    };
-    let savedFingerprint = lightDraftFingerprint(draft);
     let liveEdit = false;
     let liveApplied = false;
+    let wheelCtl = null;
 
     const sceneEntityId = () => this._eventSceneId(currentEvent.id);
-    const isDirty = () => lightDraftFingerprint(draft) !== savedFingerprint;
+    const currentEntry = () => drafts.get(sceneEntityId());
+    const currentDraft = () => currentEntry().draft;
+    const dirtyEntries = () =>
+      [...drafts.entries()].filter(
+        ([, entry]) => lightDraftFingerprint(entry.draft) !== entry.saved
+      );
+    const isDirty = () => dirtyEntries().length > 0;
     const restoreLive = async () => {
       if (liveApplied) {
         await this._applyLightState(light.entity_id, snapshot);
@@ -1914,23 +2126,25 @@ class SceneExtrapolationPanel extends HTMLElement {
         return;
       }
       liveApplied = true;
-      await this._applyLightState(light.entity_id, draft);
+      await this._applyLightState(light.entity_id, currentDraft());
     };
-    const previewDraft = () => {
-      this._previewOverlay = {
-        scene_entity_id: sceneEntityId(),
+    const previewDrafts = () => {
+      const patches = dirtyEntries().map(([sceneId, entry]) => ({
+        scene_entity_id: sceneId,
         entity_id: light.entity_id,
-        entity_state: { ...draft },
-      };
-      this._schedulePreview();
-    };
-    const dropPreviewOverlay = () => {
-      if (!this._previewOverlay) {
+        entity_state: { ...entry.draft },
+      }));
+      if (!patches.length) {
+        if (!this._previewOverlay) {
+          return;
+        }
+        this._previewOverlay = null;
+        this._sunPathKey = undefined;
+        this._ensureSunPath();
         return;
       }
-      this._previewOverlay = null;
-      this._sunPathKey = undefined;
-      this._ensureSunPath();
+      this._previewOverlay = patches;
+      this._schedulePreview();
     };
 
     const infoBtn = document.createElement("ha-icon-button");
@@ -1950,6 +2164,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._sunPathKey = undefined;
         this._ensureSunPath();
         restoreLive();
+        wheelCtl?.disconnect();
       },
     });
     if (!opened) {
@@ -1962,60 +2177,91 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (!isDirty()) {
         return Promise.resolve(true);
       }
+      const names = dirtyEntries()
+        .map(([sceneId]) => `“${this._sceneName(sceneId)}”`)
+        .join(", ");
       return this._confirmDiscard({
         title: "Discard unsaved changes?",
-        text: `You have unsaved edits to ${light.name} in “${this._sceneName(sceneEntityId())}”. Closing drops them from that Home Assistant scene.`,
+        text: `You have unsaved edits to ${light.name} in ${names}. Closing drops them from those Home Assistant scenes.`,
       });
     };
     const subtitleEl = header.querySelector("[slot='subtitle']");
+    const chipsHost = document.createElement("div");
+    const note = document.createElement("p");
+    note.className = "sidebar-note";
+    const fieldsHost = document.createElement("div");
+    const wheelMount = document.createElement("div");
+    body.append(chipsHost, note, wheelMount, fieldsHost);
 
-    const paint = () => {
-      body.replaceChildren();
-      footer.replaceChildren();
-      const sceneName = this._sceneName(sceneEntityId());
+    const selectScene = async (next, { fromWheel = false } = {}) => {
+      const nextId = this._eventSceneId(next.id);
+      if (!nextId) {
+        this._openEventSceneDialog(next);
+        return;
+      }
+      currentEvent = next;
       if (subtitleEl) {
-        subtitleEl.textContent = sceneName;
+        subtitleEl.textContent = this._sceneName(nextId);
       }
+      paintChips();
+      paintFields();
+      paintNote();
+      if (!fromWheel) {
+        const mode = draftWheelMode(currentDraft(), hasColor, hasTemp);
+        wheelCtl?.setMode(mode, { convertDraft: false });
+      }
+      wheelCtl?.sync();
+      if (liveEdit) {
+        await applyLive();
+      }
+    };
 
-      const uniqueScenes = this._uniqueAssignedScenes(events);
-      if (uniqueScenes.length) {
-        const list = document.createElement("div");
-        list.className = "light-scene-list";
-        list.setAttribute("role", "listbox");
-        list.setAttribute("aria-label", "Scene");
-        for (const item of uniqueScenes) {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "sun-event clickable";
-          btn.setAttribute("role", "option");
-          if (item.sceneId === sceneEntityId()) {
-            btn.setAttribute("aria-current", "true");
-          }
-          const icon = document.createElement("ha-icon");
-          const entity = this._hass?.states?.[item.sceneId];
-          icon.setAttribute("icon", entity?.attributes?.icon || "mdi:palette");
-          const name = document.createElement("span");
-          name.className = "name";
-          name.textContent = this._sceneName(item.sceneId);
-          const when = document.createElement("span");
-          when.className = "time";
-          when.textContent = item.events.map((entry) => entry.name).join(" · ");
-          btn.append(icon, name, when);
-          btn.addEventListener("click", () => {
-            if (item.sceneId !== sceneEntityId()) {
-              host._switchLightEvent(item.event);
-            }
-          });
-          list.appendChild(btn);
+    const paintNote = () => {
+      note.textContent =
+        "Save writes this lamp into every scene you changed. Switching scenes keeps drafts until you Save or Cancel.";
+    };
+
+    const paintChips = () => {
+      chipsHost.replaceChildren();
+      if (!uniqueScenes.length) {
+        return;
+      }
+      const list = document.createElement("div");
+      list.className = "light-scene-list";
+      list.setAttribute("role", "listbox");
+      list.setAttribute("aria-label", "Scene");
+      const currentId = sceneEntityId();
+      for (const item of uniqueScenes) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "sun-event clickable";
+        btn.setAttribute("role", "option");
+        if (item.sceneId === currentId) {
+          btn.setAttribute("aria-current", "true");
         }
-        body.appendChild(list);
+        const icon = document.createElement("ha-icon");
+        const entity = this._hass?.states?.[item.sceneId];
+        icon.setAttribute("icon", entity?.attributes?.icon || "mdi:palette");
+        const name = document.createElement("span");
+        name.className = "name";
+        name.textContent = this._sceneName(item.sceneId);
+        const when = document.createElement("span");
+        when.className = "time";
+        when.textContent = item.events.map((entry) => entry.name).join(" · ");
+        btn.append(icon, name, when);
+        btn.addEventListener("click", () => {
+          if (item.sceneId !== sceneEntityId()) {
+            host._switchLightEvent(item.event);
+          }
+        });
+        list.appendChild(btn);
       }
+      chipsHost.appendChild(list);
+    };
 
-      const note = document.createElement("p");
-      note.className = "sidebar-note";
-      note.textContent = `Save writes this lamp into the Home Assistant scene “${sceneName}”. Automations that use that scene will pick up the change.`;
-      body.appendChild(note);
-
+    const paintFields = () => {
+      fieldsHost.replaceChildren();
+      const draft = currentDraft();
       const liveRow = document.createElement("label");
       liveRow.className = "dialog-row";
       const liveLabel = document.createElement("span");
@@ -2032,7 +2278,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
       });
       liveRow.append(liveLabel, liveSwitch);
-      body.appendChild(liveRow);
+      fieldsHost.appendChild(liveRow);
 
       const onField = document.createElement("ha-selector");
       onField.hass = this._hass;
@@ -2041,11 +2287,11 @@ class SceneExtrapolationPanel extends HTMLElement {
       onField.selector = { boolean: {} };
       onField.addEventListener("value-changed", async (ev) => {
         ev.stopPropagation();
-        draft.state = ev.detail.value ? "on" : "off";
-        previewDraft();
+        currentDraft().state = ev.detail.value ? "on" : "off";
+        previewDrafts();
         await applyLive();
       });
-      body.appendChild(onField);
+      fieldsHost.appendChild(onField);
 
       const brightness = document.createElement("ha-selector");
       brightness.hass = this._hass;
@@ -2062,114 +2308,97 @@ class SceneExtrapolationPanel extends HTMLElement {
       };
       brightness.addEventListener("value-changed", async (ev) => {
         ev.stopPropagation();
-        draft.brightness = Math.round((Number(ev.detail.value) / 100) * 255);
-        if (draft.brightness > 0) {
-          draft.state = "on";
+        const nextDraft = currentDraft();
+        nextDraft.brightness = Math.round((Number(ev.detail.value) / 100) * 255);
+        if (nextDraft.brightness > 0) {
+          nextDraft.state = "on";
         }
-        previewDraft();
+        previewDrafts();
         await applyLive();
       });
-      body.appendChild(brightness);
-
-      const hasTemp = supported.includes("color_temp");
-      const hasColor = supported.some((mode) =>
-        ["hs", "rgb", "rgbw", "rgbww", "xy"].includes(mode)
-      );
-      if (hasTemp) {
-        const attrs = this._hass.states[light.entity_id]?.attributes || {};
-        const temp = document.createElement("ha-selector");
-        temp.hass = this._hass;
-        temp.label = "Color temperature";
-        temp.value = draft.color_temp_kelvin || attrs.min_color_temp_kelvin || 2700;
-        temp.selector = {
-          color_temp: {
-            unit: "kelvin",
-            min: attrs.min_color_temp_kelvin,
-            max: attrs.max_color_temp_kelvin,
-          },
-        };
-        temp.addEventListener("value-changed", async (ev) => {
-          ev.stopPropagation();
-          draft.color_temp_kelvin = ev.detail.value;
-          draft.rgb_color = undefined;
-          draft.hs_color = undefined;
-          draft.state = "on";
-          previewDraft();
-          await applyLive();
-        });
-        body.appendChild(temp);
-      }
-      if (hasColor) {
-        const color = document.createElement("ha-selector");
-        color.hass = this._hass;
-        color.label = "Color";
-        color.value = draft.rgb_color || [255, 214, 170];
-        color.selector = { color_rgb: {} };
-        color.addEventListener("value-changed", async (ev) => {
-          ev.stopPropagation();
-          draft.rgb_color = ev.detail.value;
-          draft.color_temp_kelvin = undefined;
-          draft.state = "on";
-          previewDraft();
-          await applyLive();
-        });
-        body.appendChild(color);
-      }
-
-      const cancel = document.createElement("ha-button");
-      cancel.appearance = "plain";
-      cancel.textContent = "Cancel";
-      cancel.addEventListener("click", () => this._requestCloseSceneSidebar(host));
-      const save = document.createElement("ha-button");
-      save.variant = "brand";
-      save.textContent = "Save to scene";
-      save.addEventListener("click", async () => {
-        try {
-          await this._hass.callWS({
-            type: `${DOMAIN}/update_native_scene`,
-            scene_entity_id: sceneEntityId(),
-            entity_id: light.entity_id,
-            entity_state: draft,
-          });
-          await restoreLive();
-          this._previewOverlay = null;
-          this._clearPreviewCache();
-          this._commitSceneSidebar(host);
-          this._ensureSunPath();
-        } catch (err) {
-          this._error = err.message || String(err);
-          this._requestCloseSceneSidebar(host);
-          this._renderEditor();
-        }
-      });
-      footer.append(cancel, save);
+      fieldsHost.appendChild(brightness);
     };
+
+    const onWheelChange = async () => {
+      previewDrafts();
+      wheelCtl?.syncPresets();
+      await applyLive();
+    };
+
+    if (hasColor || hasTemp) {
+      wheelCtl = createSceneColorWheel({
+        hasColor,
+        hasTemp,
+        tempMin: attrs.min_color_temp_kelvin || 2000,
+        tempMax: attrs.max_color_temp_kelvin || 6500,
+        getState: () => ({
+          scenes: uniqueScenes.map((item) => {
+            const entry = drafts.get(item.sceneId);
+            return {
+              id: item.sceneId,
+              index: entry.index,
+              draft: entry.draft,
+              event: item.event,
+            };
+          }),
+          activeId: sceneEntityId(),
+        }),
+        onSelect: (sceneId) => {
+          const entry = drafts.get(sceneId);
+          if (entry) {
+            selectScene(entry.event, { fromWheel: true });
+          }
+        },
+        onChange: onWheelChange,
+      });
+      wheelMount.appendChild(wheelCtl.el);
+      wheelCtl.setMode(draftWheelMode(currentDraft(), hasColor, hasTemp), {
+        convertDraft: false,
+      });
+    }
+
+    const cancel = document.createElement("ha-button");
+    cancel.appearance = "plain";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => this._requestCloseSceneSidebar(host));
+    const save = document.createElement("ha-button");
+    save.variant = "brand";
+    save.textContent = "Save";
+    save.addEventListener("click", async () => {
+      try {
+        const updates = dirtyEntries().map(([sceneId, entry]) => ({
+          scene_entity_id: sceneId,
+          entity_state: entry.draft,
+        }));
+        if (updates.length) {
+          await this._hass.callWS({
+            type: `${DOMAIN}/update_native_scenes`,
+            entity_id: light.entity_id,
+            updates,
+          });
+        }
+        await restoreLive();
+        this._previewOverlay = null;
+        this._clearPreviewCache();
+        wheelCtl?.disconnect();
+        this._commitSceneSidebar(host);
+        this._ensureSunPath();
+      } catch (err) {
+        this._error = err.message || String(err);
+        this._requestCloseSceneSidebar(host);
+        this._renderEditor();
+      }
+    });
+    footer.append(cancel, save);
 
     host._switchLightEvent = async (next) => {
-      if (!this._eventSceneId(next.id)) {
-        this._openEventSceneDialog(next);
-        return;
-      }
-      if (this._eventSceneId(next.id) === sceneEntityId()) {
-        currentEvent = next;
-        return;
-      }
-      if (isDirty() && !(await host._confirmIfDirty())) {
-        return;
-      }
-      await restoreLive();
-      liveEdit = false;
-      currentEvent = next;
-      draft = {
-        ...((light.event_states || []).find((item) => item.event === next.id)
-          ?.state || { state: "off" }),
-      };
-      savedFingerprint = lightDraftFingerprint(draft);
-      dropPreviewOverlay();
-      paint();
+      await selectScene(next);
     };
 
-    paint();
+    paintNote();
+    paintChips();
+    paintFields();
+    wheelCtl?.sync();
   }
 
   async _openSaveDialog({ rename = false, focus } = {}) {
@@ -3667,6 +3896,802 @@ function isoFromDayOfYear(year, dayIndex) {
   return `${nextYear}-${nextMonth}-${nextDay}`;
 }
 
+const HUE_WHEEL_RENDER = 600;
+const HUE_COLOR_PRESETS = [
+  "#ff3b30",
+  "#ff9500",
+  "#ffcc00",
+  "#34c759",
+  "#5ac8fa",
+  "#007aff",
+  "#5856d6",
+  "#af52de",
+];
+const HUE_TEMP_PRESETS = [2200, 2700, 3000, 4000, 5000, 6500];
+const HUE_PIN_PATH =
+  "M 24,0 C 10.745166,0 0,10.575951 0,23.622046 0,39.566928 21,57.578739 22.05,58.346457 L 24,60 25.95,58.346457 C 27,57.578739 48,39.566928 48,23.622046 48,10.575951 37.254834,0 24,0 Z";
+const HUE_DOT_PATH = "M6 0A6 6 0 006 12 6 6 0 006 0Z";
+const HUE_DOT_OUTLINE_PATH = "M8 0A8 8 0 008 16 8 8 0 008 0Z";
+const _hueWheelImageCache = new Map();
+
+function hueLinearScale(t, min, max) {
+  return (max - min) * t + min;
+}
+
+function hueCurveScale(t, min, max) {
+  let addon = 0;
+  const coef = max / min / 65;
+  if (t <= 0.1) {
+    addon = hueLinearScale(t * 10, 0, coef);
+  } else if (t <= 0.97) {
+    addon = coef - hueLinearScale((t - 0.1) / 0.9, 0, 2 * coef);
+  } else {
+    addon = -coef + hueLinearScale((t - 0.97) / 0.03, 0, coef);
+  }
+  return (Math.pow(max / min, Math.pow(t, 1.55)) + addon) * min;
+}
+
+function inverseHueCurveScale(targetValue, min, max) {
+  const epsilon = 0.0001;
+  let low = 0;
+  let high = 1;
+  let t = 0.5;
+  while (high - low > epsilon) {
+    const midValue = hueCurveScale(t, min, max);
+    if (midValue < targetValue) {
+      low = t;
+    } else {
+      high = t;
+    }
+    t = (low + high) / 2;
+  }
+  return t;
+}
+
+function xy2polar(x, y) {
+  return [Math.sqrt(x * x + y * y), Math.atan2(y, x)];
+}
+
+function polar2xy(r, phi) {
+  return [r * Math.cos(phi), r * Math.sin(phi)];
+}
+
+function rad2deg(rad) {
+  return ((rad + Math.PI) / (2 * Math.PI)) * 360;
+}
+
+function deg2rad(deg) {
+  return (deg / 360) * 2 * Math.PI - Math.PI;
+}
+
+function hueFromDeg(deg) {
+  deg -= 70;
+  if (deg < 0) {
+    deg += 360;
+  }
+  return deg;
+}
+
+function degFromHue(hue) {
+  hue += 70;
+  if (hue > 360) {
+    hue -= 360;
+  }
+  return hue;
+}
+
+function saturationFromR(r, radius) {
+  const exp = 1.9;
+  const saturation = Math.pow(r, exp) / Math.pow(radius, exp);
+  return saturation > 1 ? 1 : saturation;
+}
+
+function rFromSaturation(saturation, radius) {
+  const exp = 1.9;
+  return Math.pow(saturation * Math.pow(radius, exp), 1 / exp);
+}
+
+function fixHSValue(value, r, radius, hue, fixPoint, lower, maxOffset = 5) {
+  const precondition = lower
+    ? r > radius / 2
+    : r < (3 * radius) / 4 && r > radius / 4;
+  if (
+    precondition &&
+    hue >= fixPoint - maxOffset &&
+    hue <= fixPoint + maxOffset
+  ) {
+    let offset = fixPoint - hue;
+    if (offset < 0) {
+      offset = -offset;
+    }
+    offset = maxOffset - offset;
+    value += lower ? -offset / 360 : offset / 360;
+  }
+  return value;
+}
+
+function hsValue(hue, r, radius) {
+  let value = 0.95;
+  value = fixHSValue(value, r, radius, hue, 60, true);
+  value = fixHSValue(value, r, radius, hue, 180, true);
+  value = fixHSValue(value, r, radius, hue, 240, false);
+  value = fixHSValue(value, r, radius, hue, 300, true);
+  return value > 1 ? 1 : value;
+}
+
+function hsv2rgb(hue, saturation, value) {
+  const chroma = value * saturation;
+  const hue1 = hue / 60;
+  const x = chroma * (1 - Math.abs((hue1 % 2) - 1));
+  let r1 = 0;
+  let g1 = 0;
+  let b1 = 0;
+  if (hue1 >= 0 && hue1 <= 1) {
+    [r1, g1, b1] = [chroma, x, 0];
+  } else if (hue1 >= 1 && hue1 <= 2) {
+    [r1, g1, b1] = [x, chroma, 0];
+  } else if (hue1 >= 2 && hue1 <= 3) {
+    [r1, g1, b1] = [0, chroma, x];
+  } else if (hue1 >= 3 && hue1 <= 4) {
+    [r1, g1, b1] = [0, x, chroma];
+  } else if (hue1 >= 4 && hue1 <= 5) {
+    [r1, g1, b1] = [x, 0, chroma];
+  } else if (hue1 >= 5 && hue1 <= 6) {
+    [r1, g1, b1] = [chroma, 0, x];
+  }
+  const m = value - chroma;
+  return [
+    Math.round(255 * (r1 + m)),
+    Math.round(255 * (g1 + m)),
+    Math.round(255 * (b1 + m)),
+  ];
+}
+
+function rgb2hsv(r, g, b) {
+  const rabs = r / 255;
+  const gabs = g / 255;
+  const babs = b / 255;
+  const v = Math.max(rabs, gabs, babs);
+  const diff = v - Math.min(rabs, gabs, babs);
+  const diffc = (c) => (v - c) / 6 / diff + 1 / 2;
+  let h = 0;
+  let s = 0;
+  if (diff !== 0) {
+    s = diff / v;
+    const rr = diffc(rabs);
+    const gg = diffc(gabs);
+    const bb = diffc(babs);
+    if (rabs === v) {
+      h = bb - gg;
+    } else if (gabs === v) {
+      h = 1 / 3 + rr - bb;
+    } else {
+      h = 2 / 3 + gg - rr;
+    }
+    if (h < 0) {
+      h += 1;
+    } else if (h > 1) {
+      h -= 1;
+    }
+  }
+  return [Math.round(h * 360), Math.round(s * 100) / 100, Math.round(v * 100) / 100];
+}
+
+function hueTempToRgb(kelvin) {
+  const start = 2000;
+  const tres = 4200;
+  const end = 6500;
+  const startRgb = [255, 180, 55];
+  const tresRgb = [255, 255, 255];
+  const endRgb = [190, 228, 243];
+  let k = kelvin;
+  if (k < start) {
+    k = start;
+  }
+  if (k > end) {
+    k = end;
+  }
+  if (k < tres) {
+    const t = (k - start) / (tres - start);
+    return [
+      Math.round(hueLinearScale(t, startRgb[0], tresRgb[0])),
+      Math.round(hueLinearScale(t, startRgb[1], tresRgb[1])),
+      Math.round(hueLinearScale(t, startRgb[2], tresRgb[2])),
+    ];
+  }
+  const t = (k - tres) / (end - tres);
+  return [
+    Math.round(hueLinearScale(t, tresRgb[0], endRgb[0])),
+    Math.round(hueLinearScale(t, tresRgb[1], endRgb[1])),
+    Math.round(hueLinearScale(t, tresRgb[2], endRgb[2])),
+  ];
+}
+
+function hexToRgb(hex) {
+  const n = hex.replace("#", "");
+  return [
+    parseInt(n.slice(0, 2), 16),
+    parseInt(n.slice(2, 4), 16),
+    parseInt(n.slice(4, 6), 16),
+  ];
+}
+
+function rgbCss([r, g, b]) {
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function pinForeground(rgb) {
+  const luminance = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+  return luminance > 192 ? "rgba(0,0,0,0.7)" : "#fff";
+}
+
+function draftWheelMode(draft, hasColor, hasTemp) {
+  if (
+    draft?.rgb_color ||
+    draft?.hs_color ||
+    draft?.rgbw_color ||
+    draft?.rgbww_color
+  ) {
+    return hasColor ? "color" : "temp";
+  }
+  if (draft?.color_temp_kelvin != null) {
+    return hasTemp ? "temp" : "color";
+  }
+  return hasColor ? "color" : "temp";
+}
+
+function draftRgb(draft) {
+  if (draft?.rgb_color) {
+    return draft.rgb_color;
+  }
+  if (draft?.hs_color) {
+    return hsv2rgb(draft.hs_color[0], draft.hs_color[1] / 100, 1);
+  }
+  if (draft?.rgbww_color) {
+    return draft.rgbww_color.slice(0, 3);
+  }
+  if (draft?.rgbw_color) {
+    return draft.rgbw_color.slice(0, 3);
+  }
+  if (draft?.color_temp_kelvin != null) {
+    return hueTempToRgb(draft.color_temp_kelvin);
+  }
+  return [255, 214, 170];
+}
+
+function applyColorToDraft(draft, rgb, hsv) {
+  draft.rgb_color = rgb;
+  draft.hs_color = [hsv[0], Math.round(hsv[1] * 100)];
+  draft.color_temp_kelvin = undefined;
+  draft.rgbw_color = undefined;
+  draft.rgbww_color = undefined;
+  draft.state = "on";
+}
+
+function applyTempToDraft(draft, kelvin) {
+  draft.color_temp_kelvin = kelvin;
+  draft.rgb_color = undefined;
+  draft.hs_color = undefined;
+  draft.rgbw_color = undefined;
+  draft.rgbww_color = undefined;
+  draft.state = "on";
+}
+
+function hueColorAt(x, y, radius) {
+  const [r, phi] = xy2polar(x, y);
+  if (r - 2 > radius) {
+    return null;
+  }
+  const hue = hueFromDeg(rad2deg(phi));
+  const saturation = saturationFromR(r, radius);
+  const value = hsValue(hue, r, radius);
+  return { rgb: hsv2rgb(hue, saturation, value), hsv: [hue, saturation, value] };
+}
+
+function hueTempAt(x, y, radius, tempMin, tempMax) {
+  const [r] = xy2polar(x, y);
+  if (r - 2 > radius) {
+    return null;
+  }
+  const rowLength = 2 * radius;
+  const n = (y + radius) / rowLength;
+  const kelvin = Math.round(hueCurveScale(n, tempMin, tempMax));
+  return { rgb: hueTempToRgb(kelvin), kelvin };
+}
+
+function coordinatesForColor(hue, saturation, radius) {
+  const phi = deg2rad(degFromHue(hue));
+  const r = rFromSaturation(saturation, radius);
+  const [x, y] = polar2xy(r, phi);
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+function coordinatesForTemp(kelvin, radius, tempMin, tempMax) {
+  let k = kelvin;
+  if (k < tempMin) {
+    k = tempMin;
+  } else if (k > tempMax) {
+    k = tempMax;
+  }
+  const n = inverseHueCurveScale(k, tempMin, tempMax);
+  const y = Math.round(n * 2 * radius - radius);
+  const maxX = Math.ceil(Math.sqrt(Math.max(0, radius * radius - y * y)));
+  return { x: 0, y, maxX };
+}
+
+function limitToWheel(x, y, radius) {
+  const dx = x - radius;
+  const dy = y - radius;
+  const dist = Math.hypot(dx, dy);
+  if (dist <= radius || dist === 0) {
+    return { x, y };
+  }
+  const scale = radius / dist;
+  return { x: radius + dx * scale, y: radius + dy * scale };
+}
+
+function drawHueWheelImage(mode, tempMin, tempMax) {
+  const key =
+    mode === "temp"
+      ? `temp:${HUE_WHEEL_RENDER}:${tempMin}:${tempMax}`
+      : `color:${HUE_WHEEL_RENDER}`;
+  const cached = _hueWheelImageCache.get(key);
+  if (cached) {
+    return cached;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = HUE_WHEEL_RENDER;
+  canvas.height = HUE_WHEEL_RENDER;
+  const ctx = canvas.getContext("2d");
+  const radius = HUE_WHEEL_RENDER / 2;
+  const image = ctx.createImageData(HUE_WHEEL_RENDER, HUE_WHEEL_RENDER);
+  const data = image.data;
+  for (let x = -radius; x < radius; x++) {
+    for (let y = -radius; y < radius; y++) {
+      const sample =
+        mode === "color"
+          ? hueColorAt(x, y, radius)
+          : hueTempAt(x, y, radius, tempMin, tempMax);
+      if (!sample) {
+        continue;
+      }
+      const adjustedX = x + radius;
+      const adjustedY = y + radius;
+      const index = (adjustedX + adjustedY * HUE_WHEEL_RENDER) * 4;
+      data[index] = sample.rgb[0];
+      data[index + 1] = sample.rgb[1];
+      data[index + 2] = sample.rgb[2];
+      data[index + 3] = 255;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  const url = canvas.toDataURL();
+  _hueWheelImageCache.set(key, url);
+  return url;
+}
+
+function createSceneColorWheel({
+  hasColor,
+  hasTemp,
+  tempMin,
+  tempMax,
+  getState,
+  onSelect,
+  onChange,
+}) {
+  // Polar HSV + kelvin disk, pin/dot markers, and presets match etokheim/huemane-light-card.
+  let mode = hasColor ? "color" : "temp";
+  const stage = document.createElement("div");
+  stage.className = "hue-wheel-stage";
+  const canvasWrap = document.createElement("div");
+  canvasWrap.className = "hue-wheel-canvas";
+  const glow = document.createElement("canvas");
+  glow.className = "hue-wheel-glow";
+  glow.setAttribute("aria-hidden", "true");
+  glow.width = HUE_WHEEL_RENDER;
+  glow.height = HUE_WHEEL_RENDER;
+  const bg = document.createElement("canvas");
+  bg.className = "hue-wheel-bg";
+  bg.width = HUE_WHEEL_RENDER;
+  bg.height = HUE_WHEEL_RENDER;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "hue-wheel-svg");
+  svg.innerHTML = `
+    <defs>
+      <filter id="se-dot-shadow">
+        <feDropShadow dx="0" dy="0.5" stdDeviation="1" flood-opacity="1"></feDropShadow>
+      </filter>
+      <filter id="se-active-shadow">
+        <feOffset dx="0" dy="-10" />
+        <feGaussianBlur stdDeviation="7" result="offset-blur"/>
+        <feComposite operator="out" in="SourceGraphic" in2="offset-blur" result="inverse"/>
+        <feFlood flood-color="#0005" flood-opacity=".95" result="color"/>
+        <feComposite operator="in" in="color" in2="inverse" result="shadow"/>
+        <feComposite operator="over" in="shadow" in2="SourceGraphic"/>
+        <feDropShadow dx="0" dy="1.0" stdDeviation="2.0" flood-opacity="1"></feDropShadow>
+      </filter>
+    </defs>
+  `;
+  canvasWrap.append(glow, svg, bg);
+  const chrome = document.createElement("div");
+  chrome.className = "hue-wheel-chrome";
+  const pill = document.createElement("div");
+  pill.className = "hue-mode-pill";
+  const presets = document.createElement("div");
+  presets.className = "hue-presets";
+  presets.setAttribute("role", "list");
+  chrome.append(pill, presets);
+  stage.append(canvasWrap, chrome);
+
+  const markers = new Map();
+  let drag = null;
+  let glideTimer;
+
+  const radiusPx = () => canvasWrap.clientWidth / 2;
+
+  const paintWheel = () => {
+    const url = drawHueWheelImage(mode, tempMin, tempMax);
+    const img = new Image();
+    img.onload = () => {
+      const bgCtx = bg.getContext("2d");
+      bgCtx.clearRect(0, 0, HUE_WHEEL_RENDER, HUE_WHEEL_RENDER);
+      bgCtx.drawImage(img, 0, 0);
+      const glowCtx = glow.getContext("2d");
+      glowCtx.clearRect(0, 0, HUE_WHEEL_RENDER, HUE_WHEEL_RENDER);
+      glowCtx.drawImage(img, 0, 0);
+    };
+    img.src = url;
+  };
+
+  const markerOffset = (active) =>
+    active ? { x: 24, y: 60 } : { x: 6, y: 6 };
+
+  const placeMarker = (marker, x, y, active) => {
+    const offset = markerOffset(active);
+    marker.g.style.transform = `translate(${x - offset.x}px, ${y - offset.y}px)`;
+    marker.g.style.transformOrigin = `${x}px ${y}px`;
+    marker.x = x;
+    marker.y = y;
+  };
+
+  const positionForDraft = (draft, markerMode, radius) => {
+    if (markerMode === "color") {
+      const rgb = draftRgb(draft);
+      const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
+      const coords = coordinatesForColor(hsv[0], hsv[1], radius);
+      return { x: coords.x + radius, y: coords.y + radius, rgb };
+    }
+    const kelvin = draft.color_temp_kelvin ?? 2700;
+    const coords = coordinatesForTemp(kelvin, radius, tempMin, tempMax);
+    const rgb = hueTempToRgb(kelvin);
+    return { x: coords.x + radius, y: coords.y + radius, rgb };
+  };
+
+  const applyAtPoint = (draft, x, y, radius) => {
+    const limited = limitToWheel(x, y, radius);
+    const cx = limited.x - radius;
+    const cy = limited.y - radius;
+    if (mode === "color") {
+      const sample = hueColorAt(cx, cy, radius);
+      if (!sample) {
+        return limited;
+      }
+      applyColorToDraft(draft, sample.rgb, sample.hsv);
+    } else {
+      const sample = hueTempAt(cx, cy, radius, tempMin, tempMax);
+      if (!sample) {
+        return limited;
+      }
+      applyTempToDraft(draft, sample.kelvin);
+    }
+    return limited;
+  };
+
+  const syncPresets = () => {
+    presets.replaceChildren();
+    const { scenes, activeId } = getState();
+    const active = scenes.find((item) => item.id === activeId);
+    const list = mode === "color" ? HUE_COLOR_PRESETS : HUE_TEMP_PRESETS;
+    presets.setAttribute(
+      "aria-label",
+      mode === "color" ? "Colors" : "Color temperature"
+    );
+    for (const item of list) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "hue-preset";
+      btn.setAttribute("role", "listitem");
+      if (mode === "color") {
+        btn.style.backgroundColor = item;
+        const rgb = hexToRgb(item);
+        const current = active ? draftRgb(active.draft) : null;
+        if (
+          current &&
+          current[0] === rgb[0] &&
+          current[1] === rgb[1] &&
+          current[2] === rgb[2]
+        ) {
+          btn.classList.add("active");
+        }
+        btn.addEventListener("click", () => {
+          if (!active) {
+            return;
+          }
+          const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
+          applyColorToDraft(active.draft, rgb, hsv);
+          const marker = markers.get(active.id);
+          if (marker) {
+            marker.g.classList.add("glide");
+            clearTimeout(glideTimer);
+            glideTimer = setTimeout(() => marker.g.classList.remove("glide"), 450);
+          }
+          onChange();
+          sync();
+        });
+      } else {
+        const rgb = hueTempToRgb(item);
+        btn.style.backgroundColor = rgbCss(rgb);
+        if (active?.draft?.color_temp_kelvin === item) {
+          btn.classList.add("active");
+        }
+        btn.addEventListener("click", () => {
+          if (!active) {
+            return;
+          }
+          applyTempToDraft(active.draft, item);
+          const marker = markers.get(active.id);
+          if (marker) {
+            marker.g.classList.add("glide");
+            clearTimeout(glideTimer);
+            glideTimer = setTimeout(() => marker.g.classList.remove("glide"), 450);
+          }
+          onChange();
+          sync();
+        });
+      }
+      presets.appendChild(btn);
+    }
+  };
+
+  const paintPill = () => {
+    pill.replaceChildren();
+    if (!(hasColor && hasTemp)) {
+      pill.hidden = true;
+      return;
+    }
+    pill.hidden = false;
+    for (const option of ["color", "temp"]) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "hue-mode-btn";
+      if (option === mode) {
+        btn.classList.add("active");
+      }
+      btn.setAttribute(
+        "aria-label",
+        option === "color" ? "Color" : "Color temperature"
+      );
+      const swatch = document.createElement("span");
+      swatch.className = `hue-mode-swatch ${option}`;
+      btn.appendChild(swatch);
+      btn.addEventListener("click", () => setMode(option, { convertDraft: true }));
+      pill.appendChild(btn);
+    }
+  };
+
+  const sync = () => {
+    const radius = radiusPx();
+    const { scenes, activeId } = getState();
+    const seen = new Set();
+    for (const scene of scenes) {
+      seen.add(scene.id);
+      let marker = markers.get(scene.id);
+      if (!marker) {
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        g.setAttribute("class", "gm");
+        const outline = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        outline.setAttribute("class", "marker-outline");
+        outline.setAttribute("d", HUE_DOT_OUTLINE_PATH);
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("class", "marker");
+        const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        hit.setAttribute("cx", "6");
+        hit.setAttribute("cy", "6");
+        hit.setAttribute("r", "12");
+        hit.setAttribute("fill", "transparent");
+        const icon = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        icon.setAttribute("class", "icon text");
+        icon.setAttribute("x", "24");
+        icon.setAttribute("y", "24");
+        icon.setAttribute("text-anchor", "middle");
+        icon.setAttribute("dominant-baseline", "middle");
+        g.append(outline, path, hit, icon);
+        marker = { g, path, outline, hit, icon, sceneId: scene.id };
+        markers.set(scene.id, marker);
+        g.addEventListener("pointerdown", (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          const { scenes: now, activeId: current } = getState();
+          const item = now.find((row) => row.id === scene.id);
+          if (!item) {
+            return;
+          }
+          if (scene.id !== current) {
+            onSelect(scene.id);
+          }
+          const markerMode = draftWheelMode(item.draft, hasColor, hasTemp);
+          if (markerMode !== mode) {
+            setMode(markerMode, { convertDraft: false });
+          }
+          const pt = pointFromEvent(ev);
+          startDrag(
+            ev,
+            scene.id,
+            pt.x - (marker.x ?? radiusPx()),
+            pt.y - (marker.y ?? radiusPx())
+          );
+          g.classList.add("drag");
+        });
+        svg.appendChild(g);
+      }
+      const active = scene.id === activeId;
+      const markerMode = draftWheelMode(scene.draft, hasColor, hasTemp);
+      marker.path.setAttribute("d", active ? HUE_PIN_PATH : HUE_DOT_PATH);
+      marker.g.classList.toggle("active", active);
+      marker.g.classList.toggle("off-mode", markerMode !== mode);
+      marker.icon.textContent = String(scene.index);
+      marker.hit.style.display = active ? "none" : "";
+      if (!radius) {
+        continue;
+      }
+      const pos = positionForDraft(scene.draft, markerMode, radius);
+      marker.g.style.color = rgbCss(pos.rgb);
+      marker.icon.style.fill = pinForeground(pos.rgb);
+      placeMarker(marker, pos.x, pos.y, active);
+      if (active) {
+        svg.appendChild(marker.g);
+      }
+    }
+    for (const [id, marker] of markers) {
+      if (!seen.has(id)) {
+        marker.g.remove();
+        markers.delete(id);
+      }
+    }
+    syncPresets();
+  };
+
+  const pointFromEvent = (ev) => {
+    const rect = canvasWrap.getBoundingClientRect();
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+  };
+
+  const onPointerMove = (ev) => {
+    if (!drag || ev.pointerId !== drag.pointerId) {
+      return;
+    }
+    const radius = radiusPx();
+    if (!radius) {
+      return;
+    }
+    const { scenes, activeId } = getState();
+    const item = scenes.find((row) => row.id === (drag.sceneId || activeId));
+    if (!item) {
+      return;
+    }
+    const pt = pointFromEvent(ev);
+    const limited = applyAtPoint(
+      item.draft,
+      pt.x - drag.grabX,
+      pt.y - drag.grabY,
+      radius
+    );
+    const marker = markers.get(item.id);
+    if (marker) {
+      marker.g.style.color = rgbCss(draftRgb(item.draft));
+      marker.icon.style.fill = pinForeground(draftRgb(item.draft));
+      placeMarker(marker, limited.x, limited.y, true);
+    }
+    onChange();
+  };
+
+  const onPointerUp = (ev) => {
+    if (!drag || ev.pointerId !== drag.pointerId) {
+      return;
+    }
+    const marker = markers.get(drag.sceneId);
+    marker?.g.classList.remove("drag");
+    marker?.g.classList.add("boing");
+    setTimeout(() => marker?.g.classList.remove("boing"), 200);
+    drag = null;
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointercancel", onPointerUp);
+    sync();
+  };
+
+  const startDrag = (ev, sceneId, grabX = 0, grabY = 0) => {
+    drag = { sceneId, pointerId: ev.pointerId, grabX, grabY };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+  };
+
+  svg.addEventListener("pointerdown", (ev) => {
+    const radius = radiusPx();
+    if (!radius) {
+      return;
+    }
+    const pt = pointFromEvent(ev);
+    const dist = Math.hypot(pt.x - radius, pt.y - radius);
+    if (dist > radius) {
+      return;
+    }
+    const { scenes, activeId } = getState();
+    const item = scenes.find((row) => row.id === activeId);
+    if (!item) {
+      return;
+    }
+    ev.preventDefault();
+    startDrag(ev, item.id);
+    const limited = applyAtPoint(item.draft, pt.x, pt.y, radius);
+    const marker = markers.get(item.id);
+    marker?.g.classList.add("drag", "active");
+    if (marker) {
+      placeMarker(marker, limited.x, limited.y, true);
+    }
+    onChange();
+  });
+
+  const setMode = (next, { convertDraft = false } = {}) => {
+    if (next === "color" && !hasColor) {
+      return;
+    }
+    if (next === "temp" && !hasTemp) {
+      return;
+    }
+    const { scenes, activeId } = getState();
+    const active = scenes.find((item) => item.id === activeId);
+    if (convertDraft && active && draftWheelMode(active.draft, hasColor, hasTemp) !== next) {
+      if (next === "color") {
+        const rgb = draftRgb(active.draft);
+        const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
+        applyColorToDraft(active.draft, rgb, hsv);
+      } else {
+        applyTempToDraft(
+          active.draft,
+          active.draft.color_temp_kelvin ?? Math.round((tempMin + tempMax) / 2)
+        );
+      }
+      onChange();
+    }
+    if (mode !== next) {
+      mode = next;
+      paintWheel();
+    }
+    paintPill();
+    sync();
+  };
+
+  const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => sync());
+  ro?.observe(canvasWrap);
+  paintWheel();
+  paintPill();
+
+  const disconnect = () => {
+    ro?.disconnect();
+    clearTimeout(glideTimer);
+    if (drag) {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+      drag = null;
+    }
+  };
+
+  return { el: stage, setMode, sync, syncPresets, disconnect };
+}
+
 function lightDraftFingerprint(draft) {
   return JSON.stringify({
     state: draft?.state || "off",
@@ -3674,6 +4699,8 @@ function lightDraftFingerprint(draft) {
     color_temp_kelvin: draft?.color_temp_kelvin ?? null,
     rgb_color: draft?.rgb_color ?? null,
     hs_color: draft?.hs_color ?? null,
+    rgbw_color: draft?.rgbw_color ?? null,
+    rgbww_color: draft?.rgbww_color ?? null,
   });
 }
 

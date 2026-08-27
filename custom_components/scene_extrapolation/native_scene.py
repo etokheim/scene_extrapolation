@@ -94,44 +94,69 @@ async def async_update_native_scene_entity(
     entity_state: dict[str, Any],
 ) -> dict[str, Any]:
     """Merge one light into a native scene and reload scenes.yaml."""
-    scene = native_scene_by_entity_id(hass, scene_entity_id)
-    if scene is None:
-        raise HomeAssistantError(
-            f"{scene_entity_id} is not a native Home Assistant scene"
-        )
-    config_key = scene.get("id")
-    if not config_key:
-        raise HomeAssistantError(
-            f"{scene_entity_id} has no YAML id, so it cannot be edited here"
+    result = await async_update_native_scene_entities(
+        hass,
+        light_entity_id,
+        [(scene_entity_id, entity_state)],
+    )
+    return {
+        "scene_entity_id": scene_entity_id,
+        "entity_id": result["entity_id"],
+    }
+
+
+async def async_update_native_scene_entities(
+    hass: HomeAssistant,
+    light_entity_id: str,
+    updates: list[tuple[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    """Merge one light into several native scenes, then reload scenes.yaml once."""
+    if not updates:
+        raise HomeAssistantError("No scene updates to write")
+
+    resolved: list[tuple[str, str, dict[str, Any]]] = []
+    for scene_entity_id, entity_state in updates:
+        scene = native_scene_by_entity_id(hass, scene_entity_id)
+        if scene is None:
+            raise HomeAssistantError(
+                f"{scene_entity_id} is not a native Home Assistant scene"
+            )
+        config_key = scene.get("id")
+        if not config_key:
+            raise HomeAssistantError(
+                f"{scene_entity_id} has no YAML id, so it cannot be edited here"
+            )
+        resolved.append(
+            (str(config_key), scene_entity_id, scene_entity_payload(entity_state))
         )
 
-    cleaned = scene_entity_payload(entity_state)
     path = hass.config.path(SCENE_CONFIG_PATH)
+    remaining = {key: (sid, payload) for key, sid, payload in resolved}
     async with _WRITE_LOCK:
         current = await hass.async_add_executor_job(_read_scenes, path)
-        updated = False
         for index, item in enumerate(current):
-            if str(item.get(CONF_ID)) != str(config_key):
+            key = str(item.get(CONF_ID))
+            if key not in remaining:
                 continue
+            _scene_entity_id, cleaned = remaining.pop(key)
             entities = dict(item.get("entities") or {})
             entities[light_entity_id] = cleaned
             current[index] = {**item, "entities": entities}
-            updated = True
-            break
-        if not updated:
+        if remaining:
+            missing_id = next(iter(remaining.values()))[0]
             raise HomeAssistantError(
-                f"Scene id {config_key} was not found in {SCENE_CONFIG_PATH}"
+                f"Scene {missing_id} was not found in {SCENE_CONFIG_PATH}"
             )
         await hass.async_add_executor_job(_write_scenes, path, current)
 
     await hass.services.async_call(SCENE_DOMAIN, SERVICE_RELOAD, blocking=True)
+    scene_entity_ids = [scene_entity_id for _, scene_entity_id, _ in resolved]
     _LOGGER.debug(
-        "Updated %s in native scene %s (%s)",
+        "Updated %s in native scenes %s",
         light_entity_id,
-        config_key,
-        scene_entity_id,
+        scene_entity_ids,
     )
-    return {"scene_entity_id": scene_entity_id, "entity_id": light_entity_id}
+    return {"entity_id": light_entity_id, "scene_entity_ids": scene_entity_ids}
 
 
 def _read_scenes(path: str) -> list[dict[str, Any]]:
