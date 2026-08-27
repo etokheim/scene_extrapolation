@@ -621,7 +621,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         .hue-wheel-stage {
           position: relative;
           margin: 8px -8px 0;
-          padding: 28px 8px 88px;
+          padding: 28px 8px 64px;
         }
         .hue-wheel-canvas {
           position: relative;
@@ -762,14 +762,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         .hue-presets {
           box-sizing: border-box;
           display: flex;
-          flex-wrap: wrap;
-          justify-content: flex-end;
+          flex-wrap: nowrap;
           align-items: center;
           min-height: 40px;
           padding: 8px;
           gap: 8px;
           margin-left: auto;
-          flex: 1 1 auto;
           min-width: 0;
           border-radius: 20px;
           box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
@@ -777,7 +775,44 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .hue-mode-pill {
           justify-content: flex-start;
-          flex-shrink: 0;
+          flex: 0 0 auto;
+        }
+        .hue-presets {
+          position: relative;
+          justify-content: flex-start;
+          flex: 1 1 auto;
+          overflow: hidden;
+        }
+        .hue-presets-track {
+          display: flex;
+          flex-wrap: nowrap;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+          width: 100%;
+          overflow-x: auto;
+          overflow-y: hidden;
+        }
+        .hue-presets::after {
+          content: "";
+          position: absolute;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          width: 32px;
+          pointer-events: none;
+          opacity: 0;
+          border-radius: 0 20px 20px 0;
+          background: linear-gradient(
+            to right,
+            transparent,
+            var(--secondary-background-color, #242022)
+          );
+          box-shadow: inset -10px 0 12px -8px rgba(0, 0, 0, 0.45);
+          transition: opacity 160ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .hue-presets.can-scroll-end::after {
+          opacity: 1;
         }
         .hue-mode-btn,
         .hue-preset {
@@ -871,7 +906,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           .light-bar svg,
           .light-edit-dot,
           .scene-sidebar-body,
-          .scene-sidebar-footer {
+          .scene-sidebar-footer,
+          .hue-presets::after {
             transition-duration: 1ms;
           }
         }
@@ -4625,7 +4661,10 @@ function createSceneColorWheel({
   pill.className = "hue-mode-pill";
   const presets = document.createElement("div");
   presets.className = "hue-presets";
-  presets.setAttribute("role", "list");
+  const presetTrack = document.createElement("div");
+  presetTrack.className = "hue-presets-track";
+  presetTrack.setAttribute("role", "list");
+  presets.appendChild(presetTrack);
   chrome.append(pill, presets);
   stage.append(canvasWrap, chrome);
 
@@ -4693,12 +4732,20 @@ function createSceneColorWheel({
     return limited;
   };
 
+  const updatePresetOverflow = () => {
+    const maxScroll = presetTrack.scrollWidth - presetTrack.clientWidth;
+    presets.classList.toggle(
+      "can-scroll-end",
+      maxScroll > 1 && presetTrack.scrollLeft < maxScroll - 1
+    );
+  };
+
   const syncPresets = () => {
-    presets.replaceChildren();
+    presetTrack.replaceChildren();
     const { scenes, activeId } = getState();
     const active = scenes.find((item) => item.id === activeId);
     const list = mode === "color" ? HUE_COLOR_PRESETS : HUE_TEMP_PRESETS;
-    presets.setAttribute(
+    presetTrack.setAttribute(
       "aria-label",
       mode === "color" ? "Colors" : "Color temperature"
     );
@@ -4755,8 +4802,9 @@ function createSceneColorWheel({
           sync();
         });
       }
-      presets.appendChild(btn);
+      presetTrack.appendChild(btn);
     }
+    requestAnimationFrame(updatePresetOverflow);
   };
 
   const paintPill = () => {
@@ -5076,8 +5124,13 @@ function createSceneColorWheel({
     sync();
   };
 
-  const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => sync());
+  const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
+    sync();
+    updatePresetOverflow();
+  });
   ro?.observe(canvasWrap);
+  ro?.observe(presets);
+  presetTrack.addEventListener("scroll", updatePresetOverflow, { passive: true });
   paintWheel();
   paintPill();
 
