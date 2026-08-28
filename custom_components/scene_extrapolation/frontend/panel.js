@@ -13,6 +13,9 @@ const SIDEBAR_SWAP_MS = 160;
 const LIGHT_BAR_HEIGHT = 108;
 const LIGHT_FEATHER_PX = 36;
 const LIGHT_BAR_EDGE_HEIGHT = LIGHT_BAR_HEIGHT - LIGHT_FEATHER_PX;
+const LIGHT_EDIT_HIT_PX = 40;
+const LIGHT_EDIT_DOT_PX = 5;
+const LIGHT_EDIT_ACTION_PX = 40;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
 const EVENT_SCENE_KEYS = {
   dawn: "scene_dawn",
@@ -505,11 +508,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-edit {
           position: absolute;
           top: 0;
-          width: 16px;
-          height: 16px;
-          /* Negative margin pins the 16px hit on the time point. Do not
-             translate the parent: nested scale would grow from a corner. */
-          margin: -8px 0 0 -8px;
+          width: ${LIGHT_EDIT_HIT_PX}px;
+          height: ${LIGHT_EDIT_HIT_PX}px;
+          /* Hit is 40px; the idle disc stays 5px. Do not scale the disc:
+             that stacked a second circle on ha-icon-button and drifted. */
+          margin: -${LIGHT_EDIT_HIT_PX / 2}px 0 0 -${LIGHT_EDIT_HIT_PX / 2}px;
           padding: 0;
           overflow: visible;
           pointer-events: auto;
@@ -519,49 +522,47 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: absolute;
           left: 50%;
           top: 50%;
-          width: 5px;
-          height: 5px;
-          margin: -2.5px 0 0 -2.5px;
+          width: ${LIGHT_EDIT_DOT_PX}px;
+          height: ${LIGHT_EDIT_DOT_PX}px;
           border-radius: 50%;
           background: var(--primary-text-color);
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
           pointer-events: none;
-          transform: scale(1);
-          transform-origin: 50% 50%;
-          transition:
-            transform 140ms cubic-bezier(0.2, 0, 0, 1),
-            box-shadow 140ms cubic-bezier(0.2, 0, 0, 1);
+          transform: translate(-50%, -50%);
+          transition: opacity 140ms cubic-bezier(0.2, 0, 0, 1);
         }
         .light-edit-action {
           position: absolute;
           left: 50%;
           top: 50%;
-          width: 40px;
-          height: 40px;
-          margin: -20px 0 0 -20px;
+          width: ${LIGHT_EDIT_ACTION_PX}px;
+          height: ${LIGHT_EDIT_ACTION_PX}px;
           display: grid;
           place-items: center;
-          opacity: 0;
+          border-radius: 50%;
+          background: var(--primary-text-color);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
           pointer-events: none;
-          transition: opacity 140ms cubic-bezier(0.2, 0, 0, 1);
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(${LIGHT_EDIT_DOT_PX / LIGHT_EDIT_ACTION_PX});
+          transform-origin: center center;
+          transition:
+            transform 140ms cubic-bezier(0.2, 0, 0, 1),
+            opacity 140ms cubic-bezier(0.2, 0, 0, 1);
         }
-        .light-edit-action ha-icon-button {
-          --mdc-icon-button-size: 40px;
+        .light-edit-action ha-icon {
           --mdc-icon-size: 20px;
           color: var(--card-background-color);
-          border-radius: 50%;
         }
         .light-edit.expanded {
           z-index: 5;
         }
         .light-edit-dot.expanded {
-          /* 5px x 8 = 40px. Shadow is pre-divided because scale multiplies it. */
-          transform: scale(8);
-          box-shadow: 0 0.25px 1px rgba(0, 0, 0, 0.35);
+          opacity: 0;
         }
         .light-edit-action.expanded {
           opacity: 1;
-          pointer-events: auto;
+          transform: translate(-50%, -50%) scale(1);
         }
         .light-scene-list {
           display: flex;
@@ -905,6 +906,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           }
           .light-bar svg,
           .light-edit-dot,
+          .light-edit-action,
           .scene-sidebar-body,
           .scene-sidebar-footer,
           .hue-presets::after {
@@ -4033,16 +4035,16 @@ class SceneExtrapolationPanel extends HTMLElement {
         const hit = document.createElement("div");
         hit.className = "light-edit";
         hit.style.left = `${(xOf(event.seconds) / CHART_WIDTH) * 100}%`;
+        hit.setAttribute("role", "button");
+        hit.tabIndex = 0;
+        hit.setAttribute("aria-label", `Edit ${light.name} at ${event.name}`);
         const dot = document.createElement("span");
         dot.className = "light-edit-dot";
-        const button = document.createElement("ha-icon-button");
-        button.label = `Edit ${light.name} at ${event.name}`;
         const icon = document.createElement("ha-icon");
         icon.setAttribute("icon", "mdi:pencil");
-        button.appendChild(icon);
         const action = document.createElement("span");
         action.className = "light-edit-action";
-        action.appendChild(button);
+        action.appendChild(icon);
         const setExpanded = (on) => {
           /* Class on each node: :hover descendant rules do not restyle
              children inside this shadow tree. */
@@ -4065,6 +4067,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           this._openLightEditDialog(light, event);
         };
         hit.addEventListener("click", open);
+        hit.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            open(ev);
+          }
+        });
         hit.append(dot, action);
         edits.appendChild(hit);
       }

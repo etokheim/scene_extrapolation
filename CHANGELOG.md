@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Desktop sidebar open/close is a 200ms slide; the editor column and Save button move aside (padding / right, not max-width)
 - Opening a second sidebar reuses the open drawer and fades its body instead of closing and re-sliding
 - Light-row hover sharpens the feathered seam with an animated mask; visible band height stays the same
-- Light-row names, dots, and warnings sit on the visible band; edit dots scale from their center
+- Light-row names, dots, and warnings sit on the visible band; edit dots stay 5px with a 40px hit and expand from center
 - Editor graphs and form use a 1024px column (12px padding) instead of Home Assistant’s 1540px automation-editor canvas
 - Light-edit Save writes every changed native scene for that lamp; switching scenes keeps drafts without a prompt
 - Light-edit save hint sits in the footer (info icon + text) above Cancel / Save
