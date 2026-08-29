@@ -20,6 +20,14 @@ const UNDO_STACK_LIMIT = 75;
 const DRAFT_STORAGE_VERSION = 1;
 const DRAFT_PERSIST_MS = 200;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
+// Same circadian seeds as native_scene.EVENT_LIGHT_DEFAULTS (0–255, kelvin).
+const EVENT_LIGHT_DEFAULTS = {
+  dawn: [102, 2700],
+  sunrise: [191, 3500],
+  noon: [255, 4500],
+  sunset: [179, 3000],
+  dusk: [64, 2200],
+};
 const EVENT_SCENE_KEYS = {
   dawn: "scene_dawn",
   sunrise: "scene_sunrise",
@@ -1056,15 +1064,33 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: absolute;
           right: 48px;
           top: calc(${LIGHT_FEATHER_PX}px + (100% - ${LIGHT_FEATHER_PX}px) / 2);
-          z-index: 1;
-          pointer-events: none;
+          z-index: 2;
+          pointer-events: auto;
           transform: translateY(-50%);
           display: flex;
           align-items: center;
           gap: 4px;
+          margin: 0;
+          padding: 2px 6px;
+          border: 0;
+          border-radius: 8px;
+          background: transparent;
+          font: inherit;
           font-size: 12px;
           color: var(--warning-color, var(--error-color));
           text-shadow: 0 0 6px var(--card-background-color);
+          cursor: pointer;
+        }
+        .light-warn:hover {
+          background: color-mix(
+            in srgb,
+            var(--warning-color, var(--error-color)) 18%,
+            transparent
+          );
+        }
+        .light-warn:focus-visible {
+          outline: 2px solid var(--warning-color, var(--error-color));
+          outline-offset: 2px;
         }
         .light-row:first-child .light-warn,
         .light-row:only-child .light-warn {
@@ -2153,6 +2179,183 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._commitUndo();
     for (const sceneId of scenes) {
       this._ensureNativeDraft(sceneId).entities[entityId] = null;
+    }
+    this._syncPreviewOverlay();
+    this._sunPathKey = undefined;
+    this._ensureSunPath();
+  }
+
+  _missingSceneRows(light) {
+    const missing = [];
+    const seen = new Set();
+    for (const row of light.event_states || []) {
+      if (row.present || !row.scene_entity_id || seen.has(row.scene_entity_id)) {
+        continue;
+      }
+      if (this._nativeDrafts[row.scene_entity_id]?.deleted) {
+        continue;
+      }
+      seen.add(row.scene_entity_id);
+      missing.push(row);
+    }
+    return missing;
+  }
+
+  _peerStatesInScene(sceneId, exceptEntityId) {
+    const peers = [];
+    for (const light of this._sunPath?.lights || []) {
+      if (light.entity_id === exceptEntityId) {
+        continue;
+      }
+      const row = (light.event_states || []).find(
+        (item) => item.scene_entity_id === sceneId && item.present
+      );
+      if (row?.state) {
+        peers.push(row.state);
+      }
+    }
+    return peers;
+  }
+
+  _typicalStateFromPeers(sceneId, exceptEntityId) {
+    const peers = this._peerStatesInScene(sceneId, exceptEntityId);
+    if (!peers.length) {
+      return null;
+    }
+    const on = peers.filter((state) => state.state === "on");
+    if (!on.length) {
+      return { state: "off" };
+    }
+    const typical = { state: "on" };
+    const brightness = medianNumber(on.map((state) => state.brightness));
+    if (brightness != null) {
+      typical.brightness = Math.round(brightness);
+    }
+    const kelvin = medianNumber(on.map((state) => state.color_temp_kelvin));
+    if (kelvin != null) {
+      typical.color_temp_kelvin = Math.round(kelvin);
+      return typical;
+    }
+    const hues = [];
+    const sats = [];
+    for (const state of on) {
+      if (Array.isArray(state.hs_color) && state.hs_color.length >= 2) {
+        hues.push(state.hs_color[0]);
+        sats.push(state.hs_color[1]);
+      }
+    }
+    if (hues.length) {
+      typical.hs_color = [circularMeanHue(hues), medianNumber(sats)];
+      return typical;
+    }
+    const reds = [];
+    const greens = [];
+    const blues = [];
+    for (const state of on) {
+      if (Array.isArray(state.rgb_color) && state.rgb_color.length >= 3) {
+        reds.push(state.rgb_color[0]);
+        greens.push(state.rgb_color[1]);
+        blues.push(state.rgb_color[2]);
+      }
+    }
+    if (reds.length) {
+      typical.rgb_color = [
+        Math.round(medianNumber(reds)),
+        Math.round(medianNumber(greens)),
+        Math.round(medianNumber(blues)),
+      ];
+    }
+    return typical;
+  }
+
+  _eventDefaultLightState(entityId, eventId) {
+    const profile =
+      LINKED_EVENTS.includes(eventId) && this._formData.display_scenes_combined
+        ? "noon"
+        : eventId;
+    const seed = EVENT_LIGHT_DEFAULTS[profile] || EVENT_LIGHT_DEFAULTS.noon;
+    return { state: "on", brightness: seed[0], color_temp_kelvin: seed[1] };
+  }
+
+  _adaptStateToLight(entityId, typical, eventId) {
+    if (!typical || typical.state === "off") {
+      return { state: "off" };
+    }
+    const attrs = this._hass.states[entityId]?.attributes || {};
+    const modes = new Set(attrs.supported_color_modes || []);
+    const payload = { state: "on" };
+    if (modes.size && [...modes].every((mode) => mode === "onoff")) {
+      return payload;
+    }
+    if (typical.brightness != null) {
+      payload.brightness = typical.brightness;
+    }
+    const hasTemp =
+      modes.has("color_temp") ||
+      modes.has("rgbww") ||
+      attrs.min_color_temp_kelvin != null;
+    const hasColor = [...modes].some((mode) =>
+      ["hs", "rgb", "rgbw", "rgbww", "xy"].includes(mode)
+    );
+    if (hasTemp && typical.color_temp_kelvin != null) {
+      let kelvin = typical.color_temp_kelvin;
+      const minK = attrs.min_color_temp_kelvin;
+      const maxK = attrs.max_color_temp_kelvin;
+      if (minK != null && kelvin < minK) {
+        kelvin = minK;
+      }
+      if (maxK != null && kelvin > maxK) {
+        kelvin = maxK;
+      }
+      payload.color_temp_kelvin = Math.round(kelvin);
+      return payload;
+    }
+    if (hasColor || !modes.size) {
+      if (Array.isArray(typical.hs_color)) {
+        payload.hs_color = typical.hs_color;
+        return payload;
+      }
+      if (Array.isArray(typical.rgb_color)) {
+        payload.rgb_color = typical.rgb_color;
+        return payload;
+      }
+      if (typical.color_temp_kelvin != null) {
+        const rgb = hueTempToRgb(typical.color_temp_kelvin);
+        const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
+        payload.hs_color = [hsv[0], Math.round(hsv[1] * 100)];
+        return payload;
+      }
+    }
+    if (hasTemp && payload.color_temp_kelvin == null) {
+      const fallback = this._eventDefaultLightState(entityId, eventId);
+      if (fallback.color_temp_kelvin != null) {
+        let kelvin = fallback.color_temp_kelvin;
+        const minK = attrs.min_color_temp_kelvin;
+        const maxK = attrs.max_color_temp_kelvin;
+        if (minK != null && kelvin < minK) {
+          kelvin = minK;
+        }
+        if (maxK != null && kelvin > maxK) {
+          kelvin = maxK;
+        }
+        payload.color_temp_kelvin = Math.round(kelvin);
+      }
+    }
+    return payload;
+  }
+
+  _addLightToMissingScenes(light) {
+    const missing = this._missingSceneRows(light);
+    if (!missing.length) {
+      return;
+    }
+    this._commitUndo();
+    for (const row of missing) {
+      const typical =
+        this._typicalStateFromPeers(row.scene_entity_id, light.entity_id) ||
+        this._eventDefaultLightState(light.entity_id, row.event);
+      this._ensureNativeDraft(row.scene_entity_id).entities[light.entity_id] =
+        this._adaptStateToLight(light.entity_id, typical, row.event);
     }
     this._syncPreviewOverlay();
     this._sunPathKey = undefined;
@@ -5148,7 +5351,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       });
       bar.appendChild(remove);
       bar.addEventListener("click", (ev) => {
-        if (ev.target.closest(".light-edit, .light-remove")) {
+        if (ev.target.closest(".light-edit, .light-remove, .light-warn")) {
           return;
         }
         const closest = this._closestEvent(
@@ -5160,15 +5363,29 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
       });
     }
-    if (light.gaps?.length) {
-      const warn = document.createElement("div");
+    const missingScenes = this._missingSceneRows(light);
+    if (this._view === "edit" && missingScenes.length) {
+      const names = [
+        ...new Set(missingScenes.map((row) => row.scene_name).filter(Boolean)),
+      ];
+      const warn = document.createElement("button");
+      warn.type = "button";
       warn.className = "light-warn";
+      warn.title =
+        "Add this light using the typical brightness and color of the other lights in that scene";
+      warn.setAttribute(
+        "aria-label",
+        `Add ${light.name} to ${names.join(", ")}`
+      );
       const icon = document.createElement("ha-icon");
-      icon.setAttribute("icon", "mdi:alert-outline");
-      const missing = [...new Set(light.gaps.map((gap) => gap.missing_name))];
+      icon.setAttribute("icon", "mdi:lightbulb-plus-outline");
       const text = document.createElement("span");
-      text.textContent = `Not in ${missing.join(", ")}`;
+      text.textContent = `Add to ${names.join(", ")}`;
       warn.append(icon, text);
+      warn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this._addLightToMissingScenes(light);
+      });
       bar.appendChild(warn);
     }
     row.appendChild(bar);
@@ -6224,6 +6441,33 @@ function createSceneColorWheel({
   };
 
   return { el: stage, setMode, sync, syncPresets, disconnect };
+}
+
+function medianNumber(values) {
+  const sorted = values
+    .filter((value) => value != null && Number.isFinite(Number(value)))
+    .map(Number)
+    .sort((left, right) => left - right);
+  if (!sorted.length) {
+    return null;
+  }
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2) {
+    return sorted[mid];
+  }
+  return (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function circularMeanHue(hues) {
+  let x = 0;
+  let y = 0;
+  for (const hue of hues) {
+    const rad = (Number(hue) * Math.PI) / 180;
+    x += Math.cos(rad);
+    y += Math.sin(rad);
+  }
+  const deg = (Math.atan2(y / hues.length, x / hues.length) * 180) / Math.PI;
+  return (deg + 360) % 360;
 }
 
 function lightDraftFingerprint(draft) {

@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - X on each light row removes that lamp from every assigned native scene
 - Undo / redo in the editor toolbar (Ctrl/Cmd+Z, Shift+Z, Y), matching the automation editor
 - Unsaved editor changes persist in this browser; returning to the scene restores them with a banner and a Discard action
+- A light missing from some scenes is an Add button; it copies the typical brightness and color of the other lights already in that scene
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
