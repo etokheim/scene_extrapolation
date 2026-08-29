@@ -1174,6 +1174,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-brightness-graph .handle {
           cursor: ns-resize;
         }
+        .light-brightness-graph .handle.add {
+          cursor: pointer;
+        }
         .light-brightness-graph .handle-hit {
           fill: transparent;
           stroke: none;
@@ -1187,8 +1190,20 @@ class SceneExtrapolationPanel extends HTMLElement {
           stroke: var(--primary-color);
           stroke-width: 2.5;
         }
+        .light-brightness-graph .handle.add .handle-dot {
+          stroke: var(--primary-color);
+          stroke-dasharray: 3 2;
+        }
         .light-brightness-graph .handle-fill {
           stroke: none;
+        }
+        .light-brightness-graph .handle-plus {
+          fill: var(--primary-color);
+          font-size: 14px;
+          font-weight: 600;
+          text-anchor: middle;
+          dominant-baseline: central;
+          pointer-events: none;
         }
         .light-brightness-graph .handle-label {
           fill: var(--secondary-text-color);
@@ -3940,16 +3955,22 @@ class SceneExtrapolationPanel extends HTMLElement {
     const uniqueScenes = this._uniqueAssignedScenes(events);
     const drafts = new Map();
     for (const item of uniqueScenes) {
-      const stored =
-        (light.event_states || []).find((row) => row.event === item.event.id)
-          ?.state ||
-        (light.event_states || []).find(
-          (row) => row.scene_entity_id === item.sceneId
-        )?.state ||
-        { state: "off" };
+      const present = (light.event_states || []).some(
+        (row) => row.scene_entity_id === item.sceneId && row.present
+      );
+      const stored = present
+        ? (light.event_states || []).find(
+            (row) => row.scene_entity_id === item.sceneId && row.present
+          )?.state ||
+          (light.event_states || []).find((row) => row.event === item.event.id)
+            ?.state ||
+          { state: "off" }
+        : null;
       drafts.set(item.sceneId, {
-        draft: { ...stored },
-        saved: lightDraftFingerprint(stored),
+        draft: present ? { ...stored } : null,
+        // "absent" until the user adds this lamp via the brightness graph +.
+        saved: present ? lightDraftFingerprint(stored) : "absent",
+        member: present,
         event: item.event,
         index: drafts.size + 1,
       });
@@ -3962,11 +3983,17 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const sceneEntityId = () => this._eventSceneId(currentEvent.id);
     const currentEntry = () => drafts.get(sceneEntityId());
-    const currentDraft = () => currentEntry().draft;
+    const currentDraft = () => currentEntry()?.draft;
     const dirtyEntries = () =>
-      [...drafts.entries()].filter(
-        ([, entry]) => lightDraftFingerprint(entry.draft) !== entry.saved
-      );
+      [...drafts.entries()].filter(([, entry]) => {
+        if (!entry.member || !entry.draft) {
+          return false;
+        }
+        if (entry.saved === "absent") {
+          return true;
+        }
+        return lightDraftFingerprint(entry.draft) !== entry.saved;
+      });
     const isDirty = () => dirtyEntries().length > 0;
     const restoreLive = async () => {
       if (liveApplied) {
@@ -4045,6 +4072,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._openEventSceneDialog(next);
         return;
       }
+      const entry = drafts.get(nextId);
+      if (!entry?.member || !entry.draft) {
+        return;
+      }
       currentEvent = next;
       this._setSidebarEvent(next.id);
       if (subtitleEl) {
@@ -4065,7 +4096,10 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const paintChips = () => {
       chipsHost.replaceChildren();
-      if (!uniqueScenes.length) {
+      const memberScenes = uniqueScenes.filter(
+        (item) => drafts.get(item.sceneId)?.member
+      );
+      if (!memberScenes.length) {
         return;
       }
       const list = document.createElement("div");
@@ -4073,7 +4107,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       list.setAttribute("role", "listbox");
       list.setAttribute("aria-label", "Scene");
       const currentId = sceneEntityId();
-      for (const item of uniqueScenes) {
+      for (const item of memberScenes) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "sun-event clickable";
@@ -4104,6 +4138,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     const paintFields = () => {
       fieldsHost.replaceChildren();
       const draft = currentDraft();
+      if (!draft) {
+        return;
+      }
       const liveRow = document.createElement("label");
       liveRow.className = "dialog-row";
       const liveLabel = document.createElement("span");
@@ -4178,22 +4215,42 @@ class SceneExtrapolationPanel extends HTMLElement {
             if (!sceneId) {
               return null;
             }
-            const entry = drafts.get(sceneId);
+            let entry = drafts.get(sceneId);
             if (!entry) {
-              return null;
+              // Scene assigned but not yet in uniqueScenes snapshot — stub it.
+              entry = {
+                draft: null,
+                saved: "absent",
+                member: false,
+                event: item,
+                index: drafts.size + 1,
+              };
+              drafts.set(sceneId, entry);
+              if (!uniqueScenes.some((row) => row.sceneId === sceneId)) {
+                uniqueScenes.push({
+                  sceneId,
+                  event: item,
+                  events: [item],
+                });
+              }
             }
+            const member = Boolean(entry.member && entry.draft);
             const draft = entry.draft;
-            const brightness =
-              draft.state === "off" ? 0 : Number(draft.brightness) || 0;
+            const brightness = member
+              ? draft.state === "off"
+                ? 0
+                : Number(draft.brightness) || 0
+              : 0;
             return {
               eventId: item.id,
               sceneId,
               seconds: item.seconds,
               name: item.name,
               icon: item.icon,
+              member,
               brightness,
-              rgb: draftRgb(draft),
-              active: sceneId === activeId,
+              rgb: member ? draftRgb(draft) : [128, 128, 128],
+              active: member && sceneId === activeId,
             };
           })
           .filter(Boolean);
@@ -4204,9 +4261,49 @@ class SceneExtrapolationPanel extends HTMLElement {
           selectScene(next);
         }
       },
+      onAdd: async (sceneId, eventId) => {
+        const next = events.find((item) => item.id === eventId);
+        if (!next) {
+          return;
+        }
+        let entry = drafts.get(sceneId);
+        if (!entry) {
+          entry = {
+            draft: null,
+            saved: "absent",
+            member: false,
+            event: next,
+            index: drafts.size + 1,
+          };
+          drafts.set(sceneId, entry);
+        }
+        if (entry.member && entry.draft) {
+          await selectScene(next);
+          return;
+        }
+        const typical =
+          this._typicalStateFromPeers(sceneId, light.entity_id) ||
+          this._eventDefaultLightState(light.entity_id, eventId);
+        entry.draft = this._adaptStateToLight(
+          light.entity_id,
+          typical,
+          eventId
+        );
+        entry.member = true;
+        entry.event = next;
+        entry.saved = "absent";
+        if (!uniqueScenes.some((row) => row.sceneId === sceneId)) {
+          uniqueScenes.push({ sceneId, event: next, events: [next] });
+        }
+        previewDrafts();
+        await selectScene(next);
+        brightnessGraphCtl?.sync();
+        wheelCtl?.sync();
+        await applyLive();
+      },
       onBrightness: async (sceneId, brightness) => {
         const entry = drafts.get(sceneId);
-        if (!entry) {
+        if (!entry?.member || !entry.draft) {
           return;
         }
         entry.draft.brightness = brightness;
@@ -4231,18 +4328,20 @@ class SceneExtrapolationPanel extends HTMLElement {
         tempMin: attrs.min_color_temp_kelvin || 2000,
         tempMax: attrs.max_color_temp_kelvin || 6500,
         getState: () => ({
-          scenes: uniqueScenes.map((item) => {
-            const entry = drafts.get(item.sceneId);
-            return {
-              id: item.sceneId,
-              index: entry.index,
-              draft: entry.draft,
-              event: item.event,
-            };
-          }),
+          scenes: uniqueScenes
+            .filter((item) => drafts.get(item.sceneId)?.member)
+            .map((item) => {
+              const entry = drafts.get(item.sceneId);
+              return {
+                id: item.sceneId,
+                index: entry.index,
+                draft: entry.draft,
+                event: item.event,
+              };
+            }),
           sequence: events
             .map((item) => this._eventSceneId(item.id))
-            .filter(Boolean),
+            .filter((id) => id && drafts.get(id)?.member),
           activeId: sceneEntityId(),
         }),
         onSelect: (sceneId) => {
@@ -6744,6 +6843,7 @@ function drawHueWheelImage(mode, tempMin, tempMax) {
 function createLightBrightnessGraph({
   getPoints,
   onSelect,
+  onAdd,
   onBrightness,
   onDragEnd,
 }) {
@@ -6831,6 +6931,7 @@ function createLightBrightnessGraph({
 
   const paintGeometry = (points) => {
     gradient.replaceChildren();
+    const members = points.filter((point) => point.member);
     if (!points.length) {
       fillArea.setAttribute("d", "");
       curve.setAttribute("d", "");
@@ -6839,7 +6940,7 @@ function createLightBrightnessGraph({
     const minS = points[0].seconds;
     const maxS = points[points.length - 1].seconds;
     const span = Math.max(maxS - minS, 1);
-    for (const point of points) {
+    for (const point of members) {
       const stop = document.createElementNS(
         "http://www.w3.org/2000/svg",
         "stop"
@@ -6850,8 +6951,8 @@ function createLightBrightnessGraph({
       stop.setAttribute("stop-color", `rgb(${r},${g},${b})`);
       gradient.appendChild(stop);
     }
-    if (points.length === 1) {
-      const [r, g, b] = points[0].rgb;
+    if (members.length === 1) {
+      const [r, g, b] = members[0].rgb;
       const end = document.createElementNS(
         "http://www.w3.org/2000/svg",
         "stop"
@@ -6860,20 +6961,32 @@ function createLightBrightnessGraph({
       end.setAttribute("stop-color", `rgb(${r},${g},${b})`);
       gradient.appendChild(end);
     }
-    const coords = points.map((point) => ({
+    if (members.length) {
+      const memberCoords = members.map((point) => ({
+        x: xOf(point.seconds, minS, maxS),
+        y: yOf(point.brightness),
+      }));
+      const top = memberCoords
+        .map(
+          (c, i) => `${i === 0 ? "M" : "L"}${c.x.toFixed(1)},${c.y.toFixed(1)}`
+        )
+        .join(" ");
+      const area = `${top} L${memberCoords[memberCoords.length - 1].x.toFixed(
+        1
+      )},${(PAD_T + PLOT_H).toFixed(1)} L${memberCoords[0].x.toFixed(1)},${(
+        PAD_T + PLOT_H
+      ).toFixed(1)} Z`;
+      fillArea.setAttribute("d", area);
+      curve.setAttribute("d", top);
+    } else {
+      fillArea.setAttribute("d", "");
+      curve.setAttribute("d", "");
+    }
+    return points.map((point) => ({
       x: xOf(point.seconds, minS, maxS),
-      y: yOf(point.brightness),
+      y: point.member ? yOf(point.brightness) : PAD_T + PLOT_H,
       point,
     }));
-    const top = coords
-      .map((c, i) => `${i === 0 ? "M" : "L"}${c.x.toFixed(1)},${c.y.toFixed(1)}`)
-      .join(" ");
-    const area = `${top} L${coords[coords.length - 1].x.toFixed(1)},${(
-      PAD_T + PLOT_H
-    ).toFixed(1)} L${coords[0].x.toFixed(1)},${(PAD_T + PLOT_H).toFixed(1)} Z`;
-    fillArea.setAttribute("d", area);
-    curve.setAttribute("d", top);
-    return coords;
   };
 
   const syncDragVisual = () => {
@@ -6885,14 +6998,21 @@ function createLightBrightnessGraph({
         continue;
       }
       node.classList.toggle("active", Boolean(match.point.active));
+      node.classList.toggle("add", !match.point.member);
       for (const circle of node.querySelectorAll("circle")) {
         circle.setAttribute("cx", match.x.toFixed(1));
         circle.setAttribute("cy", match.y.toFixed(1));
+      }
+      const plus = node.querySelector(".handle-plus");
+      if (plus) {
+        plus.setAttribute("x", match.x.toFixed(1));
+        plus.setAttribute("y", match.y.toFixed(1));
       }
       const fill = node.querySelector(".handle-fill");
       if (fill) {
         const [r, g, b] = match.point.rgb;
         fill.setAttribute("fill", `rgb(${r},${g},${b})`);
+        fill.style.display = match.point.member ? "" : "none";
       }
     }
   };
@@ -6928,10 +7048,14 @@ function createLightBrightnessGraph({
     el.hidden = false;
     for (const c of coords) {
       const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      group.setAttribute(
-        "class",
-        c.point.active ? "handle active" : "handle"
-      );
+      const classes = ["handle"];
+      if (c.point.active) {
+        classes.push("active");
+      }
+      if (!c.point.member) {
+        classes.push("add");
+      }
+      group.setAttribute("class", classes.join(" "));
       group.dataset.eventId = c.point.eventId;
       group.dataset.sceneId = c.point.sceneId;
       const hit = document.createElementNS(
@@ -6952,6 +7076,9 @@ function createLightBrightnessGraph({
       fill.setAttribute("r", "5");
       const [r, gCh, b] = c.point.rgb;
       fill.setAttribute("fill", `rgb(${r},${gCh},${b})`);
+      if (!c.point.member) {
+        fill.style.display = "none";
+      }
       const dot = document.createElementNS(
         "http://www.w3.org/2000/svg",
         "circle"
@@ -6968,27 +7095,49 @@ function createLightBrightnessGraph({
       label.setAttribute("x", c.x.toFixed(1));
       label.setAttribute("y", String(HEIGHT - 6));
       label.textContent = c.point.name;
-      group.append(hit, dot, fill, label);
-      group.addEventListener("pointerdown", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        group.setPointerCapture(ev.pointerId);
-        drag = {
-          sceneId: c.point.sceneId,
-          eventId: c.point.eventId,
-          pointerId: ev.pointerId,
-        };
-        onSelect(c.point.eventId);
-        onBrightness(c.point.sceneId, brightnessFromY(ev.clientY));
-      });
-      group.addEventListener("pointermove", (ev) => {
-        if (!drag || drag.pointerId !== ev.pointerId) {
-          return;
-        }
-        onBrightness(drag.sceneId, brightnessFromY(ev.clientY));
-      });
-      group.addEventListener("pointerup", (ev) => endDrag(ev, group));
-      group.addEventListener("pointercancel", (ev) => endDrag(ev, group));
+      group.append(hit, dot, fill);
+      if (!c.point.member) {
+        const plus = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "text"
+        );
+        plus.setAttribute("class", "handle-plus");
+        plus.setAttribute("x", c.x.toFixed(1));
+        plus.setAttribute("y", c.y.toFixed(1));
+        plus.textContent = "+";
+        group.appendChild(plus);
+        group.setAttribute(
+          "aria-label",
+          `Add to ${c.point.name}`
+        );
+        group.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          onAdd?.(c.point.sceneId, c.point.eventId);
+        });
+      } else {
+        group.addEventListener("pointerdown", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          group.setPointerCapture(ev.pointerId);
+          drag = {
+            sceneId: c.point.sceneId,
+            eventId: c.point.eventId,
+            pointerId: ev.pointerId,
+          };
+          onSelect(c.point.eventId);
+          onBrightness(c.point.sceneId, brightnessFromY(ev.clientY));
+        });
+        group.addEventListener("pointermove", (ev) => {
+          if (!drag || drag.pointerId !== ev.pointerId) {
+            return;
+          }
+          onBrightness(drag.sceneId, brightnessFromY(ev.clientY));
+        });
+        group.addEventListener("pointerup", (ev) => endDrag(ev, group));
+        group.addEventListener("pointercancel", (ev) => endDrag(ev, group));
+      }
+      group.appendChild(label);
       handlesLayer.appendChild(group);
     }
   };
