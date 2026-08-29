@@ -974,7 +974,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-sun:active {
           cursor: grabbing;
         }
-        /* Outlined sun on the path; fill clips away below the horizon. */
+        /* Outline + hit target; SVG fill is clipped to the day wedge. */
         .clock-sun {
           position: absolute;
           width: ${CLOCK_SUN_SIZE_PCT}%;
@@ -1000,18 +1000,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 50%;
           pointer-events: none;
         }
-        .clock-sun-core {
-          inset: 6%;
-          background: radial-gradient(
-            closest-side circle at center,
-            #fff 0%,
-            var(--sun-core) 45%,
-            color-mix(in srgb, var(--sun-corona) 80%, var(--sun-core)) 78%,
-            var(--sun-corona) 100%
-          );
-        }
-        .clock-sun.below-horizon .clock-sun-core {
-          visibility: hidden;
+        .sun-light-clock-overlay .clock-sun-fill {
+          pointer-events: none;
         }
         .clock-sun-ring {
           inset: 0;
@@ -7103,6 +7093,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         "aria-label",
         `Sun ${elev >= 0 ? "above" : "below"} horizon`
       );
+      this._layoutClockSunFill(pos, scale, sunLook);
       this._layoutClockHandle(seconds, scale);
     } else {
       this._layoutClockHandle(seconds, 1);
@@ -7126,6 +7117,27 @@ class SceneExtrapolationPanel extends HTMLElement {
       glow.style.background = glowLook.glowBackground;
       // Horizon bands carry sunrise/sunset warmth; this disc stays a faint wash.
       glow.style.opacity = String(glowLook.glowOpacity * 0.35);
+    }
+  }
+
+  _layoutClockSunFill(pos, scale, sunLook) {
+    const fill = this._clockSunFillEl;
+    if (!fill) {
+      return;
+    }
+    // Inset matches the old HTML core so the white ring stays a rim.
+    const r = CLOCK_SUN_R_VIEW * scale * 0.94;
+    fill.setAttribute("cx", pos.x.toFixed(2));
+    fill.setAttribute("cy", pos.y.toFixed(2));
+    fill.setAttribute("r", r.toFixed(2));
+    const stops = this._clockSunFillStops;
+    if (stops) {
+      stops.core.setAttribute("stop-color", sunLook.sunCore);
+      stops.mid.setAttribute(
+        "stop-color",
+        `color-mix(in srgb, ${sunLook.sunCorona} 80%, ${sunLook.sunCore})`
+      );
+      stops.corona.setAttribute("stop-color", sunLook.sunCorona);
     }
   }
 
@@ -7221,7 +7233,30 @@ class SceneExtrapolationPanel extends HTMLElement {
     const dawn = this._clockEventSeconds(events, "dawn");
     const dusk = this._clockEventSeconds(events, "dusk");
     this._paintHorizonGlows(overlay, sunrise, sunset);
+    this._clockSunDayClipId = null;
     if (sunset != null && sunrise != null) {
+      // Clip the sun fill to the day wedge so the horizon rays mask it
+      // as it crosses — not a sudden hide at elev 0.
+      const defs =
+        overlay.querySelector("defs") ||
+        overlay.insertBefore(
+          document.createElementNS("http://www.w3.org/2000/svg", "defs"),
+          overlay.firstChild
+        );
+      const clip = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "clipPath"
+      );
+      clip.setAttribute("id", "clock-sun-day-clip");
+      clip.setAttribute("clipPathUnits", "userSpaceOnUse");
+      const slice = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path"
+      );
+      slice.setAttribute("d", this._clockWedgePath(sunrise, sunset));
+      clip.appendChild(slice);
+      defs.appendChild(clip);
+      this._clockSunDayClipId = "clock-sun-day-clip";
       const night = document.createElementNS(
         "http://www.w3.org/2000/svg",
         "path"
@@ -7354,6 +7389,47 @@ class SceneExtrapolationPanel extends HTMLElement {
     path.setAttribute("r", String(CLOCK_SUN_PATH_R));
     overlay.appendChild(path);
 
+    const defs =
+      overlay.querySelector("defs") ||
+      overlay.insertBefore(
+        document.createElementNS("http://www.w3.org/2000/svg", "defs"),
+        overlay.firstChild
+      );
+    const grad = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "radialGradient"
+    );
+    grad.setAttribute("id", "clock-sun-fill-grad");
+    grad.setAttribute("cx", "50%");
+    grad.setAttribute("cy", "50%");
+    grad.setAttribute("r", "50%");
+    const mkStop = (offset, color) => {
+      const stop = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "stop"
+      );
+      stop.setAttribute("offset", offset);
+      stop.setAttribute("stop-color", color);
+      grad.appendChild(stop);
+      return stop;
+    };
+    this._clockSunFillStops = {
+      white: mkStop("0%", "#fff"),
+      core: mkStop("45%", "#fff8e7"),
+      mid: mkStop("78%", "#ffb74d"),
+      corona: mkStop("100%", "#ffb74d"),
+    };
+    defs.appendChild(grad);
+
+    const fill = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    fill.setAttribute("class", "clock-sun-fill");
+    fill.setAttribute("fill", "url(#clock-sun-fill-grad)");
+    if (this._clockSunDayClipId) {
+      fill.setAttribute("clip-path", `url(#${this._clockSunDayClipId})`);
+    }
+    overlay.appendChild(fill);
+    this._clockSunFillEl = fill;
+
     const handleInner = document.createElementNS(
       "http://www.w3.org/2000/svg",
       "line"
@@ -7372,11 +7448,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     marker.className = "clock-sun";
     marker.setAttribute("role", "slider");
     marker.setAttribute("aria-label", "Drag to preview time of day");
-    for (const layer of ["clock-sun-core", "clock-sun-ring"]) {
-      const span = document.createElement("span");
-      span.className = layer;
-      marker.appendChild(span);
-    }
+    const ring = document.createElement("span");
+    ring.className = "clock-sun-ring";
+    marker.appendChild(ring);
     host.appendChild(marker);
     this._clockSunEl = marker;
     this._clockSunLive = false;
