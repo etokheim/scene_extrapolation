@@ -8,31 +8,36 @@ const PLOT_LEFT = 16;
 const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
-/* Solar Dial viewBox 200×200: outer watch-face container, sun path inside it,
-   ticks/labels on the container, floating rings opposite the handle. */
+/* Solar Dial viewBox 200×200: watch face inset so event buttons sit outside,
+   sun path inside the face, floating rings opposite the handle. */
 const CLOCK_VIEW = 200;
 const CLOCK_CX = 100;
 const CLOCK_CY = 100;
-/* Container fills the square (inset so the stroke stays on-canvas). */
-const CLOCK_FACE_R = 96;
+/* Inset so event icons + labels fit in the square around the face. */
+const CLOCK_FACE_R = 74;
 /* Sun path is 25% smaller than the watch-face container. */
 const CLOCK_SUN_PATH_R = CLOCK_FACE_R * 0.75;
+/* Event buttons outside the face; dashed spoke runs into the path. */
+const CLOCK_EVENT_R = 88;
+const CLOCK_EVENT_SPOKE_OUTER = CLOCK_EVENT_R - 7;
 /* Ticks grow inward from the container; labels sit inside those strokes. */
 const CLOCK_TICK_OUTER = CLOCK_FACE_R;
-const CLOCK_TICK_INNER_MAJOR = CLOCK_FACE_R - 9;
-const CLOCK_TICK_INNER_MINOR = CLOCK_FACE_R - 5;
-const CLOCK_LABEL_R = CLOCK_TICK_INNER_MAJOR - 5;
-/* Floating rings opposite the handle; 2× prior size, still inside the path. */
-const CLOCK_FLOAT_OFFSET = 18;
-const CLOCK_FLOAT_R = 44;
-const CLOCK_FLOAT_GAP = 10; // 18+44+10 = 72
+const CLOCK_TICK_LEN_MAJOR = 6;
+const CLOCK_TICK_LEN_MID = 3.8;
+const CLOCK_TICK_LEN_MINOR = 2.4;
+const CLOCK_TICK_LEN_HAIR = 1.5;
+const CLOCK_LABEL_R = CLOCK_FACE_R - CLOCK_TICK_LEN_MAJOR - 8;
+/* Floating rings opposite the handle; stay inside the (inset) path. */
+const CLOCK_FLOAT_OFFSET = 14;
+const CLOCK_FLOAT_R = 33;
+const CLOCK_FLOAT_GAP = 8; // 14+33+8 = 55; path ≈ 55.5
 const CLOCK_SCRUB_RAIL_PX = 88;
-/* Sun outline size as % of the face; grows 10% toward the horizon. */
-const CLOCK_SUN_SIZE_PCT = 8.5;
+/* Sun outline tracks the face diameter; grows 10% toward the horizon. */
+const CLOCK_SUN_R_VIEW = CLOCK_FACE_R * 0.0885;
+const CLOCK_SUN_SIZE_PCT = (CLOCK_SUN_R_VIEW * 2 / CLOCK_VIEW) * 100;
 const CLOCK_SUN_GROW = 0.1;
 /* Daytime elevation where size falls back to 1× (degrees). */
 const CLOCK_SUN_SIZE_HORIZON_DEG = 18;
-const CLOCK_SUN_R_VIEW = (CLOCK_SUN_SIZE_PCT / 100) * (CLOCK_VIEW / 2);
 /* Linear sun chart stroke width vs elevation (table view). */
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
 const CLOCK_SUN_STROKE_MAX_PX = 10;
@@ -672,7 +677,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 12px;
           width: 100%;
           /* No horizontal padding — use the full stage column for the dial. */
-          padding: 8px 0 16px;
+          padding: 20px 0 20px;
           box-sizing: border-box;
           overflow: visible;
         }
@@ -1009,20 +1014,49 @@ class SceneExtrapolationPanel extends HTMLElement {
           background: transparent;
           box-sizing: border-box;
         }
+        /* Stroke width is CSS px (non-scaling) so ticks stay the same
+           weight on mobile and desktop while the face scales. */
         .sun-light-clock-overlay .clock-tick {
-          stroke: var(--divider-color);
-          stroke-width: 1;
+          stroke: var(--primary-text-color);
+          stroke-width: 0.5px;
+          vector-effect: non-scaling-stroke;
+          stroke-linecap: round;
+          opacity: 0.38;
+        }
+        .sun-light-clock-overlay .clock-tick.minor {
+          opacity: 0.48;
+        }
+        .sun-light-clock-overlay .clock-tick.mid {
+          stroke-width: 0.7px;
+          opacity: 0.58;
         }
         .sun-light-clock-overlay .clock-tick.major {
-          stroke: var(--secondary-text-color);
-          stroke-width: 1.5;
+          stroke-width: 1px;
+          opacity: 0.78;
         }
-        .sun-light-clock-overlay .clock-label {
-          fill: var(--secondary-text-color);
-          font-size: 8px;
+        .sun-light-clock-overlay .clock-event-spoke {
+          stroke: var(--primary-text-color);
+          stroke-width: 0.5px;
+          stroke-dasharray: 2 2.25;
+          vector-effect: non-scaling-stroke;
+          stroke-linecap: round;
+          opacity: 0.42;
+        }
+        .clock-hour-label {
+          position: absolute;
+          transform: translate(-50%, -50%);
+          font-size: 10px;
           font-variant-numeric: tabular-nums;
-          text-anchor: middle;
-          dominant-baseline: middle;
+          line-height: 1;
+          color: var(--primary-text-color);
+          opacity: 0.72;
+          pointer-events: none;
+          z-index: 3;
+        }
+        @media (min-width: 871px) {
+          .clock-hour-label {
+            font-size: 14px;
+          }
         }
         .clock-event-anchor {
           position: absolute;
@@ -7561,34 +7595,44 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._paintClockSky(overlay, events);
     const cx = CLOCK_CX;
     const cy = CLOCK_CY;
-    for (let hour = 0; hour < 24; hour += 1) {
-      const deg = this._clockAngleDeg(hour * 3600);
+    const hourLabels = [];
+    const labelRpct = (CLOCK_LABEL_R / CLOCK_VIEW) * 100;
+    for (let step = 0; step < 96; step += 1) {
+      const seconds = step * 15 * 60;
+      const deg = this._clockAngleDeg(seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
-      const even = hour % 2 === 0;
-      const inner = even ? CLOCK_TICK_INNER_MAJOR : CLOCK_TICK_INNER_MINOR;
+      const evenHour = seconds % (2 * 3600) === 0;
+      const hour = seconds % 3600 === 0;
+      const half = seconds % 1800 === 0;
+      let tickClass = "clock-tick";
+      let tickLen = CLOCK_TICK_LEN_HAIR;
+      if (evenHour) {
+        tickClass = "clock-tick major";
+        tickLen = CLOCK_TICK_LEN_MAJOR;
+      } else if (hour) {
+        tickClass = "clock-tick mid";
+        tickLen = CLOCK_TICK_LEN_MID;
+      } else if (half) {
+        tickClass = "clock-tick minor";
+        tickLen = CLOCK_TICK_LEN_MINOR;
+      }
+      const inner = CLOCK_TICK_OUTER - tickLen;
       const tick = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      tick.setAttribute("class", even ? "clock-tick major" : "clock-tick");
+      tick.setAttribute("class", tickClass);
       tick.setAttribute("x1", (cx + Math.cos(rad) * inner).toFixed(2));
       tick.setAttribute("y1", (cy + Math.sin(rad) * inner).toFixed(2));
       tick.setAttribute("x2", (cx + Math.cos(rad) * CLOCK_TICK_OUTER).toFixed(2));
       tick.setAttribute("y2", (cy + Math.sin(rad) * CLOCK_TICK_OUTER).toFixed(2));
       overlay.appendChild(tick);
-      if (even) {
-        const label = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "text"
-        );
-        label.setAttribute("class", "clock-label");
-        label.setAttribute(
-          "x",
-          (cx + Math.cos(rad) * CLOCK_LABEL_R).toFixed(2)
-        );
-        label.setAttribute(
-          "y",
-          (cy + Math.sin(rad) * CLOCK_LABEL_R).toFixed(2)
-        );
-        label.textContent = hour === 0 ? "24" : String(hour).padStart(2, "0");
-        overlay.appendChild(label);
+      if (evenHour) {
+        const hourNum = seconds / 3600;
+        const label = document.createElement("div");
+        label.className = "clock-hour-label";
+        label.textContent =
+          hourNum === 0 ? "24" : String(hourNum).padStart(2, "0");
+        label.style.left = `${50 + Math.cos(rad) * labelRpct}%`;
+        label.style.top = `${50 + Math.sin(rad) * labelRpct}%`;
+        hourLabels.push(label);
       }
     }
     this._paintClockSunPath(overlay, face);
@@ -7688,21 +7732,30 @@ class SceneExtrapolationPanel extends HTMLElement {
       openRingAt(ev, selected);
     });
     floatEl.appendChild(ringsHost);
-    face.append(glowHost, overlay, handleHit, floatEl);
+    face.append(glowHost, overlay, handleHit, floatEl, ...hourLabels);
 
     const editable = this._view === "edit";
     const pathEvents = events.filter((event) => event.seconds != null);
-    const pathRpct = (CLOCK_SUN_PATH_R / CLOCK_VIEW) * 100;
+    const eventRpct = (CLOCK_EVENT_R / CLOCK_VIEW) * 100;
     for (const event of pathEvents) {
-      const pos = this._clockPolar(event.seconds, CLOCK_SUN_PATH_R);
+      const pos = this._clockPolar(event.seconds, CLOCK_EVENT_R);
+      const spokeInner = this._clockPolar(event.seconds, CLOCK_SUN_PATH_R);
+      const spokeOuter = this._clockPolar(event.seconds, CLOCK_EVENT_SPOKE_OUTER);
+      const spoke = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      spoke.setAttribute("class", "clock-event-spoke");
+      spoke.setAttribute("x1", spokeOuter.x.toFixed(2));
+      spoke.setAttribute("y1", spokeOuter.y.toFixed(2));
+      spoke.setAttribute("x2", spokeInner.x.toFixed(2));
+      spoke.setAttribute("y2", spokeInner.y.toFixed(2));
+      overlay.appendChild(spoke);
       const sceneId = this._eventSceneId(event.id);
       const sceneName = this._sceneName(sceneId);
       const timeText = event.fallback ? `${event.time}*` : event.time;
 
       const anchor = document.createElement("div");
       anchor.className = "clock-event-anchor";
-      anchor.style.left = `${50 + pos.cos * pathRpct}%`;
-      anchor.style.top = `${50 + pos.sin * pathRpct}%`;
+      anchor.style.left = `${50 + pos.cos * eventRpct}%`;
+      anchor.style.top = `${50 + pos.sin * eventRpct}%`;
 
       const meta = document.createElement("div");
       meta.className = "clock-event-meta";

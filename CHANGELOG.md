@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light-edit sidebar brightness graph above the color wheel (titled, full-bleed, 0–100% in the subtext): drag a solar-event point to change brightness; release works outside the graph; missing-lamp events show `+` to add
 
 ### Changed
-- Dial view is a Solar Dial: face-filling watch container with a sun path 25% smaller inside it (`24` at midnight; ticks and labels inside the container), event icons on the path, a time handle that gaps through the sun’s white outline, outlined sun (fill masked by the sunrise/sunset horizon as it crosses; +10% size at the horizon), solar-event sky wedges and horizon glow, and full-day light rings (no center hole) in a larger floating circle opposite the handle
+- Dial view is a Solar Dial: inset watch face with event buttons outside it and dashed spokes to the sun path, `24` at midnight, 10px/14px hour labels, 15-minute non-scaling ticks, a time handle that gaps through the sun’s white outline, outlined sun (fill masked by the sunrise/sunset horizon as it crosses; +10% size at the horizon), solar-event sky wedges and horizon glow, and full-day light rings (no center hole) in a floating circle opposite the handle
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
 - Unassigned solar events are off-knots in the light preview (graphs go dark there) instead of being skipped
 - Feather sharpen-on-hover animates via document-registered `--light-feather` / `--clock-feather` (shadow `@property` did not transition)
