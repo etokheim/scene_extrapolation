@@ -6181,10 +6181,18 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._clockSunDisplayedSeconds ?? this._clockSunIdleSeconds();
     const target = this._clockSunArcTo;
     const d = this._shortestSecondsDelta(cur, target);
+    // Don't treat a zero-dt first frame as "arrived" (that snapped the
+    // return-to-idle motion when hover ended).
+    if (dt < 0.001) {
+      this._clockSunArcRaf = window.requestAnimationFrame((t) =>
+        this._tickClockSunArc(t)
+      );
+      return;
+    }
     // ~0.11s time-constant ≈ settles in ~300ms; follows a moving pointer.
     const tau = 0.11;
     const step = d * (1 - Math.exp(-dt / tau));
-    if (Math.abs(d) < 0.75 || Math.abs(step) < 0.05) {
+    if (Math.abs(d) < 0.75) {
       this._clockSunArcRaf = undefined;
       this._applyClockSunAppearance(target);
       if (this._clockSunArcThenLive && this._hoverSeconds != null) {
@@ -6340,7 +6348,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._hoverLine.style.display = "";
       }
       this._clockSunLive = false;
-      this._setClockSunArcTarget(this._clockSunIdleSeconds());
+      this._setClockSunArcTarget(this._clockSunIdleSeconds(), {
+        thenLive: false,
+      });
       this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
     };
     face.addEventListener("pointermove", (ev) => {
