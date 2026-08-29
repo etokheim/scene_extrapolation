@@ -1138,6 +1138,68 @@ class SceneExtrapolationPanel extends HTMLElement {
           background-clip: content-box;
           background-origin: content-box;
         }
+        .light-brightness-graph {
+          position: relative;
+          width: 100%;
+          margin: 0 0 12px;
+          user-select: none;
+          touch-action: none;
+        }
+        .light-brightness-graph svg {
+          display: block;
+          width: 100%;
+          height: 120px;
+          overflow: visible;
+        }
+        .light-brightness-graph .bg-frame {
+          fill: color-mix(
+            in srgb,
+            var(--secondary-text-color) 10%,
+            var(--card-background-color)
+          );
+          stroke: var(--divider-color);
+          stroke-width: 1;
+        }
+        .light-brightness-graph .fill-area {
+          stroke: none;
+        }
+        .light-brightness-graph .curve {
+          fill: none;
+          stroke: var(--primary-text-color);
+          stroke-width: 1.5;
+          stroke-linejoin: round;
+          stroke-linecap: round;
+          opacity: 0.55;
+        }
+        .light-brightness-graph .handle {
+          cursor: ns-resize;
+        }
+        .light-brightness-graph .handle-hit {
+          fill: transparent;
+          stroke: none;
+        }
+        .light-brightness-graph .handle-dot {
+          fill: var(--card-background-color);
+          stroke: var(--primary-text-color);
+          stroke-width: 2;
+        }
+        .light-brightness-graph .handle.active .handle-dot {
+          stroke: var(--primary-color);
+          stroke-width: 2.5;
+        }
+        .light-brightness-graph .handle-fill {
+          stroke: none;
+        }
+        .light-brightness-graph .handle-label {
+          fill: var(--secondary-text-color);
+          font-size: 10px;
+          text-anchor: middle;
+        }
+        .light-brightness-graph .axis-label {
+          fill: var(--secondary-text-color);
+          font-size: 10px;
+          font-variant-numeric: tabular-nums;
+        }
         .light-dialog ha-selector,
         .light-dialog ha-switch,
         .event-dialog ha-selector,
@@ -3896,6 +3958,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     let liveEdit = false;
     let liveApplied = false;
     let wheelCtl = null;
+    let brightnessGraphCtl = null;
 
     const sceneEntityId = () => this._eventSceneId(currentEvent.id);
     const currentEntry = () => drafts.get(sceneEntityId());
@@ -3945,6 +4008,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._sunPathKey = undefined;
         this._ensureSunPath();
         restoreLive();
+        brightnessGraphCtl?.disconnect();
         wheelCtl?.disconnect();
       },
     });
@@ -3970,9 +4034,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
     const subtitleEl = header.querySelector("[slot='subtitle']");
     const chipsHost = document.createElement("div");
+    const brightnessGraphMount = document.createElement("div");
     const fieldsHost = document.createElement("div");
     const wheelMount = document.createElement("div");
-    body.append(chipsHost, wheelMount, fieldsHost);
+    body.append(chipsHost, brightnessGraphMount, wheelMount, fieldsHost);
 
     const selectScene = async (next, { fromWheel = false } = {}) => {
       const nextId = this._eventSceneId(next.id);
@@ -3987,6 +4052,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       paintChips();
       paintFields();
+      brightnessGraphCtl?.sync();
       if (!fromWheel) {
         const mode = draftWheelMode(currentDraft(), hasColor, hasTemp);
         wheelCtl?.setMode(mode, { convertDraft: false });
@@ -4090,6 +4156,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           nextDraft.state = "on";
         }
         previewDrafts();
+        brightnessGraphCtl?.sync();
         await applyLive();
       });
       fieldsHost.appendChild(brightness);
@@ -4098,8 +4165,64 @@ class SceneExtrapolationPanel extends HTMLElement {
     const onWheelChange = async () => {
       previewDrafts();
       wheelCtl?.syncPresets();
+      brightnessGraphCtl?.sync();
       await applyLive();
     };
+
+    brightnessGraphCtl = createLightBrightnessGraph({
+      getPoints: () => {
+        const activeId = sceneEntityId();
+        return events
+          .map((item) => {
+            const sceneId = this._eventSceneId(item.id);
+            if (!sceneId) {
+              return null;
+            }
+            const entry = drafts.get(sceneId);
+            if (!entry) {
+              return null;
+            }
+            const draft = entry.draft;
+            const brightness =
+              draft.state === "off" ? 0 : Number(draft.brightness) || 0;
+            return {
+              eventId: item.id,
+              sceneId,
+              seconds: item.seconds,
+              name: item.name,
+              icon: item.icon,
+              brightness,
+              rgb: draftRgb(draft),
+              active: sceneId === activeId,
+            };
+          })
+          .filter(Boolean);
+      },
+      onSelect: (eventId) => {
+        const next = events.find((item) => item.id === eventId);
+        if (next) {
+          selectScene(next);
+        }
+      },
+      onBrightness: async (sceneId, brightness) => {
+        const entry = drafts.get(sceneId);
+        if (!entry) {
+          return;
+        }
+        entry.draft.brightness = brightness;
+        if (brightness > 0) {
+          entry.draft.state = "on";
+        }
+        previewDrafts();
+        brightnessGraphCtl?.sync();
+        await applyLive();
+      },
+      onDragEnd: () => {
+        paintFields();
+        wheelCtl?.sync();
+      },
+    });
+    brightnessGraphMount.appendChild(brightnessGraphCtl.el);
 
     if (hasColor || hasTemp) {
       wheelCtl = createSceneColorWheel({
@@ -4157,6 +4280,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       await restoreLive();
       this._syncPreviewOverlay();
       this._clearPreviewCache();
+      brightnessGraphCtl?.disconnect();
       wheelCtl?.disconnect();
       this._commitSceneSidebar(host);
       this._ensureSunPath();
@@ -4180,6 +4304,7 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     paintChips();
     paintFields();
+    brightnessGraphCtl?.sync();
     wheelCtl?.sync();
   }
 
@@ -6609,6 +6734,268 @@ function drawHueWheelImage(mode, tempMin, tempMax) {
   const url = canvas.toDataURL();
   _hueWheelImageCache.set(key, url);
   return url;
+}
+
+function createLightBrightnessGraph({
+  getPoints,
+  onSelect,
+  onBrightness,
+  onDragEnd,
+}) {
+  const WIDTH = 300;
+  const HEIGHT = 120;
+  const PAD_L = 28;
+  const PAD_R = 12;
+  const PAD_T = 18;
+  const PAD_B = 22;
+  const PLOT_W = WIDTH - PAD_L - PAD_R;
+  const PLOT_H = HEIGHT - PAD_T - PAD_B;
+
+  const el = document.createElement("div");
+  el.className = "light-brightness-graph";
+  el.setAttribute("role", "group");
+  el.setAttribute("aria-label", "Brightness by solar event");
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${WIDTH} ${HEIGHT}`);
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  const gradient = document.createElementNS(
+    "http://www.w3.org/2000/svg",
+    "linearGradient"
+  );
+  const gradientId = `light-bri-grad-${Math.random().toString(36).slice(2, 9)}`;
+  gradient.setAttribute("id", gradientId);
+  gradient.setAttribute("gradientUnits", "userSpaceOnUse");
+  gradient.setAttribute("x1", String(PAD_L));
+  gradient.setAttribute("y1", "0");
+  gradient.setAttribute("x2", String(PAD_L + PLOT_W));
+  gradient.setAttribute("y2", "0");
+  defs.appendChild(gradient);
+
+  const frame = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  frame.setAttribute("class", "bg-frame");
+  frame.setAttribute("x", String(PAD_L));
+  frame.setAttribute("y", String(PAD_T));
+  frame.setAttribute("width", String(PLOT_W));
+  frame.setAttribute("height", String(PLOT_H));
+  frame.setAttribute("rx", "6");
+
+  const fillArea = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  fillArea.setAttribute("class", "fill-area");
+  fillArea.setAttribute("fill", `url(#${gradientId})`);
+
+  const curve = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  curve.setAttribute("class", "curve");
+
+  const y100 = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  y100.setAttribute("class", "axis-label");
+  y100.setAttribute("x", String(PAD_L - 6));
+  y100.setAttribute("y", String(PAD_T + 4));
+  y100.setAttribute("text-anchor", "end");
+  y100.textContent = "100";
+  const y0 = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  y0.setAttribute("class", "axis-label");
+  y0.setAttribute("x", String(PAD_L - 6));
+  y0.setAttribute("y", String(PAD_T + PLOT_H));
+  y0.setAttribute("text-anchor", "end");
+  y0.textContent = "0";
+
+  const handlesLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  handlesLayer.setAttribute("class", "handles");
+
+  svg.append(defs, frame, fillArea, curve, y100, y0, handlesLayer);
+  el.appendChild(svg);
+
+  let drag = null;
+
+  const xOf = (seconds, minS, maxS) => {
+    const span = maxS - minS || 1;
+    return PAD_L + ((seconds - minS) / span) * PLOT_W;
+  };
+  const yOf = (brightness) =>
+    PAD_T + PLOT_H * (1 - Math.max(0, Math.min(255, brightness)) / 255);
+  const brightnessFromY = (clientY) => {
+    const rect = svg.getBoundingClientRect();
+    const scaleY = HEIGHT / (rect.height || HEIGHT);
+    const y = (clientY - rect.top) * scaleY;
+    const t = 1 - (y - PAD_T) / PLOT_H;
+    return Math.round(Math.max(0, Math.min(1, t)) * 255);
+  };
+
+  const paintGeometry = (points) => {
+    gradient.replaceChildren();
+    if (!points.length) {
+      fillArea.setAttribute("d", "");
+      curve.setAttribute("d", "");
+      return [];
+    }
+    const minS = points[0].seconds;
+    const maxS = points[points.length - 1].seconds;
+    const span = Math.max(maxS - minS, 1);
+    for (const point of points) {
+      const stop = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "stop"
+      );
+      const offset = ((point.seconds - minS) / span) * 100;
+      const [r, g, b] = point.rgb;
+      stop.setAttribute("offset", `${offset.toFixed(2)}%`);
+      stop.setAttribute("stop-color", `rgb(${r},${g},${b})`);
+      gradient.appendChild(stop);
+    }
+    if (points.length === 1) {
+      const [r, g, b] = points[0].rgb;
+      const end = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "stop"
+      );
+      end.setAttribute("offset", "100%");
+      end.setAttribute("stop-color", `rgb(${r},${g},${b})`);
+      gradient.appendChild(end);
+    }
+    const coords = points.map((point) => ({
+      x: xOf(point.seconds, minS, maxS),
+      y: yOf(point.brightness),
+      point,
+    }));
+    const top = coords
+      .map((c, i) => `${i === 0 ? "M" : "L"}${c.x.toFixed(1)},${c.y.toFixed(1)}`)
+      .join(" ");
+    const area = `${top} L${coords[coords.length - 1].x.toFixed(1)},${(
+      PAD_T + PLOT_H
+    ).toFixed(1)} L${coords[0].x.toFixed(1)},${(PAD_T + PLOT_H).toFixed(1)} Z`;
+    fillArea.setAttribute("d", area);
+    curve.setAttribute("d", top);
+    return coords;
+  };
+
+  const syncDragVisual = () => {
+    const points = [...getPoints()].sort((a, b) => a.seconds - b.seconds);
+    const coords = paintGeometry(points);
+    for (const node of handlesLayer.querySelectorAll(".handle")) {
+      const match = coords.find((c) => c.point.eventId === node.dataset.eventId);
+      if (!match) {
+        continue;
+      }
+      node.classList.toggle("active", Boolean(match.point.active));
+      for (const circle of node.querySelectorAll("circle")) {
+        circle.setAttribute("cx", match.x.toFixed(1));
+        circle.setAttribute("cy", match.y.toFixed(1));
+      }
+      const fill = node.querySelector(".handle-fill");
+      if (fill) {
+        const [r, g, b] = match.point.rgb;
+        fill.setAttribute("fill", `rgb(${r},${g},${b})`);
+      }
+    }
+  };
+
+  const endDrag = (ev, node) => {
+    if (!drag || (ev && drag.pointerId !== ev.pointerId)) {
+      return;
+    }
+    drag = null;
+    if (ev && node) {
+      try {
+        node.releasePointerCapture(ev.pointerId);
+      } catch (_err) {
+        /* already released */
+      }
+    }
+    sync();
+    onDragEnd?.();
+  };
+
+  const sync = () => {
+    if (drag) {
+      syncDragVisual();
+      return;
+    }
+    const points = [...getPoints()].sort((a, b) => a.seconds - b.seconds);
+    handlesLayer.replaceChildren();
+    const coords = paintGeometry(points);
+    if (!points.length) {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    for (const c of coords) {
+      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      group.setAttribute(
+        "class",
+        c.point.active ? "handle active" : "handle"
+      );
+      group.dataset.eventId = c.point.eventId;
+      group.dataset.sceneId = c.point.sceneId;
+      const hit = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "circle"
+      );
+      hit.setAttribute("class", "handle-hit");
+      hit.setAttribute("cx", c.x.toFixed(1));
+      hit.setAttribute("cy", c.y.toFixed(1));
+      hit.setAttribute("r", "14");
+      const fill = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "circle"
+      );
+      fill.setAttribute("class", "handle-fill");
+      fill.setAttribute("cx", c.x.toFixed(1));
+      fill.setAttribute("cy", c.y.toFixed(1));
+      fill.setAttribute("r", "5");
+      const [r, gCh, b] = c.point.rgb;
+      fill.setAttribute("fill", `rgb(${r},${gCh},${b})`);
+      const dot = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "circle"
+      );
+      dot.setAttribute("class", "handle-dot");
+      dot.setAttribute("cx", c.x.toFixed(1));
+      dot.setAttribute("cy", c.y.toFixed(1));
+      dot.setAttribute("r", "7");
+      const label = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "text"
+      );
+      label.setAttribute("class", "handle-label");
+      label.setAttribute("x", c.x.toFixed(1));
+      label.setAttribute("y", String(HEIGHT - 6));
+      label.textContent = c.point.name;
+      group.append(hit, dot, fill, label);
+      group.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        group.setPointerCapture(ev.pointerId);
+        drag = {
+          sceneId: c.point.sceneId,
+          eventId: c.point.eventId,
+          pointerId: ev.pointerId,
+        };
+        onSelect(c.point.eventId);
+        onBrightness(c.point.sceneId, brightnessFromY(ev.clientY));
+      });
+      group.addEventListener("pointermove", (ev) => {
+        if (!drag || drag.pointerId !== ev.pointerId) {
+          return;
+        }
+        onBrightness(drag.sceneId, brightnessFromY(ev.clientY));
+      });
+      group.addEventListener("pointerup", (ev) => endDrag(ev, group));
+      group.addEventListener("pointercancel", (ev) => endDrag(ev, group));
+      handlesLayer.appendChild(group);
+    }
+  };
+
+  sync();
+  return {
+    el,
+    sync,
+    disconnect: () => {
+      drag = null;
+    },
+  };
 }
 
 function createSceneColorWheel({
