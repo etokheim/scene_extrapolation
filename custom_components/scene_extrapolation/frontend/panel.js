@@ -8,23 +8,23 @@ const PLOT_LEFT = 16;
 const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
-/* Solar Dial viewBox 200×200: outer time scale, fixed sun-path circle, floating
-   light-rings host opposite the time handle. Angle = time; elevation is tint. */
+/* Solar Dial viewBox 200×200: path near the face edge (10% inset), ticks and
+   hour labels inside the path, floating rings opposite the handle. */
 const CLOCK_VIEW = 200;
 const CLOCK_CX = 100;
 const CLOCK_CY = 100;
-/* Fixed sun-path radius (icons + sun sit here). Inside the time dial. */
-const CLOCK_SUN_PATH_R = 72;
-const CLOCK_TICK_OUTER = 86;
-const CLOCK_TICK_INNER_MAJOR = 78;
-const CLOCK_TICK_INNER_MINOR = 82;
-const CLOCK_LABEL_R = 94;
+/* Face fills the viewBox; path is 10% smaller so event icons can sit on it. */
+const CLOCK_FACE_R = 100;
+const CLOCK_SUN_PATH_R = CLOCK_FACE_R * 0.9;
+/* Ticks grow inward from the path; labels sit just inside the major strokes. */
+const CLOCK_TICK_OUTER = CLOCK_SUN_PATH_R;
+const CLOCK_TICK_INNER_MAJOR = CLOCK_SUN_PATH_R - 9;
+const CLOCK_TICK_INNER_MINOR = CLOCK_SUN_PATH_R - 5;
+const CLOCK_LABEL_R = CLOCK_TICK_INNER_MAJOR - 5;
 /* Floating rings stay strictly inside the path: offset+radius+gap < path R. */
-const CLOCK_FLOAT_OFFSET = 28;
-const CLOCK_FLOAT_R = 22;
-const CLOCK_FLOAT_GAP = 12; // 28+22+12 = 62 < 72
-/* Rim band for hour labels (events live on the path now). */
-const CLOCK_CHROME_PX = 28;
+const CLOCK_FLOAT_OFFSET = 36;
+const CLOCK_FLOAT_R = 28;
+const CLOCK_FLOAT_GAP = 16; // 36+28+16 = 80 < 90
 const CLOCK_SCRUB_RAIL_PX = 88;
 /* Sun disc size as % of the face (≈52px on a 500px face); 2× near horizon. */
 const CLOCK_SUN_SIZE_PCT = 8.5;
@@ -684,7 +684,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Visible so the sky glow (scaled + blurred) is not clipped. */
           overflow: visible;
           transform-origin: center center;
-          --clock-chrome: ${CLOCK_CHROME_PX}px;
         }
         .sun-light-clock-face.clock-face-enter {
           animation:
