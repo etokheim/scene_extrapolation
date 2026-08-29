@@ -426,15 +426,15 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-face.clock-face-enter {
           animation:
-            clock-face-fade 500ms cubic-bezier(0.2, 0, 0, 1) both,
-            clock-face-scale 1000ms cubic-bezier(0.2, 0, 0, 1) both;
+            clock-face-fade 750ms cubic-bezier(0.2, 0, 0, 1) both,
+            clock-face-scale 1500ms cubic-bezier(0.2, 0, 0, 1) both;
         }
         .sun-light-clock-face.clock-face-enter .sun-light-clock-overlay {
           transform-origin: center center;
-          animation: clock-overlay-spin 1000ms cubic-bezier(0.2, 0, 0, 1) both;
+          animation: clock-overlay-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
         }
         .sun-light-clock-face.clock-face-enter .clock-event-anchor {
-          animation: clock-event-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
+          animation: clock-event-spin 2250ms cubic-bezier(0.2, 0, 0, 1) both;
         }
         @keyframes clock-face-fade {
           from {
@@ -6416,7 +6416,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       face.removeEventListener("animationend", clearEnter);
     };
     face.addEventListener("animationend", clearEnter);
-    this._animateClockSunArc(from, idle, 1500, { forward: true });
+    this._animateClockSunArc(from, idle, 2250, { forward: true });
   }
 
   _paintClockSunPath(overlay, face, cx, cy) {
@@ -6777,7 +6777,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
 
     this._bindClockHover(face);
-    this._playClockEnterAnimation(face);
+    // Enter motion only on first clock paint this page load — date/scene
+    // redraws should not replay it.
+    if (this._clockEnterPlayed) {
+      this._applyClockSunAppearance(this._clockSunIdleSeconds());
+    } else {
+      this._clockEnterPlayed = true;
+      this._playClockEnterAnimation(face);
+    }
     wrap.appendChild(face);
 
     const legend = document.createElement("div");
