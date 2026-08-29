@@ -4042,7 +4042,27 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         return lightDraftFingerprint(entry.draft) !== entry.saved;
       });
-    const isDirty = () => dirtyEntries().length > 0;
+    // One undo point for the first edit in this sidebar open; later ticks
+    // (drag, wheel) update the same session drafts until close.
+    let undoCommitted = false;
+    const applyToSession = () => {
+      const dirty = dirtyEntries();
+      if (!dirty.length) {
+        return;
+      }
+      if (!undoCommitted) {
+        this._commitUndo();
+        undoCommitted = true;
+      }
+      for (const [sceneId, entry] of dirty) {
+        this._ensureNativeDraft(sceneId).entities[light.entity_id] = {
+          ...entry.draft,
+        };
+        entry.saved = lightDraftFingerprint(entry.draft);
+      }
+      this._syncPreviewOverlay();
+      this._schedulePreview();
+    };
     const restoreLive = async () => {
       if (liveApplied) {
         await this._applyLightState(light.entity_id, snapshot);
@@ -4055,15 +4075,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       liveApplied = true;
       await this._applyLightState(light.entity_id, currentDraft());
-    };
-    const previewDrafts = () => {
-      const patches = dirtyEntries().map(([sceneId, entry]) => ({
-        scene_entity_id: sceneId,
-        entity_id: light.entity_id,
-        entity_state: { ...entry.draft },
-      }));
-      this._syncPreviewOverlay(patches);
-      this._schedulePreview();
     };
 
     const infoBtn = document.createElement("ha-icon-button");
@@ -4094,19 +4105,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     const { host, header, body, footer } = opened;
     host._lightEntityId = light.entity_id;
     this._setSidebarLight(light.entity_id);
-    host._isDirty = isDirty;
-    host._confirmIfDirty = () => {
-      if (!isDirty()) {
-        return Promise.resolve(true);
-      }
-      const names = dirtyEntries()
-        .map(([sceneId]) => `“${this._sceneName(sceneId)}”`)
-        .join(", ");
-      return this._confirmDiscard({
-        title: "Discard unsaved changes?",
-        text: `You have unsaved edits to ${light.name} in ${names}. Closing drops those drafts.`,
-      });
-    };
     const subtitleEl = header.querySelector("[slot='subtitle']");
     const chipsHost = document.createElement("div");
     const brightnessGraphMount = document.createElement("div");
@@ -4215,7 +4213,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       onField.addEventListener("value-changed", async (ev) => {
         ev.stopPropagation();
         currentDraft().state = ev.detail.value ? "on" : "off";
-        previewDrafts();
+        applyToSession();
         await applyLive();
       });
       fieldsHost.appendChild(onField);
@@ -4240,7 +4238,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         if (nextDraft.brightness > 0) {
           nextDraft.state = "on";
         }
-        previewDrafts();
+        applyToSession();
         brightnessGraphCtl?.sync();
         await applyLive();
       });
@@ -4248,7 +4246,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
 
     const onWheelChange = async () => {
-      previewDrafts();
+      applyToSession();
       wheelCtl?.syncPresets();
       brightnessGraphCtl?.sync();
       await applyLive();
@@ -4343,7 +4341,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         if (!uniqueScenes.some((row) => row.sceneId === sceneId)) {
           uniqueScenes.push({ sceneId, event: next, events: [next] });
         }
-        previewDrafts();
+        applyToSession();
         await selectScene(next);
         brightnessGraphCtl?.sync();
         wheelCtl?.sync();
@@ -4358,7 +4356,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         if (brightness > 0) {
           entry.draft.state = "on";
         }
-        previewDrafts();
+        applyToSession();
         brightnessGraphCtl?.sync();
         await applyLive();
       },
@@ -4406,44 +4404,15 @@ class SceneExtrapolationPanel extends HTMLElement {
       });
     }
 
-    const cancel = document.createElement("ha-button");
-    cancel.appearance = "plain";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => this._requestCloseSceneSidebar(host));
-    const save = document.createElement("ha-button");
-    save.variant = "brand";
-    save.textContent = "Save";
-    save.addEventListener("click", async () => {
-      const dirty = dirtyEntries();
-      if (dirty.length) {
-        this._commitUndo();
-        for (const [sceneId, entry] of dirty) {
-          this._ensureNativeDraft(sceneId).entities[light.entity_id] = {
-            ...entry.draft,
-          };
-          entry.saved = lightDraftFingerprint(entry.draft);
-        }
-      }
-      await restoreLive();
-      this._syncPreviewOverlay();
-      this._clearPreviewCache();
-      brightnessGraphCtl?.disconnect();
-      wheelCtl?.disconnect();
-      this._commitSceneSidebar(host);
-      this._ensureSunPath();
-    });
     const note = document.createElement("p");
     note.className = "sidebar-note";
     const noteIcon = document.createElement("ha-icon");
     noteIcon.setAttribute("icon", "mdi:information-outline");
     const noteText = document.createElement("span");
     noteText.textContent =
-      "Save keeps these lamp drafts until you save the extrapolation scene. Switching scenes keeps drafts until you Save or Cancel.";
+      "Edits here change this lamp in the related native scene. Graphs update immediately. Save the extrapolation scene to keep the changes.";
     note.append(noteIcon, noteText);
-    const actions = document.createElement("div");
-    actions.className = "scene-sidebar-actions";
-    actions.append(cancel, save);
-    footer.append(note, actions);
+    footer.appendChild(note);
 
     host._switchLightEvent = async (next) => {
       await selectScene(next);

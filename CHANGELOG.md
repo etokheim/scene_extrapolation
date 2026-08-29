@@ -20,7 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light-edit sidebar lists each unique native scene as a compact chip (not one row per solar event)
 - Light-edit sidebar uses a Huemane-style hue/temperature wheel: pin for the selected scene, dots for the others, and a sampled line for the extrapolation path between them
 - Search in the preview-location dialog jumps the map pin
-- Discard confirmation when leaving the light editor with unsaved edits (all scenes for that lamp)
 - Year-long scrubber under the preview date to drag between days
 - Hover a sun or light graph to inspect time and sun elevation in a fixed readout (cursor line; today’s “now” line stays)
 - Preview another latitude/longitude on create/edit (quiet map pin until active, then a banner)
@@ -53,16 +52,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light-row hover sharpens the feathered seam with an animated mask; visible band height stays the same
 - Light-row names, dots, and warnings sit on the visible band; edit dots stay 5px with a 40px hit and expand from center
 - Editor graphs and form use a 1024px column (12px padding) instead of Home Assistant’s 1540px automation-editor canvas
-- Light-edit Save commits lamp drafts for every scene you changed; switching scenes keeps drafts without a prompt
-- Native scene rename / delete, light-edit Save, and removing a lamp stay in the editor session until the extrapolation Save
+- Light-edit sidebar edits apply to the related native scene in the editor session immediately (no nested Save / Cancel); the extrapolation Save writes YAML
+- Light-edit save hint sits in the footer (info icon + text)
+- Native scene rename / delete, light-edit changes, and removing a lamp stay in the editor session until the extrapolation Save
 - Creating a native scene from the event picker writes it immediately so Home Assistant’s scene selector can resolve it
-- Light-edit save hint sits in the footer (info icon + text) above Cancel / Save
 - Color-wheel presets stay on one row and scroll sideways; a right-edge fade marks leftover swatches
 - Solar-event scene buttons look like controls, warn when empty, and no longer outline linked events
 - Scene pickers moved onto the solar event row; the form keeps nightlights
 - Sun and light graphs no longer draw static vertical hour/event lines
 - Sun-path height is scaled to the location’s annual max elevation; the curve is darker below the horizon
-- Event scene picks apply immediately; the sidebar has Close (no Done). Light-edit Cancel still restores the previous overlay
+- Event scene picks apply immediately; the sidebar has Close (no Done). Light-edit closes without a nested Save; Live edit still restores the lamp
 - Light graphs interpolate from whatever solar events already have a scene
 - Hover brightness % is appended to each light name on its graph; the readout no longer lists lamps or color swatches
 - 🚨 `scene_extrapolation.turn_on` replaces `transition_modifier` (−100…100 time shift) with `transition_percent` (0–100 along the day: dawn 0, sunrise 25, noon 50, sunset 75, dusk 100). Scene entities expose `transition_percent` and `transition_percent_manual` instead of `transition_modifier`
