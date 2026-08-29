@@ -783,6 +783,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
           white-space: nowrap;
         }
+        /* Sunrise/sunset sit under the icon so they do not collide with
+           dawn (above) / dusk (above) on the same side of the dial. */
+        .clock-event-meta.below {
+          bottom: auto;
+          top: calc(100% + 4px);
+        }
         .clock-event-meta .clock-event-heading {
           font-size: 10px;
           font-weight: 600;
@@ -1548,6 +1554,23 @@ class SceneExtrapolationPanel extends HTMLElement {
           user-select: none;
           touch-action: none;
         }
+        .light-brightness-graph-heading {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+          margin: 0 0 6px;
+        }
+        .light-brightness-graph-title {
+          font-size: 14px;
+          font-weight: 500;
+          line-height: 1.25;
+          color: var(--primary-text-color);
+        }
+        .light-brightness-graph-sub {
+          font-size: 12px;
+          line-height: 1.25;
+          color: var(--secondary-text-color);
+        }
         .light-brightness-graph svg {
           display: block;
           width: 100%;
@@ -1612,11 +1635,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           fill: var(--secondary-text-color);
           font-size: 10px;
           text-anchor: middle;
-        }
-        .light-brightness-graph .axis-label {
-          fill: var(--secondary-text-color);
-          font-size: 10px;
-          font-variant-numeric: tabular-nums;
         }
         .light-dialog ha-selector,
         .light-dialog ha-switch,
@@ -7006,6 +7024,9 @@ class SceneExtrapolationPanel extends HTMLElement {
 
       const meta = document.createElement("div");
       meta.className = "clock-event-meta";
+      if (event.id === "sunrise" || event.id === "sunset") {
+        meta.classList.add("below");
+      }
       meta.setAttribute("aria-hidden", "true");
       const heading = document.createElement("span");
       heading.className = "clock-event-heading";
@@ -7860,11 +7881,12 @@ function createLightBrightnessGraph({
   onBrightness,
   onDragEnd,
 }) {
+  // Full-bleed plot — 0/100% live in the heading subtext, not axis labels.
   const WIDTH = 300;
   const HEIGHT = 120;
-  const PAD_L = 28;
-  const PAD_R = 12;
-  const PAD_T = 18;
+  const PAD_L = 8;
+  const PAD_R = 8;
+  const PAD_T = 14;
   const PAD_B = 22;
   const PLOT_W = WIDTH - PAD_L - PAD_R;
   const PLOT_H = HEIGHT - PAD_T - PAD_B;
@@ -7872,11 +7894,21 @@ function createLightBrightnessGraph({
   const el = document.createElement("div");
   el.className = "light-brightness-graph";
   el.setAttribute("role", "group");
-  el.setAttribute("aria-label", "Brightness by solar event");
+  el.setAttribute("aria-label", "Brightness by solar event, 0 to 100 percent");
+
+  const heading = document.createElement("div");
+  heading.className = "light-brightness-graph-heading";
+  const title = document.createElement("div");
+  title.className = "light-brightness-graph-title";
+  title.textContent = "Brightness";
+  const sub = document.createElement("div");
+  sub.className = "light-brightness-graph-sub";
+  sub.textContent = "0–100% by solar event";
+  heading.append(title, sub);
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", `0 0 ${WIDTH} ${HEIGHT}`);
-  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  svg.setAttribute("preserveAspectRatio", "none");
 
   const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
   const gradient = document.createElementNS(
@@ -7907,26 +7939,14 @@ function createLightBrightnessGraph({
   const curve = document.createElementNS("http://www.w3.org/2000/svg", "path");
   curve.setAttribute("class", "curve");
 
-  const y100 = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  y100.setAttribute("class", "axis-label");
-  y100.setAttribute("x", String(PAD_L - 6));
-  y100.setAttribute("y", String(PAD_T + 4));
-  y100.setAttribute("text-anchor", "end");
-  y100.textContent = "100";
-  const y0 = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  y0.setAttribute("class", "axis-label");
-  y0.setAttribute("x", String(PAD_L - 6));
-  y0.setAttribute("y", String(PAD_T + PLOT_H));
-  y0.setAttribute("text-anchor", "end");
-  y0.textContent = "0";
-
   const handlesLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
   handlesLayer.setAttribute("class", "handles");
 
-  svg.append(defs, frame, fillArea, curve, y100, y0, handlesLayer);
-  el.appendChild(svg);
+  svg.append(defs, frame, fillArea, curve, handlesLayer);
+  el.append(heading, svg);
 
   let drag = null;
+  let dragNode = null;
 
   const xOf = (seconds, minS, maxS) => {
     const span = maxS - minS || 1;
@@ -7940,6 +7960,23 @@ function createLightBrightnessGraph({
     const y = (clientY - rect.top) * scaleY;
     const t = 1 - (y - PAD_T) / PLOT_H;
     return Math.round(Math.max(0, Math.min(1, t)) * 255);
+  };
+
+  const unbindWindowDrag = () => {
+    window.removeEventListener("pointermove", onWindowPointerMove);
+    window.removeEventListener("pointerup", onWindowPointerUp);
+    window.removeEventListener("pointercancel", onWindowPointerUp);
+  };
+
+  const onWindowPointerMove = (ev) => {
+    if (!drag || drag.pointerId !== ev.pointerId) {
+      return;
+    }
+    onBrightness(drag.sceneId, brightnessFromY(ev.clientY));
+  };
+
+  const onWindowPointerUp = (ev) => {
+    endDrag(ev);
   };
 
   const paintGeometry = (points) => {
@@ -8030,14 +8067,18 @@ function createLightBrightnessGraph({
     }
   };
 
-  const endDrag = (ev, node) => {
+  const endDrag = (ev) => {
     if (!drag || (ev && drag.pointerId !== ev.pointerId)) {
       return;
     }
+    const node = dragNode;
+    const pointerId = drag.pointerId;
     drag = null;
+    dragNode = null;
+    unbindWindowDrag();
     if (ev && node) {
       try {
-        node.releasePointerCapture(ev.pointerId);
+        node.releasePointerCapture(pointerId);
       } catch (_err) {
         /* already released */
       }
@@ -8132,23 +8173,26 @@ function createLightBrightnessGraph({
         group.addEventListener("pointerdown", (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          group.setPointerCapture(ev.pointerId);
+          // Window listeners so release outside the SVG still ends the drag
+          // (SVG setPointerCapture alone is flaky across the sidebar chrome).
+          unbindWindowDrag();
+          try {
+            group.setPointerCapture(ev.pointerId);
+          } catch (_err) {
+            /* capture optional when window listeners are bound */
+          }
+          dragNode = group;
           drag = {
             sceneId: c.point.sceneId,
             eventId: c.point.eventId,
             pointerId: ev.pointerId,
           };
+          window.addEventListener("pointermove", onWindowPointerMove);
+          window.addEventListener("pointerup", onWindowPointerUp);
+          window.addEventListener("pointercancel", onWindowPointerUp);
           onSelect(c.point.eventId);
           onBrightness(c.point.sceneId, brightnessFromY(ev.clientY));
         });
-        group.addEventListener("pointermove", (ev) => {
-          if (!drag || drag.pointerId !== ev.pointerId) {
-            return;
-          }
-          onBrightness(drag.sceneId, brightnessFromY(ev.clientY));
-        });
-        group.addEventListener("pointerup", (ev) => endDrag(ev, group));
-        group.addEventListener("pointercancel", (ev) => endDrag(ev, group));
       }
       group.appendChild(label);
       handlesLayer.appendChild(group);
@@ -8160,7 +8204,9 @@ function createLightBrightnessGraph({
     el,
     sync,
     disconnect: () => {
+      unbindWindowDrag();
       drag = null;
+      dragNode = null;
     },
   };
 }

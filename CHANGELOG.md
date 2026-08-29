@@ -42,8 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clock enter (once per editor visit): face fades 750ms and scales 1.5s; overlay rotates 12° over 1.5s; event buttons + sun sweep finish at 2.25s; list → edit plays it again (date redraws still skip)
 - Sun path / clock container is transparent with no card border
 - Adding a missing light to a scene is an undoable session edit
-- Clock view hides the top solar-event chips (rim icons replace them); each rim icon has a dashed spoke to the horizon plus name · time and scene label above the button
-- Light-edit sidebar brightness graph above the color wheel: drag a solar-event point to change that scene’s brightness; events where the lamp is missing show `+` to add it
+- Clock view hides the top solar-event chips (rim icons replace them); each rim icon has a dashed spoke to the horizon plus name · time and scene label (sunrise/sunset labels sit below the icon so they do not overlap dawn/dusk)
+- Light-edit sidebar brightness graph above the color wheel (titled, full-bleed, 0–100% in the subtext): drag a solar-event point to change brightness; release works outside the graph; missing-lamp events show `+` to add
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
