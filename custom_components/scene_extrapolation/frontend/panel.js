@@ -14,11 +14,15 @@ const CLOCK_CX = 100;
 const CLOCK_CY = 100;
 const CLOCK_RINGS_OUTER = 72;
 const CLOCK_SUN_HORIZON = CLOCK_RINGS_OUTER;
-/* Day height is exaggerated so noon sits clearly outside the planet rim
-   (not a linear °→px map). Night stays inside the face. */
-const CLOCK_SUN_DAY_EMPHASIS = 2;
-const CLOCK_SUN_DAY_BASE_SPAN = 22;
-const CLOCK_SUN_NIGHT_MIN = 40;
+/* Drawn stroke: day height exaggerated so noon sits clearly outside the rim.
+   Marker track is a separate, more inset path so night sits deeper under the
+   planet (hides better) while day stays slightly inside the dashed stroke. */
+const CLOCK_SUN_PATH_DAY_EMPHASIS = 2;
+const CLOCK_SUN_PATH_DAY_BASE_SPAN = 22;
+const CLOCK_SUN_PATH_NIGHT_MIN = 40;
+const CLOCK_SUN_MARKER_DAY_EMPHASIS = 1.25;
+const CLOCK_SUN_MARKER_DAY_BASE_SPAN = 22;
+const CLOCK_SUN_MARKER_NIGHT_MIN = 26;
 const CLOCK_EVENT_ICON_R = 56;
 /* Fixed px band around the dial for event buttons + labels (do not scale). */
 const CLOCK_CHROME_PX = 56;
@@ -6975,27 +6979,49 @@ class SceneExtrapolationPanel extends HTMLElement {
     );
   }
 
-  _clockSunRadiusOf(elevation) {
+  _clockSunPathRadiusOf(elevation) {
     const scale = Math.max(this._sunPath?.max_elevation || 0, 1);
     const t = elevation / scale;
     if (elevation >= 0) {
       return (
         CLOCK_SUN_HORIZON +
-        Math.min(1, t) * CLOCK_SUN_DAY_BASE_SPAN * CLOCK_SUN_DAY_EMPHASIS
+        Math.min(1, t) *
+          CLOCK_SUN_PATH_DAY_BASE_SPAN *
+          CLOCK_SUN_PATH_DAY_EMPHASIS
       );
     }
     return (
       CLOCK_SUN_HORIZON +
-      Math.max(-1, t) * (CLOCK_SUN_HORIZON - CLOCK_SUN_NIGHT_MIN)
+      Math.max(-1, t) * (CLOCK_SUN_HORIZON - CLOCK_SUN_PATH_NIGHT_MIN)
     );
   }
 
-  _clockSunXy(seconds, elevation) {
+  /** Marker track — closer to the core than the dashed stroke (night hides better). */
+  _clockSunMarkerRadiusOf(elevation) {
+    const scale = Math.max(this._sunPath?.max_elevation || 0, 1);
+    const t = elevation / scale;
+    if (elevation >= 0) {
+      return (
+        CLOCK_SUN_HORIZON +
+        Math.min(1, t) *
+          CLOCK_SUN_MARKER_DAY_BASE_SPAN *
+          CLOCK_SUN_MARKER_DAY_EMPHASIS
+      );
+    }
+    return (
+      CLOCK_SUN_HORIZON +
+      Math.max(-1, t) * (CLOCK_SUN_HORIZON - CLOCK_SUN_MARKER_NIGHT_MIN)
+    );
+  }
+
+  _clockSunXy(seconds, elevation, { marker = true } = {}) {
     const elev =
       elevation ?? interpolateElevation(this._sunPath?.curve || [], seconds);
     const deg = this._clockAngleDeg(seconds);
     const rad = ((deg - 90) * Math.PI) / 180;
-    const r = this._clockSunRadiusOf(elev);
+    const r = marker
+      ? this._clockSunMarkerRadiusOf(elev)
+      : this._clockSunPathRadiusOf(elev);
     return {
       x: CLOCK_CX + Math.cos(rad) * r,
       y: CLOCK_CY + Math.sin(rad) * r,
@@ -7012,10 +7038,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._clockSunDisplayedSeconds = seconds;
     const elev = interpolateElevation(curve, seconds);
-    const look = skyLookFromElevation(elev);
+    // Below the horizon the disc keeps the horizon look (not night blues).
+    const sunLook = skyLookFromElevation(elev < 0 ? 0 : elev);
+    const glowLook = skyLookFromElevation(elev);
     const sun = this._clockSunEl;
     if (sun) {
-      const pos = this._clockSunXy(seconds, elev);
+      const pos = this._clockSunXy(seconds, elev, { marker: true });
       // Max scale (2×) for the whole night and at the horizon; shrink only
       // as daytime elevation rises away from 0°.
       const scale =
@@ -7025,12 +7053,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       sun.style.left = `${(pos.x / CLOCK_VIEW) * 100}%`;
       sun.style.top = `${(pos.y / CLOCK_VIEW) * 100}%`;
       sun.style.setProperty("--sun-scale", String(scale));
-      sun.style.setProperty("--sun-core", look.sunCore);
-      sun.style.setProperty("--sun-corona", look.sunCorona);
-      sun.style.setProperty("--sun-streak", look.sunStreak);
-      sun.style.setProperty("--sun-streak-opacity", String(look.streakOpacity));
-      sun.style.setProperty("--sun-ray-opacity", String(look.rayOpacity));
-      sun.style.setProperty("--sun-ghost-opacity", String(look.ghostOpacity));
+      sun.style.setProperty("--sun-core", sunLook.sunCore);
+      sun.style.setProperty("--sun-corona", sunLook.sunCorona);
+      sun.style.setProperty("--sun-streak", sunLook.sunStreak);
+      sun.style.setProperty("--sun-streak-opacity", String(sunLook.streakOpacity));
+      sun.style.setProperty("--sun-ray-opacity", String(sunLook.rayOpacity));
+      sun.style.setProperty("--sun-ghost-opacity", String(sunLook.ghostOpacity));
       sun.setAttribute(
         "aria-label",
         `Sun ${elev >= 0 ? "above" : "below"} horizon`
@@ -7038,8 +7066,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const glow = this._clockSkyGlow;
     if (glow) {
-      glow.style.background = look.glowBackground;
-      glow.style.opacity = String(look.glowOpacity);
+      glow.style.background = glowLook.glowBackground;
+      glow.style.opacity = String(glowLook.glowOpacity);
     }
   }
 
@@ -7121,7 +7149,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     // lines stack into a double spine; one path keeps rounded dashes clean.
     for (const run of sunStrokePathRuns(curve, strokeOf)) {
       const coords = run.points.map(([seconds, elev]) =>
-        this._clockSunXy(seconds, elev)
+        this._clockSunXy(seconds, elev, { marker: false })
       );
       let d = "";
       let len = 0;
