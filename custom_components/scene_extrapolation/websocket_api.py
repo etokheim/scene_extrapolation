@@ -240,6 +240,7 @@ _OVERLAY_PATCH = {
         vol.Optional("date"): str,
         vol.Optional("scenes"): dict,
         vol.Optional("overlay"): vol.Any(_OVERLAY_PATCH, [_OVERLAY_PATCH]),
+        vol.Optional("area"): str,
         vol.Optional("location"): {
             vol.Required("latitude"): vol.All(
                 vol.Coerce(float), vol.Range(min=-90, max=90)
@@ -266,6 +267,7 @@ async def ws_preview(
         scene_ids=scenes,
         overlay=msg.get("overlay"),
         location=msg.get("location"),
+        area_id=msg.get("area") or None,
     )
     connection.send_result(msg["id"], payload)
 

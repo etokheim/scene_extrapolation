@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Undo / redo in the editor toolbar (Ctrl/Cmd+Z, Shift+Z, Y), matching the automation editor
 - Unsaved editor changes persist in this browser; returning to the scene restores them with a banner and a Discard action
 - A light missing from some scenes is an Add button; it copies the typical brightness and color of the other lights already in that scene
+- Suggested rows for area lights that are not in any assigned scene; scene lights outside the selected area use the warning color
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)

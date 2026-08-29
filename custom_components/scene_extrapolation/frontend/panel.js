@@ -549,6 +549,39 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-weight: 400;
           font-variant-numeric: tabular-nums;
         }
+        .light-row.out-of-area .light-name {
+          color: var(--warning-color, var(--error-color));
+        }
+        .light-row.suggested {
+          margin-top: 4px;
+        }
+        .light-row.suggested:first-child {
+          margin-top: 0;
+        }
+        .light-row:not(.suggested) + .light-row.suggested {
+          margin-top: 8px;
+        }
+        .light-row.suggested .light-bar {
+          height: 40px;
+          cursor: default;
+          pointer-events: auto;
+          background: color-mix(
+            in srgb,
+            var(--secondary-text-color) 10%,
+            var(--card-background-color)
+          );
+        }
+        .light-row.suggested .light-bar::after {
+          display: none;
+        }
+        .light-row.suggested .light-name {
+          top: 50%;
+          color: var(--secondary-text-color);
+        }
+        .light-row.suggested .light-warn {
+          top: 50%;
+          right: 12px;
+        }
         .light-edits {
           position: absolute;
           left: 0;
@@ -4315,6 +4348,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       scenes: this._sceneIdsFromForm(),
       overlay: this._previewOverlay,
       location: this._previewLocation,
+      area: this._formData.area || null,
     });
   }
 
@@ -4373,6 +4407,9 @@ class SceneExtrapolationPanel extends HTMLElement {
               date: this._previewDate,
               scenes: this._sceneIdsFromForm(),
             };
+            if (this._formData.area) {
+              msg.area = this._formData.area;
+            }
             const dusk = this._duskMinimumSeconds();
             if (dusk != null) {
               msg.dusk_minimum = dusk;
@@ -5261,35 +5298,49 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _lightRow(light, xOf, events) {
+    const suggested = Boolean(light.suggested);
     const row = document.createElement("div");
     row.className = "light-row";
+    if (suggested) {
+      row.classList.add("suggested");
+    }
+    if (light.in_area === false) {
+      row.classList.add("out-of-area");
+    }
 
     const bar = document.createElement("div");
     bar.className = "light-bar";
-    const samples = light.samples || [];
-    const gradientId = `light-grad-${light.entity_id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-    const stops = samples
-      .map((sample) => {
-        const offset = (sample[0] / SECONDS_PER_DAY) * 100;
-        return `<stop offset="${offset.toFixed(2)}%" stop-color="${darkenedRgb(sample)}"/>`;
-      })
-      .join("");
-    bar.innerHTML = `
-      <svg viewBox="0 0 ${CHART_WIDTH} ${LIGHT_BAR_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
-        <defs>
-          <linearGradient id="${gradientId}" gradientUnits="userSpaceOnUse" x1="${PLOT_LEFT}" y1="0" x2="${PLOT_RIGHT}" y2="0">
-            ${stops}
-          </linearGradient>
-        </defs>
-        <rect x="${PLOT_LEFT}" y="0" width="${PLOT_RIGHT - PLOT_LEFT}" height="${LIGHT_BAR_HEIGHT}" fill="url(#${gradientId})"></rect>
-      </svg>
-    `;
+    if (!suggested) {
+      const samples = light.samples || [];
+      const gradientId = `light-grad-${light.entity_id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+      const stops = samples
+        .map((sample) => {
+          const offset = (sample[0] / SECONDS_PER_DAY) * 100;
+          return `<stop offset="${offset.toFixed(2)}%" stop-color="${darkenedRgb(sample)}"/>`;
+        })
+        .join("");
+      bar.innerHTML = `
+        <svg viewBox="0 0 ${CHART_WIDTH} ${LIGHT_BAR_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="${gradientId}" gradientUnits="userSpaceOnUse" x1="${PLOT_LEFT}" y1="0" x2="${PLOT_RIGHT}" y2="0">
+              ${stops}
+            </linearGradient>
+          </defs>
+          <rect x="${PLOT_LEFT}" y="0" width="${PLOT_RIGHT - PLOT_LEFT}" height="${LIGHT_BAR_HEIGHT}" fill="url(#${gradientId})"></rect>
+        </svg>
+      `;
+    }
     const name = document.createElement("span");
     name.className = "light-name";
     name.textContent = light.name;
-    this._lightNameLabels.push({ light, el: name });
+    if (light.in_area === false) {
+      name.title = "This light is not in the selected area";
+    }
+    if (!suggested) {
+      this._lightNameLabels.push({ light, el: name });
+    }
     bar.appendChild(name);
-    if (this._view === "edit") {
+    if (this._view === "edit" && !suggested) {
       const assigned = events.filter((item) => this._eventSceneId(item.id));
       const edits = document.createElement("div");
       edits.className = "light-edits";
@@ -5375,12 +5426,16 @@ class SceneExtrapolationPanel extends HTMLElement {
         "Add this light using the typical brightness and color of the other lights in that scene";
       warn.setAttribute(
         "aria-label",
-        `Add ${light.name} to ${names.join(", ")}`
+        suggested
+          ? `Add ${light.name} to scenes`
+          : `Add ${light.name} to ${names.join(", ")}`
       );
       const icon = document.createElement("ha-icon");
       icon.setAttribute("icon", "mdi:lightbulb-plus-outline");
       const text = document.createElement("span");
-      text.textContent = `Add to ${names.join(", ")}`;
+      text.textContent = suggested
+        ? "Add to scenes"
+        : `Add to ${names.join(", ")}`;
       warn.append(icon, text);
       warn.addEventListener("click", (ev) => {
         ev.stopPropagation();

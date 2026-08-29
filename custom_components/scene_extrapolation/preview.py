@@ -27,7 +27,7 @@ from .const import (
     SCENE_SUNRISE,
     SCENE_SUNSET,
 )
-from .native_scene import scene_entity_payload
+from .native_scene import lights_in_area, scene_entity_payload
 from .scene import (
     current_sun_event_index,
     extrapolate_brightness,
@@ -87,11 +87,12 @@ def build_preview(
     scene_ids: dict[str, str | None],
     overlay: dict[str, Any] | list[dict[str, Any]] | None = None,
     location: dict[str, Any] | None = None,
+    area_id: str | None = None,
 ) -> dict[str, Any]:
     """Sun path plus per-light brightness/color samples for the chosen date."""
     sun_path = build_sun_path(hass, dusk_minimum, target_date, location)
     lights, warnings = _light_series(
-        hass, sun_path["events"], scene_ids, overlay
+        hass, sun_path["events"], scene_ids, overlay, area_id
     )
     return {**sun_path, "lights": lights, "warnings": warnings}
 
@@ -162,6 +163,7 @@ def _light_series(
     events: list[dict[str, Any]],
     scene_ids: dict[str, str | None],
     overlay: dict[str, Any] | list[dict[str, Any]] | None = None,
+    area_id: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     native = _overlay_native_scenes(load_native_scenes(hass), overlay)
     bound: list[dict[str, Any]] = []
@@ -186,6 +188,8 @@ def _light_series(
     for warning in warnings:
         warnings_by_light.setdefault(warning["entity_id"], []).append(warning)
 
+    area_lights = set(lights_in_area(hass, area_id)) if area_id else None
+
     lights = []
     for entity_id in sorted(light_ids):
         state = hass.states.get(entity_id)
@@ -194,29 +198,53 @@ def _light_series(
             seconds = minute * 60
             brightness_pct, rgb = _sample_light(bound, entity_id, seconds)
             samples.append([seconds, brightness_pct, rgb[0], rgb[1], rgb[2]])
-        event_states = []
-        for item in bound:
-            stored = item["scene"]["entities"].get(entity_id)
-            event_states.append(
-                {
-                    "event": item["id"],
-                    "scene_entity_id": item["scene"]["entity_id"],
-                    "scene_id": item["scene"]["id"],
-                    "scene_name": item["scene"]["name"],
-                    "present": stored is not None,
-                    "state": scene_entity_payload(stored),
-                }
-            )
         lights.append(
             {
                 "entity_id": entity_id,
                 "name": state.name if state else entity_id,
                 "samples": samples,
                 "gaps": warnings_by_light.get(entity_id, []),
-                "event_states": event_states,
+                "event_states": _event_states_for_light(bound, entity_id),
+                "suggested": False,
+                "in_area": (
+                    entity_id in area_lights if area_lights is not None else None
+                ),
             }
         )
+    if area_lights is not None:
+        for entity_id in sorted(area_lights - light_ids):
+            state = hass.states.get(entity_id)
+            lights.append(
+                {
+                    "entity_id": entity_id,
+                    "name": state.name if state else entity_id,
+                    "samples": [],
+                    "gaps": [],
+                    "event_states": _event_states_for_light(bound, entity_id),
+                    "suggested": True,
+                    "in_area": True,
+                }
+            )
     return lights, warnings
+
+
+def _event_states_for_light(
+    bound: list[dict[str, Any]], entity_id: str
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in bound:
+        stored = item["scene"]["entities"].get(entity_id)
+        rows.append(
+            {
+                "event": item["id"],
+                "scene_entity_id": item["scene"]["entity_id"],
+                "scene_id": item["scene"]["id"],
+                "scene_name": item["scene"]["name"],
+                "present": stored is not None,
+                "state": scene_entity_payload(stored),
+            }
+        )
+    return rows
 
 
 def _gap_warnings(
