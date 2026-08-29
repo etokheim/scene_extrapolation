@@ -412,8 +412,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-row:first-child {
           margin-top: 0;
         }
-        /* Bring the hovered band above its overlapping neighbors so a click
-           hits that lamp, not the next row’s incoming edge. */
+        /* Hovered row paints above the next row’s fade. Hits no longer
+           need this: the incoming edge does not capture pointers. */
         .light-row:hover {
           z-index: 2;
         }
@@ -421,6 +421,18 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           height: ${LIGHT_BAR_HEIGHT}px;
           cursor: pointer;
+          /* Overlap strip is pointer-events none so the row below keeps
+             its full 40px dot hit. A later sibling used to cover the
+             bottom half until this row was already :hover. */
+          pointer-events: none;
+        }
+        .light-bar::after {
+          content: "";
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          height: ${LIGHT_BAR_EDGE_HEIGHT}px;
           pointer-events: auto;
         }
         /* First row has no incoming overlap to hide, so it is one feather
@@ -428,9 +440,15 @@ class SceneExtrapolationPanel extends HTMLElement {
            the others. */
         .light-row:first-child .light-bar {
           height: ${LIGHT_BAR_EDGE_HEIGHT}px;
+          pointer-events: auto;
+        }
+        .light-row:first-child .light-bar::after,
+        .light-row:only-child .light-bar::after {
+          display: none;
         }
         .light-row:only-child .light-bar {
           height: ${LIGHT_BAR_HEIGHT}px;
+          pointer-events: auto;
         }
         .light-bar svg {
           display: block;

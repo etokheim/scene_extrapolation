@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Clicking a light row did not open the closest scene (SVG painted-hit testing ate the click; 44px dot hitboxes covered the band)
+- First hover on a light-edit dot used a smaller hit than later ones (the next row’s overlap sat on the lower half)
 - Transition progress went negative at exact solar event times, which broke winter-date previews
 - Dawn had no icon (`mdi:horizon` is not in Home Assistant’s icon set)
 - Year scrubber dropped the drag when preview charts re-rendered; it now keeps the toolbar mounted, caches days, and only runs one preview request at a time
