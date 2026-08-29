@@ -25,8 +25,8 @@ const CLOCK_EVENT_ICON_R = 56;
 const CLOCK_SUN_SIZE_PX = 52;
 /* Daytime elevation where size falls back to 1× (degrees). */
 const CLOCK_SUN_SIZE_HORIZON_DEG = 18;
-/* Pull the daytime path toward the planet near the horizon so the 2× disc
-   is clipped sooner (viewBox units). */
+/* Pull only the sun marker (not the drawn path) toward the planet near
+   the daytime horizon so the 2× disc is clipped sooner (viewBox units). */
 const CLOCK_SUN_HORIZON_PULL = 9;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
 const CLOCK_SUN_STROKE_MAX_PX = 3;
@@ -425,6 +425,20 @@ class SceneExtrapolationPanel extends HTMLElement {
           touch-action: none;
           cursor: crosshair;
           overflow: visible;
+          transform-origin: center center;
+        }
+        .sun-light-clock-face.clock-face-enter {
+          animation: clock-face-enter 750ms cubic-bezier(0.2, 0, 0, 1) both;
+        }
+        @keyframes clock-face-enter {
+          from {
+            opacity: 0;
+            transform: scale(0.9);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
         }
         /* Registered via CSS.registerProperty (document), not @property here —
            shadow-root @property does not enable transitions. */
@@ -6256,14 +6270,19 @@ class SceneExtrapolationPanel extends HTMLElement {
     );
   }
 
-  _clockSunRadiusOf(elevation) {
+  _clockSunRadiusOf(elevation, { pull = false } = {}) {
     const scale = Math.max(this._sunPath?.max_elevation || 0, 1);
     const t = elevation / scale;
     if (elevation >= 0) {
       let r =
         CLOCK_SUN_HORIZON +
         Math.min(1, t) * CLOCK_SUN_DAY_BASE_SPAN * CLOCK_SUN_DAY_EMPHASIS;
-      if (elevation < CLOCK_SUN_SIZE_HORIZON_DEG) {
+      // Marker-only: duck behind the planet near sunrise/sunset. The drawn
+      // path keeps the unpulled radius so the curve stays smooth.
+      if (
+        pull &&
+        elevation < CLOCK_SUN_SIZE_HORIZON_DEG
+      ) {
         const near = 1 - elevation / CLOCK_SUN_SIZE_HORIZON_DEG;
         r -= near * near * CLOCK_SUN_HORIZON_PULL;
       }
@@ -6275,12 +6294,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     );
   }
 
-  _clockSunXy(seconds, elevation) {
+  _clockSunXy(seconds, elevation, { pull = false } = {}) {
     const elev =
       elevation ?? interpolateElevation(this._sunPath?.curve || [], seconds);
     const deg = this._clockAngleDeg(seconds);
     const rad = ((deg - 90) * Math.PI) / 180;
-    const r = this._clockSunRadiusOf(elev);
+    const r = this._clockSunRadiusOf(elev, { pull });
     return {
       x: CLOCK_CX + Math.cos(rad) * r,
       y: CLOCK_CY + Math.sin(rad) * r,
@@ -6300,7 +6319,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const look = skyLookFromElevation(elev);
     const sun = this._clockSunEl;
     if (sun) {
-      const pos = this._clockSunXy(seconds, elev);
+      const pos = this._clockSunXy(seconds, elev, { pull: true });
       const scale =
         elev >= 0
           ? 1 + (1 - Math.min(1, elev / CLOCK_SUN_SIZE_HORIZON_DEG))
@@ -6324,6 +6343,50 @@ class SceneExtrapolationPanel extends HTMLElement {
       glow.style.background = look.glowBackground;
       glow.style.opacity = String(look.glowOpacity);
     }
+  }
+
+  /** Timed ease along the elevation curve (used for the clock enter sweep). */
+  _animateClockSunArc(fromSeconds, toSeconds, durationMs, { forward = false } = {}) {
+    this._cancelClockSunArc();
+    this._clockSunLive = false;
+    const from =
+      ((fromSeconds % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
+    const to =
+      ((toSeconds % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
+    // Enter sweep wants a fixed 12h forward run; hover uses shortest arc.
+    const delta = forward
+      ? (((to - from) % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY
+      : this._shortestSecondsDelta(from, to);
+    const started = performance.now();
+    this._applyClockSunAppearance(from);
+    const tick = (now) => {
+      const u = Math.min(1, (now - started) / durationMs);
+      const eased = 1 - (1 - u) ** 3;
+      let s = from + delta * eased;
+      s = ((s % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
+      this._applyClockSunAppearance(s);
+      if (u < 1) {
+        this._clockSunArcRaf = window.requestAnimationFrame(tick);
+        return;
+      }
+      this._clockSunArcRaf = undefined;
+      this._applyClockSunAppearance(to);
+    };
+    this._clockSunArcRaf = window.requestAnimationFrame(tick);
+  }
+
+  _playClockEnterAnimation(face) {
+    const idle = this._clockSunIdleSeconds();
+    const from =
+      (((idle - 12 * 3600) % SECONDS_PER_DAY) + SECONDS_PER_DAY) %
+      SECONDS_PER_DAY;
+    face.classList.remove("clock-face-enter");
+    // Restart CSS enter if the face was recycled in the same document.
+    void face.offsetWidth;
+    face.classList.add("clock-face-enter");
+    const clearEnter = () => face.classList.remove("clock-face-enter");
+    face.addEventListener("animationend", clearEnter, { once: true });
+    this._animateClockSunArc(from, idle, 1200, { forward: true });
   }
 
   _paintClockSunPath(overlay, face, cx, cy) {
@@ -6385,7 +6448,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._clockSunEl = marker;
     this._clockSunLive = false;
     this._cancelClockSunArc();
-    this._applyClockSunAppearance(this._clockSunIdleSeconds());
+    // Position is set by _playClockEnterAnimation (or idle if no enter).
   }
 
   _bindClockHover(face) {
@@ -6684,6 +6747,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
 
     this._bindClockHover(face);
+    this._playClockEnterAnimation(face);
     wrap.appendChild(face);
 
     const legend = document.createElement("div");

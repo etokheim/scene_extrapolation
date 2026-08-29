@@ -37,7 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clock sun path exaggerates daytime height; stroke width scales 0.2–3px with that day’s elevation; CSS sun (behind the planet below the horizon, 1× at night / up to 2× at the daytime horizon) follows hover time
 - Clock hour labels sit outside the tick marks at 8px
 - Clock has no now-hand or hover ray; hover eases the sun along the path arc then tracks it
-- Clock sun grows up to 2× only above the horizon (night stays 1×); near-horizon path pulls inward so the disc is clipped sooner; idle position follows the selected solar event (else now)
+- Clock sun grows up to 2× only above the horizon (night stays 1×); near-horizon pull applies to the sun marker only (path stays unpulled); idle position follows the selected solar event (else now)
+- Clock enter: face scales 0.9→1 with fade-in; sun sweeps forward 12 hours to idle time
 - Adding a missing light to a scene is an undoable session edit
 - Clock view hides the top solar-event chips (rim icons replace them); each rim icon has a dashed spoke to the horizon plus name · time and scene label above the button
 - Light-edit sidebar brightness graph above the color wheel: drag a solar-event point to change that scene’s brightness; events where the lamp is missing show `+` to add it
