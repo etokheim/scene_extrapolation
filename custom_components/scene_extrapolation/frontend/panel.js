@@ -197,6 +197,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._resizeRaf = window.requestAnimationFrame(() => {
         this._resizeRaf = undefined;
         this._syncYearScrubLayout();
+        this._syncClockBleedMask();
       });
     };
   }
@@ -701,6 +702,28 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform: translate(-50%, -50%);
           pointer-events: none;
           z-index: 0;
+        }
+        /* One SVG mask (blurred inset rect), not stacked color ramps —
+           ramps on each side would double-dip at the corners. */
+        .clock-bleed-layer {
+          -webkit-mask-image: var(--clock-bleed-mask);
+          mask-image: var(--clock-bleed-mask);
+          -webkit-mask-size: var(--clock-bleed-w, 100%) var(--clock-bleed-h, 100%);
+          mask-size: var(--clock-bleed-w, 100%) var(--clock-bleed-h, 100%);
+          -webkit-mask-position: var(--clock-bleed-x, 0) var(--clock-bleed-y, 0);
+          mask-position: var(--clock-bleed-x, 0) var(--clock-bleed-y, 0);
+          -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+          /* Event labels sit outside the 32px box; keep them in the mask. */
+          -webkit-mask-clip: no-clip;
+          mask-clip: no-clip;
+        }
+        .clock-events {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 6;
+          overflow: visible;
         }
         .clock-backdrop .clock-sky,
         .clock-backdrop .clock-horizon-glow,
@@ -2389,6 +2412,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           padding-inline: 0;
           position: relative;
           overflow: hidden;
+          --clock-bleed-feather: clamp(80px, 18vmin, 240px);
         }
         .page.dial-wide .content {
           position: relative;
@@ -6571,6 +6595,79 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
   }
 
+  _clockBleedFeatherPx() {
+    const vmin = Math.min(window.innerWidth, window.innerHeight) / 100;
+    return Math.min(240, Math.max(80, 18 * vmin));
+  }
+
+  _clockBleedMaskUrl(width, height, feather) {
+    const w = Math.round(width);
+    const h = Math.round(height);
+    const f = Math.round(feather);
+    const key = `${w}x${h}:${f}`;
+    if (this._clockBleedMaskKey === key && this._clockBleedMaskImage) {
+      return this._clockBleedMaskImage;
+    }
+    // One raster mask (blurred inset rect). CSS/SVG ramps on each side
+    // would stack in the corners; a single blur does not.
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.filter = `blur(${(f / 3).toFixed(1)}px)`;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(f, f, Math.max(0, w - f * 2), Math.max(0, h - f * 2));
+    this._clockBleedMaskKey = key;
+    this._clockBleedMaskImage = `url(${canvas.toDataURL("image/png")})`;
+    return this._clockBleedMaskImage;
+  }
+
+  _syncClockBleedMask() {
+    const page = this.shadowRoot?.querySelector(".page.dial-wide");
+    if (!page) {
+      return;
+    }
+    const layers = page.querySelectorAll(".clock-bleed-layer");
+    if (!layers.length) {
+      return;
+    }
+    const pageRect = page.getBoundingClientRect();
+    const hostRect = this.getBoundingClientRect();
+    // Visible page ∩ panel: the sky is clipped to .page, but the hard
+    // edges the user sees are the on-screen sides of that box.
+    const left = Math.max(pageRect.left, hostRect.left);
+    const top = Math.max(pageRect.top, hostRect.top);
+    const right = Math.min(pageRect.right, hostRect.right);
+    const bottom = Math.min(pageRect.bottom, hostRect.bottom);
+    const width = Math.max(0, right - left);
+    const height = Math.max(0, bottom - top);
+    if (!width || !height) {
+      return;
+    }
+    const feather = this._clockBleedFeatherPx();
+    const mask = this._clockBleedMaskUrl(width, height, feather);
+    page.style.setProperty("--clock-bleed-mask", mask);
+    const w = `${width}px`;
+    const h = `${height}px`;
+    const face = page.querySelector(".sun-light-clock-face");
+    const faceRect = face?.getBoundingClientRect();
+    for (const el of layers) {
+      const box = el.getBoundingClientRect();
+      // The 200vmax backdrop's GBR can disagree with the face center
+      // after overflow clipping; derive origin from the face instead.
+      let boxLeft = box.left;
+      let boxTop = box.top;
+      if (el.classList.contains("clock-backdrop") && faceRect) {
+        boxLeft = faceRect.left + faceRect.width / 2 - box.width / 2;
+        boxTop = faceRect.top + faceRect.height / 2 - box.height / 2;
+      }
+      el.style.setProperty("--clock-bleed-w", w);
+      el.style.setProperty("--clock-bleed-h", h);
+      el.style.setProperty("--clock-bleed-x", `${left - boxLeft}px`);
+      el.style.setProperty("--clock-bleed-y", `${top - boxTop}px`);
+    }
+  }
+
   _alignYearScrubRail() {
     if (
       !this._clockScrubRail ||
@@ -6843,6 +6940,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._view === "edit") {
       this._syncEditorChrome();
       this._syncYearScrubLayout();
+      this._syncClockBleedMask();
+      requestAnimationFrame(() => {
+        this._syncClockBleedMask();
+        requestAnimationFrame(() => this._syncClockBleedMask());
+      });
     } else {
       this._syncEditorChrome();
     }
@@ -7271,6 +7373,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       face.classList.remove("clock-face-enter");
       face.removeEventListener("animationend", clearEnter);
+      this._syncClockBleedMask();
     };
     face.addEventListener("animationend", clearEnter);
     this._animateClockSunArc(from, idle, 2250, { forward: true });
@@ -7602,7 +7705,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     );
 
     const backdrop = document.createElement("div");
-    backdrop.className = "clock-backdrop";
+    backdrop.className = "clock-backdrop clock-bleed-layer";
     backdrop.setAttribute("aria-hidden", "true");
     const skyHost = document.createElement("div");
     skyHost.className = "clock-sky";
@@ -7768,7 +7871,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       openRingAt(ev, selected);
     });
     floatEl.appendChild(ringsHost);
-    face.append(backdrop, overlay, handleHit, floatEl, ...hourLabels);
+    const eventsHost = document.createElement("div");
+    eventsHost.className = "clock-events clock-bleed-layer";
+    face.append(backdrop, overlay, handleHit, floatEl, ...hourLabels, eventsHost);
 
     const editable = this._view === "edit";
     const pathEvents = events.filter((event) => event.seconds != null);
@@ -7844,13 +7949,18 @@ class SceneExtrapolationPanel extends HTMLElement {
         });
       }
       anchor.append(meta, btn);
-      face.appendChild(anchor);
+      eventsHost.appendChild(anchor);
     }
     if (typeof ResizeObserver === "function") {
       const ro = new ResizeObserver(() => {
         this._alignYearScrubRail();
+        this._syncClockBleedMask();
       });
       ro.observe(face);
+      const page = this.shadowRoot?.querySelector(".page");
+      if (page) {
+        ro.observe(page);
+      }
     }
 
     this._bindClockSunDrag(face, [this._clockSunEl, handleHit]);
