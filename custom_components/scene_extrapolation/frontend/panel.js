@@ -6046,6 +6046,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._clockScrubRail.hidden = true;
         this._clockScrubRail.style.height = "";
         this._clockScrubRail.style.marginTop = "";
+        this._clockScrubRail.style.top = "";
+        this._clockScrubRail.style.left = "";
       }
       if (this._yearScrub.parentNode !== this._dateToolbar) {
         this._dateToolbar.appendChild(this._yearScrub);
