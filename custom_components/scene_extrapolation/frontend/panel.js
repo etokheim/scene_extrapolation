@@ -20,14 +20,11 @@ const CLOCK_SUN_DAY_EMPHASIS = 2;
 const CLOCK_SUN_DAY_BASE_SPAN = 22;
 const CLOCK_SUN_NIGHT_MIN = 40;
 const CLOCK_EVENT_ICON_R = 56;
-/* Far from horizon (day) = 52px; at 0° elevation scale(2) → 104px.
-   Below the horizon the disc stays 1× (no dusk/dawn enlargement). */
+/* Far from horizon (day high) = 52px; at/near horizon and all night = 2×.
+   Below the horizon the disc stays at max scale (no shrink until daytime rise). */
 const CLOCK_SUN_SIZE_PX = 52;
 /* Daytime elevation where size falls back to 1× (degrees). */
 const CLOCK_SUN_SIZE_HORIZON_DEG = 18;
-/* Pull only the sun marker (not the drawn path) toward the planet near
-   the daytime horizon so the 2× disc is clipped sooner (viewBox units). */
-const CLOCK_SUN_HORIZON_PULL = 9;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
 const CLOCK_SUN_STROKE_MAX_PX = 3;
 const SIDEBAR_ANIMATION_MS = 200;
@@ -6270,23 +6267,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     );
   }
 
-  _clockSunRadiusOf(elevation, { pull = false } = {}) {
+  _clockSunRadiusOf(elevation) {
     const scale = Math.max(this._sunPath?.max_elevation || 0, 1);
     const t = elevation / scale;
     if (elevation >= 0) {
-      let r =
+      return (
         CLOCK_SUN_HORIZON +
-        Math.min(1, t) * CLOCK_SUN_DAY_BASE_SPAN * CLOCK_SUN_DAY_EMPHASIS;
-      // Marker-only: duck behind the planet near sunrise/sunset. The drawn
-      // path keeps the unpulled radius so the curve stays smooth.
-      if (
-        pull &&
-        elevation < CLOCK_SUN_SIZE_HORIZON_DEG
-      ) {
-        const near = 1 - elevation / CLOCK_SUN_SIZE_HORIZON_DEG;
-        r -= near * near * CLOCK_SUN_HORIZON_PULL;
-      }
-      return r;
+        Math.min(1, t) * CLOCK_SUN_DAY_BASE_SPAN * CLOCK_SUN_DAY_EMPHASIS
+      );
     }
     return (
       CLOCK_SUN_HORIZON +
@@ -6294,12 +6282,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     );
   }
 
-  _clockSunXy(seconds, elevation, { pull = false } = {}) {
+  _clockSunXy(seconds, elevation) {
     const elev =
       elevation ?? interpolateElevation(this._sunPath?.curve || [], seconds);
     const deg = this._clockAngleDeg(seconds);
     const rad = ((deg - 90) * Math.PI) / 180;
-    const r = this._clockSunRadiusOf(elev, { pull });
+    const r = this._clockSunRadiusOf(elev);
     return {
       x: CLOCK_CX + Math.cos(rad) * r,
       y: CLOCK_CY + Math.sin(rad) * r,
@@ -6319,11 +6307,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     const look = skyLookFromElevation(elev);
     const sun = this._clockSunEl;
     if (sun) {
-      const pos = this._clockSunXy(seconds, elev, { pull: true });
+      const pos = this._clockSunXy(seconds, elev);
+      // Max scale (2×) for the whole night and at the horizon; shrink only
+      // as daytime elevation rises away from 0°.
       const scale =
-        elev >= 0
-          ? 1 + (1 - Math.min(1, elev / CLOCK_SUN_SIZE_HORIZON_DEG))
-          : 1;
+        elev < 0
+          ? 2
+          : 1 + (1 - Math.min(1, elev / CLOCK_SUN_SIZE_HORIZON_DEG));
       sun.style.left = `${(pos.x / CLOCK_VIEW) * 100}%`;
       sun.style.top = `${(pos.y / CLOCK_VIEW) * 100}%`;
       sun.style.setProperty("--sun-scale", String(scale));
