@@ -405,8 +405,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Registered via CSS.registerProperty (document), not @property here —
            shadow-root @property does not enable transitions. */
-        /* Soft disc from the outer ring’s average color — cheaper than
-           blurring a full multi-stop conic copy of every ring. */
+        /* Soft disc using the outer ring’s conic — cheaper than blurring a
+           copy of every ring, still matches the rim colors around the day. */
         .sun-light-clock-glow {
           position: absolute;
           inset: 14%;
@@ -6035,8 +6035,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     // color, not the dark card (same idea as the table’s negative margin).
     const overlap = CLOCK_FEATHER_PCT;
     if (n) {
-      // One solid disc from the outer ring — blur is cheap vs N conics.
-      glowHost.style.background = glowColorFromSamples(ringLights[0].samples || []);
+      // Same conic as the outer ring — blur keeps the day colors without
+      // duplicating every lamp’s gradient.
+      glowHost.style.background = conicGradientFromSamples(
+        ringLights[0].samples || []
+      );
     }
     for (let index = 0; index < n; index += 1) {
       const light = ringLights[index];
@@ -8080,28 +8083,6 @@ function interpolateElevation(curve, seconds) {
 function darkenedRgb(sample) {
   const t = sample[1] / 100;
   return `rgb(${Math.round(sample[2] * t)},${Math.round(sample[3] * t)},${Math.round(sample[4] * t)})`;
-}
-
-function glowColorFromSamples(samples) {
-  if (!samples.length) {
-    return "var(--divider-color)";
-  }
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  let weight = 0;
-  for (const sample of samples) {
-    const t = sample[1] / 100;
-    const w = Math.max(t, 0.08);
-    r += sample[2] * t * w;
-    g += sample[3] * t * w;
-    b += sample[4] * t * w;
-    weight += w;
-  }
-  if (weight <= 0) {
-    return darkenedRgb(samples[0]);
-  }
-  return `rgb(${Math.round(r / weight)},${Math.round(g / weight)},${Math.round(b / weight)})`;
 }
 
 function conicGradientFromSamples(samples) {

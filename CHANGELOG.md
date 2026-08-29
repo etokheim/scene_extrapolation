@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Toggle the light graphs between stacked bands and concentric 24-hour clock rings (midnight at the top), with a now-hand and clickable solar-event icons on the rim
 - Clock face fills the editor width up to 80vh, soft ring seams sharpen on hover, and the open light-edit lamp is highlighted
 - Clock ring seams overlap more when blurred so gaps stay lit instead of dark
-- Soft glow behind the light clock: one blurred disc from the outer ring’s color (not a full ring copy)
+- Soft glow behind the light clock: blurred outer-ring conic (not a copy of every ring)
 - Clock view hides the top solar-event chips (rim icons replace them); unassigned rim controls are wide warning pills labeled “Choose scene”
 - Light-edit sidebar brightness graph above the color wheel: drag a solar-event point to change that scene’s brightness; events where the lamp is missing show `+` to add it
 
