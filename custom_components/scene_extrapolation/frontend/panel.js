@@ -589,6 +589,47 @@ class SceneExtrapolationPanel extends HTMLElement {
           text-anchor: middle;
           dominant-baseline: middle;
         }
+        .sun-light-clock-overlay .clock-event-ray {
+          stroke: var(--secondary-text-color);
+          stroke-width: 0.5px;
+          vector-effect: non-scaling-stroke;
+          stroke-dasharray: 2.5 2;
+          stroke-linecap: round;
+          opacity: 0.4;
+        }
+        .clock-event-meta {
+          position: absolute;
+          transform: translate(-50%, -50%);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 1px;
+          max-width: 7.5rem;
+          padding: 0 2px;
+          text-align: center;
+          pointer-events: none;
+          z-index: 6;
+        }
+        .clock-event-meta .clock-event-heading {
+          font-size: 10px;
+          font-weight: 600;
+          line-height: 1.15;
+          color: var(--primary-text-color);
+          white-space: nowrap;
+        }
+        .clock-event-meta .clock-event-scene {
+          font-size: 9px;
+          line-height: 1.15;
+          color: var(--secondary-text-color);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 7.5rem;
+        }
+        .clock-event-meta .clock-event-scene.empty {
+          color: var(--warning-color, var(--error-color));
+          font-weight: 600;
+        }
         .clock-event {
           position: absolute;
           width: 32px;
@@ -616,16 +657,14 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-event ha-icon {
           --mdc-icon-size: 18px;
         }
-        /* Wider pill, same height — room for “Choose scene”. */
+        /* Wider hit when missing — icon only; scene cue lives in the meta. */
         .clock-event.missing {
-          width: auto;
+          width: 32px;
           height: 32px;
-          padding: 0 10px 0 8px;
-          border-radius: 16px;
-          display: inline-flex;
-          flex-direction: row;
-          align-items: center;
-          gap: 5px;
+          padding: 0;
+          border-radius: 50%;
+          display: grid;
+          place-items: center;
           color: var(--warning-color, var(--error-color));
           border: 2px solid var(--warning-color, var(--error-color));
           background: color-mix(
@@ -642,12 +681,6 @@ class SceneExtrapolationPanel extends HTMLElement {
               ),
             0 2px 8px rgba(0, 0, 0, 0.22);
           z-index: 7;
-        }
-        .clock-event.missing .clock-event-label {
-          font-size: 11px;
-          font-weight: 600;
-          line-height: 1;
-          white-space: nowrap;
         }
         .clock-event.selected {
           border-color: var(--primary-color);
@@ -6471,15 +6504,74 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     }
     this._paintClockSunPath(overlay, face, cx, cy);
+
+    // Dashed spokes from each solar-event marker in to the planet horizon.
+    const eventRayOuter =
+      CLOCK_EVENT_ICON_R * (CLOCK_VIEW / 100) - 14;
+    for (const event of events) {
+      const deg = this._clockAngleDeg(event.seconds);
+      const rad = ((deg - 90) * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const ray = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "line"
+      );
+      ray.setAttribute("class", "clock-event-ray");
+      ray.setAttribute(
+        "x1",
+        (cx + cos * eventRayOuter).toFixed(2)
+      );
+      ray.setAttribute(
+        "y1",
+        (cy + sin * eventRayOuter).toFixed(2)
+      );
+      ray.setAttribute(
+        "x2",
+        (cx + cos * CLOCK_SUN_HORIZON).toFixed(2)
+      );
+      ray.setAttribute(
+        "y2",
+        (cy + sin * CLOCK_SUN_HORIZON).toFixed(2)
+      );
+      overlay.appendChild(ray);
+    }
     face.appendChild(overlay);
 
     const editable = this._view === "edit";
     const iconR = CLOCK_EVENT_ICON_R;
+    // Labels sit radially outside the icon (readable, upright).
+    const metaR = iconR + 16;
     for (const event of events) {
       const deg = this._clockAngleDeg(event.seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
-      const left = 50 + Math.cos(rad) * iconR;
-      const top = 50 + Math.sin(rad) * iconR;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const left = 50 + cos * iconR;
+      const top = 50 + sin * iconR;
+      const sceneId = this._eventSceneId(event.id);
+      const sceneName = this._sceneName(sceneId);
+      const timeText = event.fallback ? `${event.time}*` : event.time;
+
+      const meta = document.createElement("div");
+      meta.className = "clock-event-meta";
+      meta.style.left = `${50 + cos * metaR}%`;
+      meta.style.top = `${50 + sin * metaR}%`;
+      meta.setAttribute("aria-hidden", "true");
+      const heading = document.createElement("span");
+      heading.className = "clock-event-heading";
+      heading.textContent = `${event.name} · ${timeText}`;
+      const sceneEl = document.createElement("span");
+      sceneEl.className = "clock-event-scene";
+      if (sceneName) {
+        sceneEl.textContent = sceneName;
+      } else {
+        sceneEl.textContent = "Choose scene";
+        sceneEl.classList.add("empty");
+      }
+      meta.append(heading, sceneEl);
+      face.appendChild(meta);
+
       const btn = document.createElement(editable ? "button" : "div");
       btn.className = "clock-event";
       if (editable) {
@@ -6488,9 +6580,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       btn.style.left = `${left}%`;
       btn.style.top = `${top}%`;
-      btn.title = event.name;
-      const sceneId = this._eventSceneId(event.id);
-      const sceneName = this._sceneName(sceneId);
+      btn.title = sceneName
+        ? `${event.name} · ${timeText} · ${sceneName}`
+        : `${event.name} · ${timeText}`;
       if (!sceneName) {
         btn.classList.add("missing");
       }
@@ -6501,19 +6593,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       const icon = document.createElement("ha-icon");
       icon.setAttribute("icon", event.icon);
       btn.appendChild(icon);
-      if (!sceneName) {
-        const label = document.createElement("span");
-        label.className = "clock-event-label";
-        // Same wording as the solar-event chips above the sun chart.
-        label.textContent = "Choose scene";
-        btn.appendChild(label);
-      }
       if (editable) {
         btn.setAttribute(
           "aria-label",
           sceneName
-            ? `${event.name}: ${sceneName}`
-            : `${event.name}: choose scene`
+            ? `${event.name} ${timeText}: ${sceneName}`
+            : `${event.name} ${timeText}: choose scene`
         );
         btn.addEventListener("click", (ev) => {
           ev.stopPropagation();
