@@ -47,7 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light-row names, dots, and warnings sit on the visible band; edit dots stay 5px with a 40px hit and expand from center
 - Editor graphs and form use a 1024px column (12px padding) instead of Home Assistant’s 1540px automation-editor canvas
 - Light-edit Save commits lamp drafts for every scene you changed; switching scenes keeps drafts without a prompt
-- Native scene create / rename / delete, light-edit Save, and removing a lamp stay in the editor session until the extrapolation Save
+- Native scene rename / delete, light-edit Save, and removing a lamp stay in the editor session until the extrapolation Save
+- Creating a native scene from the event picker writes it immediately so Home Assistant’s scene selector can resolve it
 - Light-edit save hint sits in the footer (info icon + text) above Cancel / Save
 - Color-wheel presets stay on one row and scroll sideways; a right-edge fade marks leftover swatches
 - Solar-event scene buttons look like controls, warn when empty, and no longer outline linked events

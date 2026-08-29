@@ -359,7 +359,7 @@ async def ws_create_native_scene(
             msg["area_id"],
             msg["event"],
             linked=bool(msg.get("linked")),
-            write=bool(msg.get("write", False)),
+            write=bool(msg.get("write", True)),
         )
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "create_failed", str(err))

@@ -2140,6 +2140,21 @@ class SceneExtrapolationPanel extends HTMLElement {
     return this._nativeDrafts[sceneId];
   }
 
+  async _waitForEntity(entityId, timeoutMs = 4000) {
+    if (!entityId) {
+      return;
+    }
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (this._hass?.states?.[entityId]) {
+        return;
+      }
+      await new Promise((resolve) => {
+        setTimeout(resolve, 50);
+      });
+    }
+  }
+
   _overlayFromDrafts(extra = []) {
     const overlay = [];
     for (const [sceneId, draft] of Object.entries(this._nativeDrafts)) {
@@ -3229,18 +3244,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           area_id: this._formData.area,
           event: event.id,
           linked: Boolean(canLink && data.linked),
-          write: false,
+          write: true,
         });
         this._commitUndo();
-        this._nativeDrafts[created.entity_id] = {
-          created: true,
-          name: created.name,
-          icon: created.icon,
-          area_id: this._formData.area,
-          yamlId: created.id,
-          entities: created.entities || {},
-        };
         data.scene = created.entity_id;
+        // ha-selector errors on unknown entity ids; wait until HA has the
+        // reloaded scene before binding the native picker.
+        await this._waitForEntity(created.entity_id);
         this._syncPreviewOverlay();
         bindPicker();
         applyDraft({ history: false });

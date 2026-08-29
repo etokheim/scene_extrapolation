@@ -315,7 +315,11 @@ async def async_create_native_scene(
     linked: bool = False,
     write: bool = True,
 ) -> dict[str, Any]:
-    """Create or plan a YAML scene for an area's lights at one solar event."""
+    """Create a YAML scene for an area's lights at one solar event.
+
+    write=False only plans (draft id). The picker needs a real entity, so
+    the panel always writes immediately.
+    """
     planned = await async_plan_native_scene(
         hass, area_id, event_id, linked=linked
     )
