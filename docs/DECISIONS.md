@@ -130,14 +130,15 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Why:** The chart should stay visible while tuning a lamp or assigning a scene, the same split as Settings → Automations. Custom panels cannot import the automation-only elements.
 - **Do not reverse without user ask.**
 
-## Page column is 1920px (was 1024px)
+## Page column is 1024px (table) / 1920px (dial)
 
 - **Date:** 2026-08-26
 - **Superseded:** 2026-08-27 — restore `--page-max-width: 1024px`. Matching `manual-automation-editor` (1540px) made the charts full-bleed on a typical laptop and put the overlay drawer on top of the graphs.
 - **Superseded in part:** 2026-08-27 — the open drawer pads the editor shell so the 1024px column sits in the remaining space. Width stays 1024px when it still fits.
 - **Superseded:** 2026-08-29 — widen to `--page-max-width: 1920px` so the dial can stay centered while the year timeline pins to the absolute right edge.
-- **Decision:** List and editor `.page` are a centered 1920px column with 12px inline padding. The sun path sits on that canvas; the nightlights form is in `ha-card`. Do not use `--ha-automation-editor-width`, and do not grow max-width when the drawer opens.
-- **Why:** A wider column leaves room for an absolute year scrub on the right without shifting the optically centered dial.
+- **Superseded in part:** 2026-08-29 — dial view uses 1920px (`.page.dial-wide`); list and table view stay at 1024px.
+- **Decision:** `.page` defaults to a centered 1024px column with 12px inline padding. Dial (clock) view adds `.dial-wide` for 1920px so the year timeline can pin to the absolute right without shifting the dial. Do not use `--ha-automation-editor-width`, and do not grow max-width when the drawer opens.
+- **Why:** Stacked light bands stay readable at 1024px; the dial needs a wider canvas for a right-edge scrub without offsetting the face.
 - **Do not reverse without user ask.**
 
 ## Legacy per-room entries migrate; this is not a breaking reconfigure
@@ -150,8 +151,8 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Native HA date field for the preview day
 
 - **Date:** 2026-08-26
-- **Superseded in part:** 2026-08-29 — visible control is a day/month label above the year scrub (calendar icon affordance); click opens the same `ha-selector` `{ date: {} }` (kept visually hidden). Today / 21 Jun / 21 Dec chips stay in the toolbar; prev/next day buttons are gone.
-- **Decision:** The preview day control is HA’s `ha-selector` `{ date: {} }` (`ha-date-input` → `ha-dialog-date-picker`), opened from the scrub date label. Do not use Activity’s `ha-date-range-picker` (that is a start–end range) or a raw `<input type="date">`.
+- **Superseded in part:** 2026-08-29 — visible control is a day/month label above the year scrub (calendar icon affordance); click calls `ha-date-input._openDialog()` on the mounted `ha-selector` `{ date: {} }` (kept opacity-0 / non-interactive). Today / 21 Jun / 21 Dec chips sit on the same row as the date in table view (date first), and below the date in dial view.
+- **Decision:** The preview day control is HA’s `ha-selector` `{ date: {} }` (`ha-date-input` → `ha-dialog-date-picker`), presented as a day/month label. Do not use Activity’s `ha-date-range-picker` (that is a start–end range) or a raw `<input type="date">`.
 - **Why:** Logbook’s widget is a range. The single-day native widget is `ha-date-input`. `ha-selector` already knows how to lazy-load that chunk from HA’s bundle; our `panel.js` cannot `import()` those files.
 - **Do not reverse without user ask.**
 
