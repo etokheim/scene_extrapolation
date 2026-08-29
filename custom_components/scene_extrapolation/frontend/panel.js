@@ -20,6 +20,10 @@ const CLOCK_SUN_DAY_EMPHASIS = 2;
 const CLOCK_SUN_DAY_BASE_SPAN = 22;
 const CLOCK_SUN_NIGHT_MIN = 40;
 const CLOCK_EVENT_ICON_R = 56;
+/* Far from horizon = 52px; at 0° elevation scale(2) → 104px. */
+const CLOCK_SUN_SIZE_PX = 52;
+/* |elevation| where size falls back to 1× (degrees). */
+const CLOCK_SUN_SIZE_HORIZON_DEG = 18;
 const SIDEBAR_ANIMATION_MS = 200;
 const SIDEBAR_SWAP_MS = 160;
 const LIGHT_BAR_HEIGHT = 108;
@@ -490,9 +494,9 @@ class SceneExtrapolationPanel extends HTMLElement {
            so scrubbing tracks the pointer without lag. */
         .clock-sun {
           position: absolute;
-          width: 52px;
-          height: 52px;
-          transform: translate(-50%, -50%);
+          width: ${CLOCK_SUN_SIZE_PX}px;
+          height: ${CLOCK_SUN_SIZE_PX}px;
+          transform: translate(-50%, -50%) scale(var(--sun-scale, 1));
           pointer-events: none;
           z-index: 1;
           --sun-core: #fff8e7;
@@ -501,9 +505,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           --sun-streak-opacity: 0.85;
           --sun-ray-opacity: 0.55;
           --sun-ghost-opacity: 0.35;
+          --sun-scale: 1;
           transition:
             left 320ms cubic-bezier(0.2, 0, 0, 1),
-            top 320ms cubic-bezier(0.2, 0, 0, 1);
+            top 320ms cubic-bezier(0.2, 0, 0, 1),
+            transform 320ms cubic-bezier(0.2, 0, 0, 1);
         }
         .clock-sun.clock-sun-live {
           transition: none;
@@ -3286,6 +3292,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       host._eventId = this._sidebarEventId;
     }
     this._syncEventSelection();
+    // Idle sun follows the selected solar event (or “now” when none).
+    if (this._hoverSeconds == null && this._clockSunEl) {
+      this._clockSunEl.classList.remove("clock-sun-live");
+      this._applyClockSunAppearance(this._clockSunIdleSeconds());
+      this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
+    }
   }
 
   _setSidebarLight(entityId) {
@@ -6002,9 +6014,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const time = document.createElement("span");
     time.className = "sun-hover-time";
-    time.textContent = hovering
-      ? formatClock(seconds)
-      : `Now ${formatClock(seconds)}`;
+    const eventIdle =
+      !hovering &&
+      this._sidebarEventId &&
+      (this._sunPath?.events || []).some((e) => e.id === this._sidebarEventId);
+    time.textContent =
+      hovering || eventIdle
+        ? formatClock(seconds)
+        : `Now ${formatClock(seconds)}`;
     const sun = document.createElement("span");
     const elev = interpolateElevation(this._sunPath.curve, seconds);
     sun.textContent = `Sun ${elev.toFixed(1)}°`;
@@ -6073,6 +6090,29 @@ class SceneExtrapolationPanel extends HTMLElement {
     return null;
   }
 
+  _clockSunIdleSeconds() {
+    const id = this._sidebarEventId;
+    if (id) {
+      const event = (this._sunPath?.events || []).find((item) => item.id === id);
+      if (event?.seconds != null) {
+        return event.seconds;
+      }
+    }
+    return nowSecondsSinceMidnight();
+  }
+
+  _idleReadoutSeconds() {
+    if (this._sidebarEventId) {
+      const event = (this._sunPath?.events || []).find(
+        (item) => item.id === this._sidebarEventId
+      );
+      if (event?.seconds != null) {
+        return event.seconds;
+      }
+    }
+    return this._sunPath?.today ? nowSecondsSinceMidnight() : null;
+  }
+
   _clockSunRadiusOf(elevation) {
     const scale = Math.max(this._sunPath?.max_elevation || 0, 1);
     const t = elevation / scale;
@@ -6113,8 +6153,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     const sun = this._clockSunEl;
     if (sun) {
       const pos = this._clockSunXy(seconds, elev);
+      const near =
+        1 - Math.min(1, Math.abs(elev) / CLOCK_SUN_SIZE_HORIZON_DEG);
+      // 1× far from horizon → 2× on the horizon.
+      const scale = 1 + near;
       sun.style.left = `${(pos.x / CLOCK_VIEW) * 100}%`;
       sun.style.top = `${(pos.y / CLOCK_VIEW) * 100}%`;
+      sun.style.setProperty("--sun-scale", String(scale));
       sun.style.setProperty("--sun-core", look.sunCore);
       sun.style.setProperty("--sun-corona", look.sunCorona);
       sun.style.setProperty("--sun-streak", look.sunStreak);
@@ -6175,7 +6220,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     face.appendChild(marker);
     this._clockSunEl = marker;
-    this._applyClockSunAppearance(nowSecondsSinceMidnight());
+    this._applyClockSunAppearance(this._clockSunIdleSeconds());
   }
 
   _bindClockHover(face) {
@@ -6189,7 +6234,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       const sun = this._clockSunEl;
       if (starting && sun) {
-        // Animate from “now” to the pointer, then track live without lag.
+        // Animate from idle to the pointer, then track live without lag.
         sun.classList.remove("clock-sun-live");
         if (this._clockSunLiveTimer) {
           window.clearTimeout(this._clockSunLiveTimer);
@@ -6213,11 +6258,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._clockSunLiveTimer = undefined;
       }
       this._clockSunEl?.classList.remove("clock-sun-live");
-      this._applyClockSunAppearance(nowSecondsSinceMidnight());
-      this._fillHoverReadout(
-        this._sunPath?.today ? nowSecondsSinceMidnight() : null,
-        { hovering: false }
-      );
+      this._applyClockSunAppearance(this._clockSunIdleSeconds());
+      this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
     };
     face.addEventListener("pointermove", (ev) => {
       this._pendingClockHover = { clientX: ev.clientX, clientY: ev.clientY };
