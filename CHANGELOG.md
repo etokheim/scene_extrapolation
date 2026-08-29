@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Soft glow behind the light clock: blurred sky disc from solar elevation (not lamp conics)
 - Hovered clock light ring grows radially with inner/outer borders and overlaps neighbors; the open sidebar’s lamp keeps that size with a wider border
 - Clock view wraps sun elevation around the rim (dashed above and below the horizon; day path at 50% opacity; no dashed horizon circle); the linear sun chart is hidden in that mode
-- Clock sun path stroke scales 0.2–10px with elevation (widest below the horizon); daytime tint follows the sky palette, night stays neutral; round dashes at 50% opacity on continuous path runs (avoids a double stroke)
+- Clock sun path stroke is minimum below the horizon, maximum at the horizon, and tapers toward noon; daytime tint follows the sky palette; round dashes at 50% opacity on continuous path runs
 - Clock hour labels sit outside the tick marks at 8px
 - Clock has no now-hand or hover ray; hover eases the sun along the path arc then tracks it
 - Clock sun stays at max scale (2×) below and at the horizon, then shrinks toward 1× as daytime elevation rises; marker follows the same path as the drawn curve

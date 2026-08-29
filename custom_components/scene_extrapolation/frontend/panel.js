@@ -6247,16 +6247,17 @@ class SceneExtrapolationPanel extends HTMLElement {
     const nowElev = interpolateElevation(curve, nowSeconds);
     const horizonY = yOf(0);
     const hourLabels = ["00:00", "06:00", "12:00", "18:00", "24:00"];
-    let dayMinElev = Infinity;
     let dayMaxElev = -Infinity;
     for (const [, elev] of curve) {
-      dayMinElev = Math.min(dayMinElev, elev);
       dayMaxElev = Math.max(dayMaxElev, elev);
     }
-    const dayElevSpan = dayMaxElev - dayMinElev || 1;
     const strokeOf = (elev) => {
-      const t = Math.min(1, Math.max(0, (elev - dayMinElev) / dayElevSpan));
-      // Widest below the horizon (day’s min elev), thinnest at peak.
+      // Below horizon: minimum. At horizon: maximum. Daytime tapers to min at peak.
+      if (elev < 0) {
+        return CLOCK_SUN_STROKE_MIN_PX;
+      }
+      const span = Math.max(dayMaxElev, 1e-6);
+      const t = Math.min(1, Math.max(0, elev / span));
       return (
         CLOCK_SUN_STROKE_MAX_PX -
         t * (CLOCK_SUN_STROKE_MAX_PX - CLOCK_SUN_STROKE_MIN_PX)
@@ -6816,16 +6817,17 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!curve?.length) {
       return;
     }
-    let dayMinElev = Infinity;
     let dayMaxElev = -Infinity;
     for (const [, elev] of curve) {
-      dayMinElev = Math.min(dayMinElev, elev);
       dayMaxElev = Math.max(dayMaxElev, elev);
     }
-    const dayElevSpan = dayMaxElev - dayMinElev || 1;
     const strokeOf = (elev) => {
-      const t = Math.min(1, Math.max(0, (elev - dayMinElev) / dayElevSpan));
-      // Widest below the horizon (day’s min elev), thinnest at peak.
+      // Below horizon: minimum. At horizon: maximum. Daytime tapers to min at peak.
+      if (elev < 0) {
+        return CLOCK_SUN_STROKE_MIN_PX;
+      }
+      const span = Math.max(dayMaxElev, 1e-6);
+      const t = Math.min(1, Math.max(0, elev / span));
       return (
         CLOCK_SUN_STROKE_MAX_PX -
         t * (CLOCK_SUN_STROKE_MAX_PX - CLOCK_SUN_STROKE_MIN_PX)
