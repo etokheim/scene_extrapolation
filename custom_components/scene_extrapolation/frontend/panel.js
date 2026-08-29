@@ -20,10 +20,16 @@ const CLOCK_SUN_DAY_EMPHASIS = 2;
 const CLOCK_SUN_DAY_BASE_SPAN = 22;
 const CLOCK_SUN_NIGHT_MIN = 40;
 const CLOCK_EVENT_ICON_R = 56;
-/* Far from horizon = 52px; at 0° elevation scale(2) → 104px. */
+/* Far from horizon (day) = 52px; at 0° elevation scale(2) → 104px.
+   Below the horizon the disc stays 1× (no dusk/dawn enlargement). */
 const CLOCK_SUN_SIZE_PX = 52;
-/* |elevation| where size falls back to 1× (degrees). */
+/* Daytime elevation where size falls back to 1× (degrees). */
 const CLOCK_SUN_SIZE_HORIZON_DEG = 18;
+/* Pull the daytime path toward the planet near the horizon so the 2× disc
+   is clipped sooner (viewBox units). */
+const CLOCK_SUN_HORIZON_PULL = 9;
+const CLOCK_SUN_STROKE_MIN_PX = 0.2;
+const CLOCK_SUN_STROKE_MAX_PX = 3;
 const SIDEBAR_ANIMATION_MS = 200;
 const SIDEBAR_SWAP_MS = 160;
 const LIGHT_BAR_HEIGHT = 108;
@@ -472,8 +478,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
           stroke: ${SUN_LINE_DAY};
-          /* viewBox units scale with the face; keep screen-pixel width. */
-          stroke-width: 0.5px;
+          /* Stroke width set per-line in JS (elevation → 0.2–3px). */
           vector-effect: non-scaling-stroke;
           stroke-linejoin: round;
           stroke-linecap: round;
@@ -481,7 +486,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-light-clock-overlay .clock-sun-night {
           fill: none;
           stroke: color-mix(in srgb, ${SUN_LINE_NIGHT} 55%, white);
-          stroke-width: 0.25px;
+          /* Stroke width set per-line in JS. */
           vector-effect: non-scaling-stroke;
           stroke-dasharray: 3.5 3;
           stroke-linejoin: round;
@@ -2610,11 +2615,11 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._form.data = this._formData;
     }
     this._syncPreviewOverlay();
-    this._sunPathKey = undefined;
+    this._sunPath = null;
     this._clearPreviewCache();
-    this._ensureSunPath();
     this._syncUndoButtons();
     this._persistDraftSoon();
+    this._ensureSunPath();
   }
 
   _undo() {
@@ -2790,10 +2795,20 @@ class SceneExtrapolationPanel extends HTMLElement {
     const missing = [];
     const seen = new Set();
     for (const row of light.event_states || []) {
-      if (row.present || !row.scene_entity_id || seen.has(row.scene_entity_id)) {
+      if (!row.scene_entity_id || seen.has(row.scene_entity_id)) {
         continue;
       }
       if (this._nativeDrafts[row.scene_entity_id]?.deleted) {
+        continue;
+      }
+      const draftEntity =
+        this._nativeDrafts[row.scene_entity_id]?.entities?.[light.entity_id];
+      // Truthy draft = added in session; null = removed; else use row.present.
+      if (draftEntity) {
+        continue;
+      }
+      const isMissing = draftEntity === null ? true : !row.present;
+      if (!isMissing) {
         continue;
       }
       seen.add(row.scene_entity_id);
@@ -4216,17 +4231,30 @@ class SceneExtrapolationPanel extends HTMLElement {
     const uniqueScenes = this._uniqueAssignedScenes(events);
     const drafts = new Map();
     for (const item of uniqueScenes) {
-      const present = (light.event_states || []).some(
-        (row) => row.scene_entity_id === item.sceneId && row.present
-      );
-      const stored = present
-        ? (light.event_states || []).find(
-            (row) => row.scene_entity_id === item.sceneId && row.present
-          )?.state ||
-          (light.event_states || []).find((row) => row.event === item.event.id)
-            ?.state ||
-          { state: "off" }
-        : null;
+      const draftEntity =
+        this._nativeDrafts[item.sceneId]?.entities?.[light.entity_id];
+      let present;
+      let stored;
+      if (draftEntity === null) {
+        // Session removed this lamp from the scene.
+        present = false;
+        stored = null;
+      } else if (draftEntity) {
+        present = true;
+        stored = { ...draftEntity };
+      } else {
+        present = (light.event_states || []).some(
+          (row) => row.scene_entity_id === item.sceneId && row.present
+        );
+        stored = present
+          ? (light.event_states || []).find(
+              (row) => row.scene_entity_id === item.sceneId && row.present
+            )?.state ||
+            (light.event_states || []).find((row) => row.event === item.event.id)
+              ?.state ||
+            { state: "off" }
+          : null;
+      }
       drafts.set(item.sceneId, {
         draft: present ? { ...stored } : null,
         // "absent" until the user adds this lamp via the brightness graph +.
@@ -4540,6 +4568,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           await selectScene(next);
           return;
         }
+        if (!undoCommitted) {
+          this._commitUndo();
+          undoCommitted = true;
+        }
         const typical =
           this._typicalStateFromPeers(sceneId, light.entity_id) ||
           this._eventDefaultLightState(light.entity_id, eventId);
@@ -4550,11 +4582,15 @@ class SceneExtrapolationPanel extends HTMLElement {
         );
         entry.member = true;
         entry.event = next;
-        entry.saved = "absent";
+        this._ensureNativeDraft(sceneId).entities[light.entity_id] = {
+          ...entry.draft,
+        };
+        entry.saved = lightDraftFingerprint(entry.draft);
         if (!uniqueScenes.some((row) => row.sceneId === sceneId)) {
           uniqueScenes.push({ sceneId, event: next, events: [next] });
         }
-        applyToSession();
+        this._syncPreviewOverlay();
+        this._schedulePreview();
         await selectScene(next);
         brightnessGraphCtl?.sync();
         wheelCtl?.sync();
@@ -5775,6 +5811,20 @@ class SceneExtrapolationPanel extends HTMLElement {
     const horizonY = yOf(0);
     const horizonOffset = ((horizonY - PLOT_TOP) / (PLOT_BOTTOM - PLOT_TOP)) * 100;
     const hourLabels = ["00:00", "06:00", "12:00", "18:00", "24:00"];
+    let dayMinElev = Infinity;
+    let dayMaxElev = -Infinity;
+    for (const [, elev] of curve) {
+      dayMinElev = Math.min(dayMinElev, elev);
+      dayMaxElev = Math.max(dayMaxElev, elev);
+    }
+    const dayElevSpan = dayMaxElev - dayMinElev || 1;
+    const strokeOf = (elev) => {
+      const t = Math.min(1, Math.max(0, (elev - dayMinElev) / dayElevSpan));
+      return (
+        CLOCK_SUN_STROKE_MIN_PX +
+        t * (CLOCK_SUN_STROKE_MAX_PX - CLOCK_SUN_STROKE_MIN_PX)
+      );
+    };
 
     const svg = `
       <svg viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
@@ -5788,11 +5838,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         </defs>
         <path d="${area}" fill="url(#sun-fill)"></path>
         <line x1="${PLOT_LEFT}" x2="${PLOT_RIGHT}" y1="${horizonY}" y2="${horizonY}" stroke="var(--divider-color)" stroke-dasharray="4 4" stroke-width="1"/>
-        ${sunStrokePaths(curve, xOf, yOf)
-          .map(
-            ({ d, night }) =>
-              `<path d="${d}" fill="none" stroke="${night ? SUN_LINE_NIGHT : SUN_LINE_DAY}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>`
-          )
+        ${sunStrokeSegments(curve)
+          .map(({ s0, e0, s1, e1, night }) => {
+            const midElev = (e0 + e1) / 2;
+            const w = strokeOf(midElev);
+            return `<line x1="${xOf(s0).toFixed(1)}" y1="${yOf(e0).toFixed(1)}" x2="${xOf(s1).toFixed(1)}" y2="${yOf(e1).toFixed(1)}" fill="none" stroke="${night ? SUN_LINE_NIGHT : SUN_LINE_DAY}" stroke-width="${w}px" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></line>`;
+          })
           .join("")}
       </svg>
     `;
@@ -6209,10 +6260,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     const scale = Math.max(this._sunPath?.max_elevation || 0, 1);
     const t = elevation / scale;
     if (elevation >= 0) {
-      return (
+      let r =
         CLOCK_SUN_HORIZON +
-        Math.min(1, t) * CLOCK_SUN_DAY_BASE_SPAN * CLOCK_SUN_DAY_EMPHASIS
-      );
+        Math.min(1, t) * CLOCK_SUN_DAY_BASE_SPAN * CLOCK_SUN_DAY_EMPHASIS;
+      if (elevation < CLOCK_SUN_SIZE_HORIZON_DEG) {
+        const near = 1 - elevation / CLOCK_SUN_SIZE_HORIZON_DEG;
+        r -= near * near * CLOCK_SUN_HORIZON_PULL;
+      }
+      return r;
     }
     return (
       CLOCK_SUN_HORIZON +
@@ -6246,10 +6301,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     const sun = this._clockSunEl;
     if (sun) {
       const pos = this._clockSunXy(seconds, elev);
-      const near =
-        1 - Math.min(1, Math.abs(elev) / CLOCK_SUN_SIZE_HORIZON_DEG);
-      // 1× far from horizon → 2× on the horizon.
-      const scale = 1 + near;
+      const scale =
+        elev >= 0
+          ? 1 + (1 - Math.min(1, elev / CLOCK_SUN_SIZE_HORIZON_DEG))
+          : 1;
       sun.style.left = `${(pos.x / CLOCK_VIEW) * 100}%`;
       sun.style.top = `${(pos.y / CLOCK_VIEW) * 100}%`;
       sun.style.setProperty("--sun-scale", String(scale));
@@ -6276,24 +6331,39 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!curve?.length) {
       return;
     }
-    const point = (seconds, elevation) => {
-      const { x, y } = this._clockSunXy(seconds, elevation);
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    let dayMinElev = Infinity;
+    let dayMaxElev = -Infinity;
+    for (const [, elev] of curve) {
+      dayMinElev = Math.min(dayMinElev, elev);
+      dayMaxElev = Math.max(dayMaxElev, elev);
+    }
+    const dayElevSpan = dayMaxElev - dayMinElev || 1;
+    const strokeOf = (elev) => {
+      const t = Math.min(1, Math.max(0, (elev - dayMinElev) / dayElevSpan));
+      return (
+        CLOCK_SUN_STROKE_MIN_PX +
+        t * (CLOCK_SUN_STROKE_MAX_PX - CLOCK_SUN_STROKE_MIN_PX)
+      );
     };
 
-    for (const segment of sunStrokePaths(curve, null, null, {
-      point,
-    })) {
-      const path = document.createElementNS(
+    for (const segment of sunStrokeSegments(curve)) {
+      const p0 = this._clockSunXy(segment.s0, segment.e0);
+      const p1 = this._clockSunXy(segment.s1, segment.e1);
+      const line = document.createElementNS(
         "http://www.w3.org/2000/svg",
-        "path"
+        "line"
       );
-      path.setAttribute(
+      line.setAttribute(
         "class",
         segment.night ? "clock-sun-night" : "clock-sun-day"
       );
-      path.setAttribute("d", segment.d);
-      overlay.appendChild(path);
+      line.setAttribute("x1", p0.x.toFixed(2));
+      line.setAttribute("y1", p0.y.toFixed(2));
+      line.setAttribute("x2", p1.x.toFixed(2));
+      line.setAttribute("y2", p1.y.toFixed(2));
+      const midElev = (segment.e0 + segment.e1) / 2;
+      line.style.strokeWidth = `${strokeOf(midElev)}px`;
+      overlay.appendChild(line);
     }
 
     // CSS sun+flare at “this time of day” on the preview date’s curve.
@@ -8443,6 +8513,49 @@ function sunStrokePaths(curve, xOf, yOf, { point: pointFn } = {}) {
   }
   flush();
   return paths;
+}
+
+/** Line segments along the sun curve, split at horizon crossings. */
+function sunStrokeSegments(curve) {
+  const segments = [];
+  if (curve.length < 2) {
+    return segments;
+  }
+  let night = curve[0][1] < 0;
+  for (let index = 1; index < curve.length; index += 1) {
+    const [leftSeconds, leftElev] = curve[index - 1];
+    const [rightSeconds, rightElev] = curve[index];
+    const rightNight = rightElev < 0;
+    if (rightNight === night) {
+      segments.push({
+        s0: leftSeconds,
+        e0: leftElev,
+        s1: rightSeconds,
+        e1: rightElev,
+        night,
+      });
+      continue;
+    }
+    const span = rightElev - leftElev;
+    const ratio = (0 - leftElev) / span;
+    const crossSeconds = leftSeconds + (rightSeconds - leftSeconds) * ratio;
+    segments.push({
+      s0: leftSeconds,
+      e0: leftElev,
+      s1: crossSeconds,
+      e1: 0,
+      night,
+    });
+    night = rightNight;
+    segments.push({
+      s0: crossSeconds,
+      e0: 0,
+      s1: rightSeconds,
+      e1: rightElev,
+      night,
+    });
+  }
+  return segments;
 }
 
 function interpolateElevation(curve, seconds) {

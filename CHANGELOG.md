@@ -34,10 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clock ring seams overlap more when blurred so gaps stay lit instead of dark
 - Soft glow behind the light clock: blurred sky disc from solar elevation (not lamp conics)
 - Clock view wraps sun elevation around the rim (solid above the horizon, dashed over the face below; no dashed horizon circle); the linear sun chart is hidden in that mode
-- Clock sun path exaggerates daytime height, uses 0.5px day / 0.25px night strokes (`non-scaling-stroke`), and marks the sun with a CSS disc+flare (behind the planet below the horizon) that follows hover time
+- Clock sun path exaggerates daytime height; stroke width scales 0.2–3px with that day’s elevation; CSS sun (behind the planet below the horizon, 1× at night / up to 2× at the daytime horizon) follows hover time
 - Clock hour labels sit outside the tick marks at 8px
 - Clock has no now-hand or hover ray; hover eases the sun along the path arc then tracks it
-- Clock sun grows up to 2× near the horizon; idle position follows the selected solar event (else now)
+- Clock sun grows up to 2× only above the horizon (night stays 1×); near-horizon path pulls inward so the disc is clipped sooner; idle position follows the selected solar event (else now)
+- Adding a missing light to a scene is an undoable session edit
 - Clock view hides the top solar-event chips (rim icons replace them); each rim icon has a dashed spoke to the horizon plus name · time and scene label above the button
 - Light-edit sidebar brightness graph above the color wheel: drag a solar-event point to change that scene’s brightness; events where the lamp is missing show `+` to add it
 
