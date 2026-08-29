@@ -2322,6 +2322,9 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _renderList() {
     this._closeSceneSidebar();
+    // Allow clock enter again the next time an editor opens.
+    this._clockEnterPlayed = false;
+    this._cancelClockSunArc();
     this._form = undefined;
     this._headerEl.textContent = "Scene Extrapolation";
     this._setNavigationIcon(this._menuButton());
@@ -7017,8 +7020,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
 
     this._bindClockHover(face);
-    // Enter motion only on first clock paint this page load — date/scene
-    // redraws should not replay it.
+    // Enter once per editor visit (not on date/scene redraws). Cleared when
+    // returning to the list so list → edit plays again.
     if (this._clockEnterPlayed) {
       this._applyClockSunAppearance(this._clockSunIdleSeconds());
     } else {

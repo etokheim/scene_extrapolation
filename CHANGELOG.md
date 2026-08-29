@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clock hour labels sit outside the tick marks at 8px
 - Clock has no now-hand or hover ray; hover eases the sun along the path arc then tracks it
 - Clock sun stays at max scale (2×) below and at the horizon, then shrinks toward 1× as daytime elevation rises; marker follows the same path as the drawn curve
-- Clock enter (once per page load): face fades 750ms and scales 1.5s; overlay rotates 12° over 1.5s; event buttons + sun sweep finish at 2.25s
+- Clock enter (once per editor visit): face fades 750ms and scales 1.5s; overlay rotates 12° over 1.5s; event buttons + sun sweep finish at 2.25s; list → edit plays it again (date redraws still skip)
 - Sun path / clock container is transparent with no card border
 - Adding a missing light to a scene is an undoable session edit
 - Clock view hides the top solar-event chips (rim icons replace them); each rim icon has a dashed spoke to the horizon plus name · time and scene label above the button
