@@ -427,7 +427,14 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-light-clock-face.clock-face-enter {
           animation:
             clock-face-fade 500ms cubic-bezier(0.2, 0, 0, 1) both,
-            clock-face-motion 1000ms cubic-bezier(0.2, 0, 0, 1) both;
+            clock-face-scale 1000ms cubic-bezier(0.2, 0, 0, 1) both;
+        }
+        .sun-light-clock-face.clock-face-enter .sun-light-clock-overlay {
+          transform-origin: center center;
+          animation: clock-overlay-spin 1000ms cubic-bezier(0.2, 0, 0, 1) both;
+        }
+        .sun-light-clock-face.clock-face-enter .clock-event-anchor {
+          animation: clock-event-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
         }
         @keyframes clock-face-fade {
           from {
@@ -437,12 +444,28 @@ class SceneExtrapolationPanel extends HTMLElement {
             opacity: 1;
           }
         }
-        @keyframes clock-face-motion {
+        @keyframes clock-face-scale {
           from {
-            transform: scale(0.9) rotate(-12deg);
+            transform: scale(0.9);
           }
           to {
-            transform: scale(1) rotate(0deg);
+            transform: scale(1);
+          }
+        }
+        @keyframes clock-overlay-spin {
+          from {
+            transform: rotate(-12deg);
+          }
+          to {
+            transform: rotate(0deg);
+          }
+        }
+        @keyframes clock-event-spin {
+          from {
+            transform: translate(-50%, -50%) rotate(-12deg);
+          }
+          to {
+            transform: translate(-50%, -50%) rotate(0deg);
           }
         }
         /* Registered via CSS.registerProperty (document), not @property here —
@@ -6385,8 +6408,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     void face.offsetWidth;
     face.classList.add("clock-face-enter");
     const clearEnter = (ev) => {
-      // Wait for the longer motion animation (1s), not the brief fade.
-      if (ev.animationName && ev.animationName !== "clock-face-motion") {
+      // Events + sun finish last (1.5s); wait for that spin before clearing.
+      if (ev.animationName && ev.animationName !== "clock-event-spin") {
         return;
       }
       face.classList.remove("clock-face-enter");
