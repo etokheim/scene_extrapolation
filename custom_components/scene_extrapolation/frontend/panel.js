@@ -622,23 +622,22 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
-          /* Stroke width + sky-tinted color set per-line in JS.
-             Butt caps: round caps on dense segments stack into a double spine. */
+          /* Stroke width + sky-tinted color set per-line in JS. */
           vector-effect: non-scaling-stroke;
-          stroke-dasharray: 3.5 3;
+          stroke-dasharray: 8 7;
           stroke-linejoin: round;
-          stroke-linecap: butt;
-          opacity: 0.85;
+          stroke-linecap: round;
+          opacity: 0.5;
         }
         .sun-light-clock-overlay .clock-sun-night {
           fill: none;
           /* Below horizon: neutral (not sky-colored). */
           stroke: var(--secondary-text-color);
           vector-effect: non-scaling-stroke;
-          stroke-dasharray: 3.5 3;
+          stroke-dasharray: 8 7;
           stroke-linejoin: round;
-          stroke-linecap: butt;
-          opacity: 0.55;
+          stroke-linecap: round;
+          opacity: 0.5;
         }
         /* CSS sun + lens flare; --sun-* set from elevation.
            z-index below rings so night sits behind the planet; day sits
@@ -6098,8 +6097,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     const dayElevSpan = dayMaxElev - dayMinElev || 1;
     const strokeOf = (elev) => {
       const t = Math.min(1, Math.max(0, (elev - dayMinElev) / dayElevSpan));
+      // Widest below the horizon (day’s min elev), thinnest at peak.
       return (
-        CLOCK_SUN_STROKE_MIN_PX +
+        CLOCK_SUN_STROKE_MAX_PX -
         t * (CLOCK_SUN_STROKE_MAX_PX - CLOCK_SUN_STROKE_MIN_PX)
       );
     };
@@ -6114,7 +6114,7 @@ class SceneExtrapolationPanel extends HTMLElement {
             const stroke = night
               ? "var(--secondary-text-color)"
               : skyLookFromElevation(midElev).pathColor;
-            return `<line x1="${xOf(s0).toFixed(1)}" y1="${yOf(e0).toFixed(1)}" x2="${xOf(s1).toFixed(1)}" y2="${yOf(e1).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="${w}px" stroke-opacity="${night ? 0.55 : 0.85}" stroke-linejoin="round" stroke-linecap="butt" vector-effect="non-scaling-stroke"></line>`;
+            return `<line x1="${xOf(s0).toFixed(1)}" y1="${yOf(e0).toFixed(1)}" x2="${xOf(s1).toFixed(1)}" y2="${yOf(e1).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="${w}px" stroke-opacity="0.5" stroke-dasharray="8 7" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></line>`;
           })
           .join("")}
       </svg>
@@ -6661,8 +6661,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     const dayElevSpan = dayMaxElev - dayMinElev || 1;
     const strokeOf = (elev) => {
       const t = Math.min(1, Math.max(0, (elev - dayMinElev) / dayElevSpan));
+      // Widest below the horizon (day’s min elev), thinnest at peak.
       return (
-        CLOCK_SUN_STROKE_MIN_PX +
+        CLOCK_SUN_STROKE_MAX_PX -
         t * (CLOCK_SUN_STROKE_MAX_PX - CLOCK_SUN_STROKE_MIN_PX)
       );
     };
