@@ -20,7 +20,7 @@ const UNDO_STACK_LIMIT = 75;
 const DRAFT_STORAGE_VERSION = 1;
 const DRAFT_PERSIST_MS = 200;
 const LIGHT_VIEW_STORAGE_VERSION = 1;
-const CLOCK_FACE_MAX_PX = 420;
+const CLOCK_FEATHER_PCT = 2.8;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
 // Same circadian seeds as native_scene.EVENT_LIGHT_DEFAULTS (0–255, kelvin).
 const EVENT_LIGHT_DEFAULTS = {
@@ -97,6 +97,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._previewQueued = false;
     this._yearScrubbing = false;
     this._sidebarEventId = null;
+    this._sidebarLightId = null;
     this._hashConfirming = false;
     this._lightView = "table";
     this._onHashChange = () => this._syncHash();
@@ -356,25 +357,36 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock {
           display: flex;
-          flex-wrap: wrap;
-          gap: 16px 24px;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          width: 100%;
           padding: 8px 16px 16px;
-          align-items: flex-start;
-          justify-content: center;
+          box-sizing: border-box;
         }
         .sun-light-clock-face {
           position: relative;
-          width: min(100%, ${CLOCK_FACE_MAX_PX}px);
+          /* Full column width, but never taller than 80vh (square). */
+          width: min(100%, 80vh);
           aspect-ratio: 1;
-          flex: 0 1 ${CLOCK_FACE_MAX_PX}px;
-          max-width: ${CLOCK_FACE_MAX_PX}px;
+          flex: 0 0 auto;
           touch-action: none;
           cursor: crosshair;
+        }
+        @property --clock-feather {
+          syntax: "<percentage>";
+          inherits: true;
+          initial-value: ${CLOCK_FEATHER_PCT}%;
         }
         .sun-light-clock-rings {
           position: absolute;
           inset: 14%;
           border-radius: 50%;
+          --clock-feather: ${CLOCK_FEATHER_PCT}%;
+          transition: --clock-feather 220ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .sun-light-clock-rings:hover {
+          --clock-feather: 0.2%;
         }
         .clock-ring {
           position: absolute;
@@ -382,12 +394,19 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 50%;
           pointer-events: auto;
           cursor: pointer;
+          transition: filter 180ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .clock-ring.selected {
+          z-index: 4;
+          filter: drop-shadow(0 0 2px var(--primary-color))
+            drop-shadow(0 0 6px color-mix(in srgb, var(--primary-color) 70%, transparent));
         }
         .sun-light-clock-overlay {
           position: absolute;
           inset: 0;
           pointer-events: none;
           overflow: visible;
+          z-index: 5;
         }
         .sun-light-clock-overlay .clock-tick {
           stroke: var(--divider-color);
@@ -437,6 +456,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           cursor: pointer;
           padding: 0;
           font: inherit;
+          z-index: 6;
         }
         .clock-event ha-icon {
           --mdc-icon-size: 18px;
@@ -450,9 +470,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           box-shadow: 0 0 0 2px var(--primary-color);
         }
         .sun-light-clock-legend {
-          flex: 1 1 200px;
-          min-width: min(100%, 200px);
-          max-width: 360px;
+          width: min(100%, 80vh);
           display: flex;
           flex-direction: column;
           gap: 4px;
@@ -462,7 +480,15 @@ class SceneExtrapolationPanel extends HTMLElement {
           align-items: center;
           gap: 6px;
           min-height: 36px;
-          padding: 2px 0;
+          padding: 2px 8px;
+          border-radius: 8px;
+        }
+        .clock-legend-row.selected {
+          background: color-mix(
+            in srgb,
+            var(--primary-color) 16%,
+            transparent
+          );
         }
         .clock-legend-row.out-of-area .clock-legend-name {
           color: var(--warning-color, var(--error-color));
@@ -2970,6 +2996,33 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._syncEventSelection();
   }
 
+  _setSidebarLight(entityId) {
+    this._sidebarLightId = entityId || null;
+    this._syncClockLightSelection();
+  }
+
+  _syncClockLightSelection() {
+    const root = this.shadowRoot;
+    if (!root) {
+      return;
+    }
+    const selected = this._sidebarLightId;
+    for (const ring of root.querySelectorAll(".clock-ring[data-entity-id]")) {
+      const on = ring.dataset.entityId === selected;
+      ring.classList.toggle("selected", on);
+      if (on) {
+        ring.setAttribute("aria-current", "true");
+      } else {
+        ring.removeAttribute("aria-current");
+      }
+    }
+    for (const row of root.querySelectorAll(
+      ".clock-legend-row[data-entity-id]"
+    )) {
+      row.classList.toggle("selected", row.dataset.entityId === selected);
+    }
+  }
+
   _syncEventSelection() {
     const row = this.shadowRoot?.querySelector(".sun-events");
     if (!row) {
@@ -2988,6 +3041,7 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _closeSceneSidebar({ animate = false } = {}) {
     this._setSidebarEvent(null);
+    this._setSidebarLight(null);
     const el = this.shadowRoot?.querySelector(".scene-sidebar");
     if (!el) {
       this._setSidebarDocked(false);
@@ -3011,6 +3065,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     this._setSidebarEvent(null);
+    this._setSidebarLight(null);
     el._closing = true;
     el.classList.remove("open");
     this._setSidebarDocked(false);
@@ -3053,6 +3108,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._setSidebarEvent(null);
     if (target?.localName === "ha-bottom-sheet") {
       target.open = false;
+      this._setSidebarLight(null);
       return;
     }
     this._closeSceneSidebar({ animate: true });
@@ -3389,6 +3445,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     this._setSidebarEvent(event.id);
+    this._setSidebarLight(null);
     const { host, body, footer } = opened;
 
     const note = document.createElement("p");
@@ -3897,6 +3954,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._setSidebarEvent(event.id);
     const { host, header, body, footer } = opened;
     host._lightEntityId = light.entity_id;
+    this._setSidebarLight(light.entity_id);
     host._isDirty = isDirty;
     host._confirmIfDirty = () => {
       if (!isDirty()) {
@@ -5619,18 +5677,24 @@ class SceneExtrapolationPanel extends HTMLElement {
     const ringsHost = document.createElement("div");
     ringsHost.className = "sun-light-clock-rings";
     const n = ringLights.length;
-    const hole = 22;
-    const gap = 1.2;
+    const hole = 20;
     const usable = 100 - hole;
-    const stroke = n ? usable / n - gap : 0;
+    const stroke = n ? usable / n : 0;
     for (let index = 0; index < n; index += 1) {
       const light = ringLights[index];
-      const outer = 100 - index * (stroke + gap);
+      const outer = 100 - index * stroke;
       const inner = Math.max(hole, outer - stroke);
       const ring = document.createElement("div");
       ring.className = "clock-ring";
+      ring.dataset.entityId = light.entity_id;
+      if (light.entity_id === this._sidebarLightId) {
+        ring.classList.add("selected");
+        ring.setAttribute("aria-current", "true");
+      }
       ring.style.background = conicGradientFromSamples(light.samples || []);
-      ring.style.webkitMaskImage = `radial-gradient(farthest-side, transparent ${inner}%, #000 ${inner}%, #000 ${outer}%, transparent ${outer}%)`;
+      // Soft radial edges so rings blend like the stacked table; --clock-feather
+      // shrinks on hover to sharpen the seams.
+      ring.style.webkitMaskImage = `radial-gradient(farthest-side, transparent calc(${inner}% - var(--clock-feather)), #000 calc(${inner}% + var(--clock-feather)), #000 calc(${outer}% - var(--clock-feather)), transparent calc(${outer}% + var(--clock-feather)))`;
       ring.style.maskImage = ring.style.webkitMaskImage;
       ring.title = light.name;
       ring.setAttribute("role", "button");
@@ -5797,11 +5861,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     const suggested = Boolean(light.suggested);
     const row = document.createElement("div");
     row.className = "clock-legend-row";
+    row.dataset.entityId = light.entity_id;
     if (suggested) {
       row.classList.add("suggested");
     }
     if (light.in_area === false) {
       row.classList.add("out-of-area");
+    }
+    if (light.entity_id === this._sidebarLightId) {
+      row.classList.add("selected");
     }
     if (!suggested) {
       const swatch = document.createElement("span");
