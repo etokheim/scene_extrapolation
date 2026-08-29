@@ -26,7 +26,7 @@ const CLOCK_SUN_SIZE_PX = 52;
 /* Daytime elevation where size falls back to 1× (degrees). */
 const CLOCK_SUN_SIZE_HORIZON_DEG = 18;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
-const CLOCK_SUN_STROKE_MAX_PX = 5;
+const CLOCK_SUN_STROKE_MAX_PX = 10;
 const SIDEBAR_ANIMATION_MS = 200;
 const SIDEBAR_SWAP_MS = 160;
 const LIGHT_BAR_HEIGHT = 108;
@@ -622,12 +622,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
-          /* Stroke width + sky-tinted color set per-line in JS. */
+          /* Stroke width + sky-tinted color set per-line in JS.
+             Butt caps: round caps on dense segments stack into a double spine. */
           vector-effect: non-scaling-stroke;
           stroke-dasharray: 3.5 3;
           stroke-linejoin: round;
-          stroke-linecap: round;
-          opacity: 0.5;
+          stroke-linecap: butt;
+          opacity: 0.85;
         }
         .sun-light-clock-overlay .clock-sun-night {
           fill: none;
@@ -636,7 +637,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           vector-effect: non-scaling-stroke;
           stroke-dasharray: 3.5 3;
           stroke-linejoin: round;
-          stroke-linecap: round;
+          stroke-linecap: butt;
           opacity: 0.55;
         }
         /* CSS sun + lens flare; --sun-* set from elevation.
@@ -6082,16 +6083,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     const yOf = (elevation) =>
       PLOT_TOP + ((maxElev - elevation) / span) * (PLOT_BOTTOM - PLOT_TOP);
 
-    const line = curve
-      .map((point, index) => {
-        const command = index === 0 ? "M" : "L";
-        return `${command}${xOf(point[0]).toFixed(1)},${yOf(point[1]).toFixed(1)}`;
-      })
-      .join(" ");
-    const area = `${line} L${xOf(curve[curve.length - 1][0]).toFixed(1)},${PLOT_BOTTOM} L${xOf(curve[0][0]).toFixed(1)},${PLOT_BOTTOM} Z`;
     const nowElev = interpolateElevation(curve, nowSeconds);
     const horizonY = yOf(0);
-    const horizonOffset = ((horizonY - PLOT_TOP) / (PLOT_BOTTOM - PLOT_TOP)) * 100;
     const hourLabels = ["00:00", "06:00", "12:00", "18:00", "24:00"];
     let dayMinElev = Infinity;
     let dayMaxElev = -Infinity;
@@ -6110,15 +6103,6 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const svg = `
       <svg viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
-        <defs>
-          <linearGradient id="sun-fill" gradientUnits="userSpaceOnUse" x1="0" y1="${PLOT_TOP}" x2="0" y2="${PLOT_BOTTOM}">
-            <stop offset="0%" stop-color="${SUN_LINE_DAY}" stop-opacity="0.35"/>
-            <stop offset="${horizonOffset}%" stop-color="${SUN_LINE_DAY}" stop-opacity="0.12"/>
-            <stop offset="${horizonOffset}%" stop-color="${SUN_LINE_NIGHT}" stop-opacity="0.35"/>
-            <stop offset="100%" stop-color="${SUN_LINE_NIGHT}" stop-opacity="0"/>
-          </linearGradient>
-        </defs>
-        <path d="${area}" fill="url(#sun-fill)"></path>
         <line x1="${PLOT_LEFT}" x2="${PLOT_RIGHT}" y1="${horizonY}" y2="${horizonY}" stroke="var(--divider-color)" stroke-dasharray="4 4" stroke-width="1"/>
         ${sunStrokeSegments(curve)
           .map(({ s0, e0, s1, e1, night }) => {
@@ -6127,7 +6111,7 @@ class SceneExtrapolationPanel extends HTMLElement {
             const stroke = night
               ? "var(--secondary-text-color)"
               : skyLookFromElevation(midElev).pathColor;
-            return `<line x1="${xOf(s0).toFixed(1)}" y1="${yOf(e0).toFixed(1)}" x2="${xOf(s1).toFixed(1)}" y2="${yOf(e1).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="${w}px" stroke-opacity="${night ? 0.55 : 0.5}" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></line>`;
+            return `<line x1="${xOf(s0).toFixed(1)}" y1="${yOf(e0).toFixed(1)}" x2="${xOf(s1).toFixed(1)}" y2="${yOf(e1).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="${w}px" stroke-opacity="${night ? 0.55 : 0.85}" stroke-linejoin="round" stroke-linecap="butt" vector-effect="non-scaling-stroke"></line>`;
           })
           .join("")}
       </svg>
