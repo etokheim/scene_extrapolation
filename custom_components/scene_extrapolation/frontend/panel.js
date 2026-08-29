@@ -490,8 +490,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         /* CSS sun + lens flare; --sun-* set from elevation.
            z-index below rings so night sits behind the planet; day sits
            outside the rings host and stays visible (rim clips at sunrise).
-           left/top ease on hover enter/leave; .clock-sun-live drops that
-           so scrubbing tracks the pointer without lag. */
+           Position is driven in JS along the sun-path arc (no CSS left/top
+           tween — that cut chords and stuttered when the target moved). */
         .clock-sun {
           position: absolute;
           width: ${CLOCK_SUN_SIZE_PX}px;
@@ -506,13 +506,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           --sun-ray-opacity: 0.55;
           --sun-ghost-opacity: 0.35;
           --sun-scale: 1;
-          transition:
-            left 320ms cubic-bezier(0.2, 0, 0, 1),
-            top 320ms cubic-bezier(0.2, 0, 0, 1),
-            transform 320ms cubic-bezier(0.2, 0, 0, 1);
-        }
-        .clock-sun.clock-sun-live {
-          transition: none;
         }
         .clock-sun > span {
           position: absolute;
@@ -3294,8 +3287,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._syncEventSelection();
     // Idle sun follows the selected solar event (or “now” when none).
     if (this._hoverSeconds == null && this._clockSunEl) {
-      this._clockSunEl.classList.remove("clock-sun-live");
-      this._applyClockSunAppearance(this._clockSunIdleSeconds());
+      this._clockSunLive = false;
+      this._setClockSunArcTarget(this._clockSunIdleSeconds());
       this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
     }
   }
@@ -6113,6 +6106,68 @@ class SceneExtrapolationPanel extends HTMLElement {
     return this._sunPath?.today ? nowSecondsSinceMidnight() : null;
   }
 
+  /** Shortest signed seconds delta on the 24h circle (for arc lerps). */
+  _shortestSecondsDelta(from, to) {
+    let d =
+      ((((to - from) % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY);
+    if (d > SECONDS_PER_DAY / 2) {
+      d -= SECONDS_PER_DAY;
+    }
+    return d;
+  }
+
+  _cancelClockSunArc() {
+    if (this._clockSunArcRaf) {
+      window.cancelAnimationFrame(this._clockSunArcRaf);
+      this._clockSunArcRaf = undefined;
+    }
+  }
+
+  /**
+   * Ease the sun along the elevation curve by chasing time-of-day.
+   * Retargeting mid-flight only updates the goal — exponential smoothing
+   * keeps motion on the arc without restarting a CSS/tween chord.
+   */
+  _setClockSunArcTarget(seconds, { thenLive = false } = {}) {
+    this._clockSunArcTo =
+      ((seconds % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
+    this._clockSunArcThenLive = thenLive;
+    this._clockSunArcLastTick = performance.now();
+    if (!this._clockSunArcRaf) {
+      this._clockSunArcRaf = window.requestAnimationFrame((t) =>
+        this._tickClockSunArc(t)
+      );
+    }
+  }
+
+  _tickClockSunArc(now) {
+    const last = this._clockSunArcLastTick ?? now;
+    this._clockSunArcLastTick = now;
+    const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+    const cur =
+      this._clockSunDisplayedSeconds ?? this._clockSunIdleSeconds();
+    const target = this._clockSunArcTo;
+    const d = this._shortestSecondsDelta(cur, target);
+    // ~0.11s time-constant ≈ settles in ~300ms; follows a moving pointer.
+    const tau = 0.11;
+    const step = d * (1 - Math.exp(-dt / tau));
+    if (Math.abs(d) < 0.75 || Math.abs(step) < 0.05) {
+      this._clockSunArcRaf = undefined;
+      this._applyClockSunAppearance(target);
+      if (this._clockSunArcThenLive && this._hoverSeconds != null) {
+        this._clockSunLive = true;
+        this._applyClockSunAppearance(this._hoverSeconds);
+      }
+      return;
+    }
+    let s = cur + step;
+    s = ((s % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
+    this._applyClockSunAppearance(s);
+    this._clockSunArcRaf = window.requestAnimationFrame((t) =>
+      this._tickClockSunArc(t)
+    );
+  }
+
   _clockSunRadiusOf(elevation) {
     const scale = Math.max(this._sunPath?.max_elevation || 0, 1);
     const t = elevation / scale;
@@ -6148,6 +6203,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!curve?.length) {
       return;
     }
+    this._clockSunDisplayedSeconds = seconds;
     const elev = interpolateElevation(curve, seconds);
     const look = skyLookFromElevation(elev);
     const sun = this._clockSunEl;
@@ -6220,11 +6276,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     face.appendChild(marker);
     this._clockSunEl = marker;
+    this._clockSunLive = false;
+    this._cancelClockSunArc();
     this._applyClockSunAppearance(this._clockSunIdleSeconds());
   }
 
   _bindClockHover(face) {
-    const SUN_INTRO_MS = 320;
     const apply = (seconds) => {
       const starting = !face.hasAttribute("data-hovering");
       this._hoverSeconds = seconds;
@@ -6232,19 +6289,15 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (this._hoverLine) {
         this._hoverLine.style.display = "none";
       }
-      const sun = this._clockSunEl;
-      if (starting && sun) {
-        // Animate from idle to the pointer, then track live without lag.
-        sun.classList.remove("clock-sun-live");
-        if (this._clockSunLiveTimer) {
-          window.clearTimeout(this._clockSunLiveTimer);
-        }
-        this._clockSunLiveTimer = window.setTimeout(() => {
-          this._clockSunLiveTimer = undefined;
-          sun.classList.add("clock-sun-live");
-        }, SUN_INTRO_MS);
+      if (starting) {
+        this._clockSunLive = false;
       }
-      this._applyClockSunAppearance(seconds);
+      if (this._clockSunLive) {
+        this._applyClockSunAppearance(seconds);
+      } else {
+        // Follow the sun-path arc; retarget if the pointer moves mid-intro.
+        this._setClockSunArcTarget(seconds, { thenLive: true });
+      }
       this._fillHoverReadout(seconds, { hovering: true });
     };
     const clear = () => {
@@ -6253,12 +6306,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (this._hoverLine) {
         this._hoverLine.style.display = "";
       }
-      if (this._clockSunLiveTimer) {
-        window.clearTimeout(this._clockSunLiveTimer);
-        this._clockSunLiveTimer = undefined;
-      }
-      this._clockSunEl?.classList.remove("clock-sun-live");
-      this._applyClockSunAppearance(this._clockSunIdleSeconds());
+      this._clockSunLive = false;
+      this._setClockSunArcTarget(this._clockSunIdleSeconds());
       this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
     };
     face.addEventListener("pointermove", (ev) => {

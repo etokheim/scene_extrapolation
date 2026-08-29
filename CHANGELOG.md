@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clock view wraps sun elevation around the rim (solid above the horizon, dashed over the face below; no dashed horizon circle); the linear sun chart is hidden in that mode
 - Clock sun path exaggerates daytime height, uses 0.5px day / 0.25px night strokes (`non-scaling-stroke`), and marks the sun with a CSS disc+flare (behind the planet below the horizon) that follows hover time
 - Clock hour labels sit outside the tick marks at 8px
-- Clock has no now-hand or hover ray; hover eases the sun to the pointer then tracks it
+- Clock has no now-hand or hover ray; hover eases the sun along the path arc then tracks it
 - Clock sun grows up to 2× near the horizon; idle position follows the selected solar event (else now)
 - Clock view hides the top solar-event chips (rim icons replace them); unassigned rim controls are wide warning pills labeled “Choose scene”
 - Light-edit sidebar brightness graph above the color wheel: drag a solar-event point to change that scene’s brightness; events where the lamp is missing show `+` to add it
