@@ -20,12 +20,15 @@ from .const import (
     DOMAIN,
 )
 from .native_scene import (
+    async_create_native_scene,
+    async_delete_native_scene,
+    async_rename_native_scene,
     async_update_native_scene_entities,
     async_update_native_scene_entity,
 )
 from .preview import build_preview
 from .scene import async_create_or_update_entity, async_remove_entity
-from .solar import build_sun_path
+from .solar import EVENT_ORDER, build_sun_path
 from .store import SceneExtrapolationStore, to_form_data
 
 _LOGGER = logging.getLogger(__name__)
@@ -41,6 +44,9 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_preview)
     websocket_api.async_register_command(hass, ws_update_native_scene)
     websocket_api.async_register_command(hass, ws_update_native_scenes)
+    websocket_api.async_register_command(hass, ws_create_native_scene)
+    websocket_api.async_register_command(hass, ws_rename_native_scene)
+    websocket_api.async_register_command(hass, ws_delete_native_scene)
 
 
 def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
@@ -318,5 +324,81 @@ async def ws_update_native_scenes(
         )
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "update_failed", str(err))
+        return
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/create_native_scene",
+        vol.Required("area_id"): str,
+        vol.Required("event"): vol.In(list(EVENT_ORDER)),
+        vol.Optional("linked"): bool,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_create_native_scene(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Create a native YAML scene for an area at one solar event."""
+    try:
+        payload = await async_create_native_scene(
+            hass,
+            msg["area_id"],
+            msg["event"],
+            linked=bool(msg.get("linked")),
+        )
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "create_failed", str(err))
+        return
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/rename_native_scene",
+        vol.Required("scene_entity_id"): str,
+        vol.Required("name"): str,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_rename_native_scene(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Rename a native YAML scene."""
+    try:
+        payload = await async_rename_native_scene(
+            hass, msg["scene_entity_id"], msg["name"]
+        )
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "rename_failed", str(err))
+        return
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/delete_native_scene",
+        vol.Required("scene_entity_id"): str,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_delete_native_scene(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Delete a native YAML scene."""
+    try:
+        payload = await async_delete_native_scene(hass, msg["scene_entity_id"])
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "delete_failed", str(err))
         return
     connection.send_result(msg["id"], payload)

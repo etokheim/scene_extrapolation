@@ -93,6 +93,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Superseded in part:** 2026-08-26 — event and light editors use the automation-style sidebar, not a centered `ha-dialog`.
 - **Superseded in part:** 2026-08-26 — picker / dusk / link changes apply to the graphs immediately. Close keeps them; there is no Done. YAML is still only written on Save of the extrapolation scene.
 - **Superseded in part:** 2026-08-26 — linked dawn/sunrise/sunset is only described in the event sidebar; the row does not outline linked events. Unassigned events use a warning treatment. Buttons cap width and space evenly.
+- **Superseded in part:** 2026-08-29 — the event sidebar can create, rename, delete, and clear the native scene. See “Create native scenes from the event picker”.
 - **Decision:** Dawn / sunrise / noon / sunset / dusk above the chart are the scene inputs. Clicking one opens a dialog with a native scene picker. Dawn, sunrise, and sunset can share one scene via “Same scene for dawn, sunrise, and sunset”. Scene entity pickers and the combine boolean are not on `ha-form`.
 - **Why:** The chart already lists those events. Duplicate pickers below the graph were the same decision twice. Linking lives on the event you are assigning, not a separate toggle.
 - **Do not reverse without user ask.**
@@ -207,6 +208,13 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Date:** 2026-08-26
 - **Decision:** `scene_dusk_minimum_time_of_day` is edited in the dusk solar-event dialog, next to that event’s scene picker. It is not on `ha-form`.
 - **Why:** The override only applies to dusk. Putting it on the main form made it look like a global setting.
+- **Do not reverse without user ask.**
+
+## Create native scenes from the event picker
+
+- **Date:** 2026-08-29
+- **Decision:** The solar-event sidebar can create a native YAML scene for the working area, rename or delete the selected one, and clear the assignment with an X on the picker. Create is disabled without an area. Create walks every enabled light in that area (entity area, else device area) and writes on + brightness + color for the event: `color_temp_kelvin` when the lamp supports color temp (or rgbww / `min_color_temp_kelvin`), otherwise HS from the same kelvin. Linked dawn / sunrise / sunset uses the noon (day) profile and the name “{area} Day”, because that picker is one daytime scene. Unlinked events use dawn 40%/2700K, sunrise 75%/3500K, noon 100%/4500K, sunset 70%/3000K, dusk 25%/2200K. Writes `scenes.yaml` + `scene.reload`, then sets the new scene’s area in the entity registry so it stays in the picker filter.
+- **Why:** Building the native scenes in Home Assistant is the tedious part. The event you are assigning is the place to create the matching room scene.
 - **Do not reverse without user ask.**
 
 ## Editor overflow menu for rename and delete

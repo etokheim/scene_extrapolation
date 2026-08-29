@@ -992,6 +992,35 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 12px;
           margin-top: 16px;
         }
+        .event-scene-field {
+          display: flex;
+          align-items: flex-end;
+          gap: 4px;
+          margin-top: 16px;
+        }
+        .event-scene-field ha-selector {
+          flex: 1;
+          min-width: 0;
+          margin-top: 0;
+        }
+        .event-scene-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 12px;
+        }
+        .event-scene-hint,
+        .event-scene-error {
+          margin: 8px 0 0;
+          font-size: 14px;
+          line-height: 20px;
+        }
+        .event-scene-hint {
+          color: var(--secondary-text-color);
+        }
+        .event-scene-error {
+          color: var(--error-color);
+        }
         .light-warn {
           position: absolute;
           right: 16px;
@@ -2063,7 +2092,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       button.textContent = label;
       if (options.danger) {
         button.variant = "danger";
-      } else if (!options.ghost) {
+      } else if (options.ghost) {
+        button.appearance = "plain";
+      } else {
         button.variant = "brand";
       }
       button.addEventListener("click", onClick);
@@ -2172,22 +2203,174 @@ class SceneExtrapolationPanel extends HTMLElement {
       "This assigns a native Home Assistant scene to this solar event. Graphs update immediately. Save the extrapolation scene to keep the assignment.";
     body.appendChild(note);
 
+    const field = document.createElement("div");
+    field.className = "event-scene-field";
     const picker = document.createElement("ha-selector");
     picker.hass = this._hass;
     picker.label = "Scene";
     picker.value = data.scene;
-    picker.selector = entitySelector(
-      this._hass,
-      "scene",
-      this._formData.area || null,
-      true
-    );
+    const bindPicker = () => {
+      picker.hass = this._hass;
+      picker.selector = entitySelector(
+        this._hass,
+        "scene",
+        this._formData.area || null,
+        true,
+        data.scene ? [data.scene] : []
+      );
+      picker.value = data.scene;
+    };
+    bindPicker();
     picker.addEventListener("value-changed", (ev) => {
       ev.stopPropagation();
       data.scene = ev.detail?.value || null;
       applyDraft();
+      syncActions();
     });
-    body.appendChild(picker);
+    const clearBtn = document.createElement("ha-icon-button");
+    clearBtn.label = "Clear scene";
+    const clearIcon = document.createElement("ha-icon");
+    clearIcon.setAttribute("icon", "mdi:close");
+    clearBtn.appendChild(clearIcon);
+    clearBtn.addEventListener("click", () => {
+      data.scene = null;
+      bindPicker();
+      applyDraft();
+      syncActions();
+    });
+    field.append(picker, clearBtn);
+    body.appendChild(field);
+
+    const actions = document.createElement("div");
+    actions.className = "event-scene-actions";
+    const createBtn = this._button("Create new scene", async () => {
+      setBusy(true);
+      setError("");
+      try {
+        const created = await this._hass.callWS({
+          type: `${DOMAIN}/create_native_scene`,
+          area_id: this._formData.area,
+          event: event.id,
+          linked: Boolean(canLink && data.linked),
+        });
+        data.scene = created.entity_id;
+        bindPicker();
+        applyDraft();
+        if (!created.light_count) {
+          setHint("Created an empty scene — this area has no lights.");
+        } else {
+          setHint("");
+        }
+      } catch (err) {
+        setError(err.message || String(err));
+      } finally {
+        setBusy(false);
+        syncActions();
+      }
+    });
+    const renameBtn = this._button("Rename", async () => {
+      if (!data.scene) {
+        return;
+      }
+      const next = await this._promptText({
+        title: "Rename scene",
+        label: "Name",
+        value: this._sceneName(data.scene),
+        confirmLabel: "Rename",
+      });
+      if (!next) {
+        return;
+      }
+      setBusy(true);
+      setError("");
+      try {
+        await this._hass.callWS({
+          type: `${DOMAIN}/rename_native_scene`,
+          scene_entity_id: data.scene,
+          name: next,
+        });
+        bindPicker();
+        this._sunPathKey = undefined;
+        this._ensureSunPath();
+      } catch (err) {
+        setError(err.message || String(err));
+      } finally {
+        setBusy(false);
+        syncActions();
+      }
+    }, { ghost: true });
+    const deleteBtn = this._button(
+      "Delete",
+      async () => {
+        if (!data.scene) {
+          return;
+        }
+        const sceneName = this._sceneName(data.scene);
+        const confirmed = await this._confirmNativeSceneDelete(sceneName);
+        if (!confirmed) {
+          return;
+        }
+        setBusy(true);
+        setError("");
+        try {
+          const entityId = data.scene;
+          await this._hass.callWS({
+            type: `${DOMAIN}/delete_native_scene`,
+            scene_entity_id: entityId,
+          });
+          this._clearNativeSceneRefs(entityId);
+          data.scene = null;
+          bindPicker();
+          applyDraft();
+        } catch (err) {
+          setError(err.message || String(err));
+        } finally {
+          setBusy(false);
+          syncActions();
+        }
+      },
+      { danger: true }
+    );
+    actions.append(createBtn, renameBtn, deleteBtn);
+    body.appendChild(actions);
+
+    const hint = document.createElement("p");
+    hint.className = "event-scene-hint";
+    const error = document.createElement("p");
+    error.className = "event-scene-error";
+    body.append(hint, error);
+
+    const setHint = (text) => {
+      hint.textContent = text || "";
+      hint.hidden = !text;
+    };
+    const setError = (text) => {
+      error.textContent = text || "";
+      error.hidden = !text;
+    };
+    const setBusy = (busy) => {
+      createBtn.disabled = busy;
+      renameBtn.disabled = busy;
+      deleteBtn.disabled = busy;
+      clearBtn.disabled = busy;
+      picker.disabled = busy;
+    };
+    const syncActions = () => {
+      const hasArea = Boolean(this._formData.area);
+      const hasScene = Boolean(data.scene);
+      createBtn.disabled = !hasArea;
+      renameBtn.disabled = !hasScene;
+      deleteBtn.disabled = !hasScene;
+      clearBtn.disabled = !hasScene;
+      if (!hasArea) {
+        setHint(
+          "Select an area first. Create fills that room’s lights for this solar event."
+        );
+      }
+    };
+    setHint("");
+    setError("");
+    syncActions();
 
     if (event.id === "dusk") {
       const timePicker = document.createElement("ha-selector");
@@ -2224,6 +2407,133 @@ class SceneExtrapolationPanel extends HTMLElement {
     close.textContent = "Close";
     close.addEventListener("click", () => this._requestCloseSceneSidebar(host));
     footer.append(close);
+  }
+
+  _clearNativeSceneRefs(entityId) {
+    if (!entityId) {
+      return;
+    }
+    for (const key of Object.values(EVENT_SCENE_KEYS)) {
+      if (this._formData[key] === entityId) {
+        this._formData[key] = null;
+      }
+    }
+    if (this._formData.scene_dawn_sunrise_sunset === entityId) {
+      this._formData.scene_dawn_sunrise_sunset = null;
+    }
+    if (this._formData.nightlights_scene === entityId) {
+      this._formData.nightlights_scene = null;
+    }
+  }
+
+  _promptText({ title, label, value, confirmLabel }) {
+    return new Promise((resolve) => {
+      this.shadowRoot.querySelector("ha-dialog.text-prompt")?.remove();
+      const data = { value: value || "" };
+      const dialog = document.createElement("ha-dialog");
+      dialog.className = "text-prompt";
+      dialog.setAttribute("header-title", title);
+      dialog.open = true;
+      const field = customElements.get("ha-input")
+        ? document.createElement("ha-input")
+        : document.createElement("ha-selector");
+      field.label = label;
+      field.required = true;
+      field.value = data.value;
+      if (field.localName === "ha-selector") {
+        field.hass = this._hass;
+        field.selector = { text: {} };
+      }
+      field.setAttribute("autofocus", "");
+      field.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        data.value = ev.detail?.value ?? "";
+      });
+      field.addEventListener("input", () => {
+        data.value = field.value ?? "";
+      });
+      dialog.appendChild(field);
+      const footer = customElements.get("ha-dialog-footer")
+        ? document.createElement("ha-dialog-footer")
+        : document.createElement("div");
+      footer.slot = "footer";
+      const cancel = document.createElement("ha-button");
+      cancel.slot = "secondaryAction";
+      cancel.appearance = "plain";
+      cancel.textContent = this._loc("ui.common.cancel", "Cancel");
+      const confirm = document.createElement("ha-button");
+      confirm.slot = "primaryAction";
+      confirm.variant = "brand";
+      confirm.textContent = confirmLabel || "Save";
+      let settled = false;
+      const settle = (next) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        dialog.open = false;
+        resolve(next);
+      };
+      cancel.addEventListener("click", () => settle(null));
+      confirm.addEventListener("click", () => {
+        const next = String(field.value ?? data.value ?? "").trim();
+        if (!next) {
+          field.reportValidity?.();
+          return;
+        }
+        settle(next);
+      });
+      footer.append(cancel, confirm);
+      dialog.appendChild(footer);
+      dialog.addEventListener("closed", () => {
+        dialog.remove();
+        settle(null);
+      });
+      this.shadowRoot.appendChild(dialog);
+    });
+  }
+
+  _confirmNativeSceneDelete(name) {
+    return new Promise((resolve) => {
+      this.shadowRoot.querySelector("ha-dialog.native-scene-delete")?.remove();
+      const dialog = document.createElement("ha-dialog");
+      dialog.className = "native-scene-delete confirm-dialog";
+      dialog.setAttribute("header-title", "Delete scene?");
+      dialog.open = true;
+      const text = document.createElement("p");
+      text.textContent = `Are you sure you want to delete ${name}? This removes the native Home Assistant scene.`;
+      dialog.appendChild(text);
+      const footer = customElements.get("ha-dialog-footer")
+        ? document.createElement("ha-dialog-footer")
+        : document.createElement("div");
+      footer.slot = "footer";
+      const cancel = document.createElement("ha-button");
+      cancel.slot = "secondaryAction";
+      cancel.appearance = "plain";
+      cancel.textContent = this._loc("ui.common.cancel", "Cancel");
+      const confirm = document.createElement("ha-button");
+      confirm.slot = "primaryAction";
+      confirm.variant = "danger";
+      confirm.textContent = this._loc("ui.common.delete", "Delete");
+      let settled = false;
+      const settle = (value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        dialog.open = false;
+        resolve(value);
+      };
+      cancel.addEventListener("click", () => settle(false));
+      confirm.addEventListener("click", () => settle(true));
+      footer.append(cancel, confirm);
+      dialog.appendChild(footer);
+      dialog.addEventListener("closed", () => {
+        dialog.remove();
+        settle(false);
+      });
+      this.shadowRoot.appendChild(dialog);
+    });
   }
 
   _lightServicePayload(entityId, stored) {
@@ -5224,7 +5534,7 @@ function emptyFormData() {
   };
 }
 
-function entitySelector(hass, domain, areaId, nativeScenesOnly) {
+function entitySelector(hass, domain, areaId, nativeScenesOnly, extraIds) {
   const config = { domain, multiple: false };
   const include = [];
   const entities = hass.entities || {};
@@ -5245,6 +5555,11 @@ function entitySelector(hass, domain, areaId, nativeScenesOnly) {
       continue;
     }
     include.push(entityId);
+  }
+  for (const extra of extraIds || []) {
+    if (extra && !include.includes(extra)) {
+      include.push(extra);
+    }
   }
   if (areaId || nativeScenesOnly) {
     config.include_entities = include;
