@@ -467,14 +467,17 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
           stroke: ${SUN_LINE_DAY};
-          stroke-width: 2;
+          /* viewBox units scale with the face; keep screen-pixel width. */
+          stroke-width: 0.5px;
+          vector-effect: non-scaling-stroke;
           stroke-linejoin: round;
           stroke-linecap: round;
         }
         .sun-light-clock-overlay .clock-sun-night {
           fill: none;
           stroke: color-mix(in srgb, ${SUN_LINE_NIGHT} 55%, white);
-          stroke-width: 1;
+          stroke-width: 0.25px;
+          vector-effect: non-scaling-stroke;
           stroke-dasharray: 3.5 3;
           stroke-linejoin: round;
           stroke-linecap: round;
@@ -574,7 +577,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-overlay .clock-label {
           fill: var(--secondary-text-color);
-          font-size: 11px;
+          font-size: 8px;
           font-variant-numeric: tabular-nums;
           text-anchor: middle;
           dominant-baseline: middle;
@@ -6336,8 +6339,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     const tickOuter = 86;
     const tickInnerMinor = 82;
     const tickInnerMajor = 78;
-    // Hour labels sit inside the planet rim so the day sun path keeps the sky.
-    const labelR = 64;
+    // Hour labels sit just outside the tick marks (not inside the planet).
+    const labelR = 94;
     for (let hour = 0; hour < 24; hour += 1) {
       const deg = (hour / 24) * 360;
       const rad = ((deg - 90) * Math.PI) / 180;
