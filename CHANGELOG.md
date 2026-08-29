@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clock face fills the editor width up to 80vh, soft ring seams sharpen on hover, and the open light-edit lamp is highlighted
 - Clock ring seams overlap more when blurred so gaps stay lit instead of dark
 - Soft glow behind the light clock (same treatment as the color wheel)
+- Clock view hides the top solar-event chips (rim icons replace them); unassigned rim buttons are larger with the warning treatment
 - Light-edit sidebar brightness graph above the color wheel: drag a solar-event point to change that scene’s brightness; events where the lamp is missing show `+` to add it
 
 ### Changed

@@ -477,17 +477,55 @@ class SceneExtrapolationPanel extends HTMLElement {
           padding: 0;
           font: inherit;
           z-index: 6;
+          transition:
+            width 160ms cubic-bezier(0.2, 0, 0, 1),
+            height 160ms cubic-bezier(0.2, 0, 0, 1),
+            margin 160ms cubic-bezier(0.2, 0, 0, 1),
+            box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
         }
         .clock-event ha-icon {
           --mdc-icon-size: 18px;
         }
+        /* Emphasize unassigned events — same job as the card-row warning. */
         .clock-event.missing {
+          width: 48px;
+          height: 48px;
+          margin: -24px 0 0 -24px;
           color: var(--warning-color, var(--error-color));
-          border-color: var(--warning-color, var(--error-color));
+          border: 2px solid var(--warning-color, var(--error-color));
+          background: color-mix(
+            in srgb,
+            var(--warning-color, var(--primary-color)) 18%,
+            var(--card-background-color)
+          );
+          box-shadow:
+            0 0 0 3px
+              color-mix(
+                in srgb,
+                var(--warning-color, var(--primary-color)) 28%,
+                transparent
+              ),
+            0 2px 8px rgba(0, 0, 0, 0.22);
+          z-index: 7;
+        }
+        .clock-event.missing ha-icon {
+          --mdc-icon-size: 26px;
         }
         .clock-event.selected {
           border-color: var(--primary-color);
           box-shadow: 0 0 0 2px var(--primary-color);
+        }
+        .clock-event.missing.selected {
+          border-color: var(--primary-color);
+          box-shadow:
+            0 0 0 2px var(--primary-color),
+            0 0 0 5px
+              color-mix(
+                in srgb,
+                var(--warning-color, var(--primary-color)) 28%,
+                transparent
+              ),
+            0 2px 8px rgba(0, 0, 0, 0.22);
         }
         .sun-light-clock-legend {
           width: min(100%, 80vh);
@@ -3149,14 +3187,17 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _syncEventSelection() {
-    const row = this.shadowRoot?.querySelector(".sun-events");
-    if (!row) {
+    const root = this.shadowRoot;
+    if (!root) {
       return;
     }
-    for (const item of row.querySelectorAll(".sun-event[data-event-id]")) {
-      const selected = item.dataset.eventId === this._sidebarEventId;
-      item.classList.toggle("selected", selected);
-      if (selected) {
+    const selected = this._sidebarEventId;
+    for (const item of root.querySelectorAll(
+      ".sun-event[data-event-id], .clock-event[data-event-id]"
+    )) {
+      const on = item.dataset.eventId === selected;
+      item.classList.toggle("selected", on);
+      if (on) {
         item.setAttribute("aria-current", "true");
       } else {
         item.removeAttribute("aria-current");
@@ -5726,7 +5767,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     } else if (this._dateToolbar) {
       this._dateToolbar.remove();
     }
-    children.push(eventsRow);
+    children.push(...(useClock ? [] : [eventsRow]));
     if (events.some((event) => event.fallback)) {
       const note = document.createElement("p");
       note.className = "sun-fallback-note";
@@ -6119,6 +6160,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       btn.className = "clock-event";
       if (editable) {
         btn.type = "button";
+        btn.dataset.eventId = event.id;
       }
       btn.style.left = `${left}%`;
       btn.style.top = `${top}%`;
@@ -6130,6 +6172,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       if (this._sidebarEventId === event.id) {
         btn.classList.add("selected");
+        btn.setAttribute("aria-current", "true");
       }
       const icon = document.createElement("ha-icon");
       icon.setAttribute("icon", event.icon);
