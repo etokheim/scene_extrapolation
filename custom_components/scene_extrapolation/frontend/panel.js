@@ -82,6 +82,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._previewInFlight = false;
     this._previewQueued = false;
     this._yearScrubbing = false;
+    this._sidebarEventId = null;
     this._hashConfirming = false;
     this._onHashChange = () => this._syncHash();
     this._onEditorKeydown = (ev) => this._handleEditorShortcut(ev);
@@ -1124,6 +1125,18 @@ class SceneExtrapolationPanel extends HTMLElement {
             var(--warning-color, var(--primary-color)) 24%,
             var(--card-background-color)
           );
+        }
+        .sun-event.clickable.selected {
+          border-color: var(--primary-color);
+          border-width: 2px;
+          background: color-mix(
+            in srgb,
+            var(--primary-color) 14%,
+            var(--card-background-color)
+          );
+        }
+        .sun-event.clickable.missing.selected {
+          border-color: var(--primary-color);
         }
         .sun-event ha-icon {
           --mdc-icon-size: 22px;
@@ -2237,7 +2250,33 @@ class SceneExtrapolationPanel extends HTMLElement {
     return { body, footer };
   }
 
+  _setSidebarEvent(eventId) {
+    this._sidebarEventId = eventId || null;
+    const host = this.shadowRoot?.querySelector(".scene-sidebar");
+    if (host) {
+      host._eventId = this._sidebarEventId;
+    }
+    this._syncEventSelection();
+  }
+
+  _syncEventSelection() {
+    const row = this.shadowRoot?.querySelector(".sun-events");
+    if (!row) {
+      return;
+    }
+    for (const item of row.querySelectorAll(".sun-event[data-event-id]")) {
+      const selected = item.dataset.eventId === this._sidebarEventId;
+      item.classList.toggle("selected", selected);
+      if (selected) {
+        item.setAttribute("aria-current", "true");
+      } else {
+        item.removeAttribute("aria-current");
+      }
+    }
+  }
+
   _closeSceneSidebar({ animate = false } = {}) {
+    this._setSidebarEvent(null);
     const el = this.shadowRoot?.querySelector(".scene-sidebar");
     if (!el) {
       this._setSidebarDocked(false);
@@ -2260,6 +2299,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (el._closing) {
       return;
     }
+    this._setSidebarEvent(null);
     el._closing = true;
     el.classList.remove("open");
     this._setSidebarDocked(false);
@@ -2299,6 +2339,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (target) {
       target._isDirty = () => false;
     }
+    this._setSidebarEvent(null);
     if (target?.localName === "ha-bottom-sheet") {
       target.open = false;
       return;
@@ -2387,6 +2428,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     host.addEventListener("closed", () => {
       host.remove();
       this._setSidebarDocked(false);
+      // Only clear if this host still owns the highlight. A delayed desktop
+      // close must not wipe the event selected by a newly opened sidebar.
+      if (this._sidebarEventId && this._sidebarEventId === host._eventId) {
+        this._setSidebarEvent(null);
+      }
       if (!host._committed && this.isConnected) {
         host._onDismiss?.();
       }
@@ -2595,6 +2641,19 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._ensureSunPath();
   }
 
+  async _toggleEventSceneDialog(event) {
+    const existing = this.shadowRoot?.querySelector(".scene-sidebar");
+    if (
+      existing &&
+      !existing._closing &&
+      this._sidebarEventId === event.id
+    ) {
+      await this._requestCloseSceneSidebar(existing);
+      return;
+    }
+    await this._openEventSceneDialog(event);
+  }
+
   async _openEventSceneDialog(event) {
     const canLink = LINKED_EVENTS.includes(event.id);
     const data = {
@@ -2618,6 +2677,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!opened) {
       return;
     }
+    this._setSidebarEvent(event.id);
     const { host, body, footer } = opened;
 
     const note = document.createElement("p");
@@ -3128,6 +3188,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!opened) {
       return;
     }
+    this._setSidebarEvent(event.id);
     const { host, header, body, footer } = opened;
     host._lightEntityId = light.entity_id;
     host._isDirty = isDirty;
@@ -3156,6 +3217,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         return;
       }
       currentEvent = next;
+      this._setSidebarEvent(next.id);
       if (subtitleEl) {
         subtitleEl.textContent = this._sceneName(nextId);
       }
@@ -4492,7 +4554,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (editable) {
         item.type = "button";
         item.classList.add("clickable");
-        item.addEventListener("click", () => this._openEventSceneDialog(event));
+        item.dataset.eventId = event.id;
+        if (this._sidebarEventId === event.id) {
+          item.classList.add("selected");
+          item.setAttribute("aria-current", "true");
+        }
+        item.addEventListener("click", () => this._toggleEventSceneDialog(event));
       }
       const bits = [];
       if (event.overridden) {
