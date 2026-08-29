@@ -270,12 +270,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           height: 100% !important;
         }
         .sun-path {
-          background: var(--card-background-color);
-          border-radius: var(--ha-card-border-radius, var(--ha-border-radius-lg));
-          border: var(--ha-card-border-width, 1px) solid
-            var(--ha-card-border-color, var(--divider-color));
+          /* No HA card chrome — clock/plots sit on the panel surface. */
+          background: transparent;
+          border: none;
+          border-radius: 0;
           margin-top: var(--ha-space-3);
-          overflow: hidden;
+          overflow: visible;
         }
         .sun-path[hidden] {
           display: none;
