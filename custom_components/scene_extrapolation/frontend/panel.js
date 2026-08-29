@@ -76,6 +76,18 @@ function registerFeatherProperties() {
       inherits: true,
       initialValue: `${CLOCK_FEATHER_PCT}%`,
     },
+    {
+      name: "--ring-expand",
+      syntax: "<percentage>",
+      inherits: false,
+      initialValue: "0%",
+    },
+    {
+      name: "--ring-border-w",
+      syntax: "<percentage>",
+      inherits: false,
+      initialValue: "0%",
+    },
   ]) {
     try {
       CSS.registerProperty(spec);
@@ -617,12 +629,115 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Masked rings still fill the square for hit-testing; open via
              radial pick on the host instead of per-ring clicks. */
           pointer-events: none;
-          transition: filter 180ms cubic-bezier(0.2, 0, 0, 1);
+          z-index: 1;
+          --ring-expand: 0%;
+          --ring-border-w: 0%;
+          transition:
+            --ring-expand 180ms cubic-bezier(0.2, 0, 0, 1),
+            --ring-border-w 180ms cubic-bezier(0.2, 0, 0, 1),
+            filter 180ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        /* Inner + outer rim strokes; mask grows with --ring-expand. */
+        .clock-ring::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          pointer-events: none;
+          background: var(--primary-color);
+          opacity: 0;
+          transition: opacity 180ms cubic-bezier(0.2, 0, 0, 1);
+          -webkit-mask-image: radial-gradient(
+            farthest-side,
+            transparent
+              calc(
+                var(--ring-inner) - var(--ring-expand) - var(--ring-border-w)
+              ),
+            #000
+              calc(
+                var(--ring-inner) - var(--ring-expand) - var(--ring-border-w)
+              ),
+            #000
+              calc(
+                var(--ring-inner) - var(--ring-expand) + var(--ring-border-w)
+              ),
+            transparent
+              calc(
+                var(--ring-inner) - var(--ring-expand) + var(--ring-border-w)
+              ),
+            transparent
+              calc(
+                var(--ring-outer) + var(--ring-expand) - var(--ring-border-w)
+              ),
+            #000
+              calc(
+                var(--ring-outer) + var(--ring-expand) - var(--ring-border-w)
+              ),
+            #000
+              calc(
+                var(--ring-outer) + var(--ring-expand) + var(--ring-border-w)
+              ),
+            transparent
+              calc(
+                var(--ring-outer) + var(--ring-expand) + var(--ring-border-w)
+              )
+          );
+          mask-image: radial-gradient(
+            farthest-side,
+            transparent
+              calc(
+                var(--ring-inner) - var(--ring-expand) - var(--ring-border-w)
+              ),
+            #000
+              calc(
+                var(--ring-inner) - var(--ring-expand) - var(--ring-border-w)
+              ),
+            #000
+              calc(
+                var(--ring-inner) - var(--ring-expand) + var(--ring-border-w)
+              ),
+            transparent
+              calc(
+                var(--ring-inner) - var(--ring-expand) + var(--ring-border-w)
+              ),
+            transparent
+              calc(
+                var(--ring-outer) + var(--ring-expand) - var(--ring-border-w)
+              ),
+            #000
+              calc(
+                var(--ring-outer) + var(--ring-expand) - var(--ring-border-w)
+              ),
+            #000
+              calc(
+                var(--ring-outer) + var(--ring-expand) + var(--ring-border-w)
+              ),
+            transparent
+              calc(
+                var(--ring-outer) + var(--ring-expand) + var(--ring-border-w)
+              )
+          );
+        }
+        .clock-ring.hovered {
+          --ring-expand: 2%;
+          --ring-border-w: 0.4%;
+          z-index: 5;
+        }
+        .clock-ring.hovered::after {
+          opacity: 1;
         }
         .clock-ring.selected {
-          z-index: 4;
+          --ring-expand: 2%;
+          --ring-border-w: 0.7%;
+          z-index: 6;
           filter: drop-shadow(0 0 2px var(--primary-color))
             drop-shadow(0 0 6px color-mix(in srgb, var(--primary-color) 70%, transparent));
+        }
+        .clock-ring.selected::after {
+          opacity: 1;
+        }
+        .clock-ring.selected.hovered {
+          z-index: 7;
         }
         .sun-light-clock-overlay {
           position: absolute;
@@ -6869,24 +6984,40 @@ class SceneExtrapolationPanel extends HTMLElement {
       const midInner = Math.max(hole, midOuter - stroke);
       const outer = Math.min(100, midOuter + overlap);
       const inner = Math.max(0, midInner - overlap);
-      const mask = `radial-gradient(farthest-side, transparent calc(${inner}% - var(--clock-feather)), #000 calc(${inner}% + var(--clock-feather)), #000 calc(${outer}% - var(--clock-feather)), transparent calc(${outer}% + var(--clock-feather)))`;
+      // --ring-expand grows the band on hover/selected; --clock-feather softens seams.
+      const mask = `radial-gradient(farthest-side, transparent calc(var(--ring-inner) - var(--clock-feather) - var(--ring-expand)), #000 calc(var(--ring-inner) + var(--clock-feather) - var(--ring-expand)), #000 calc(var(--ring-outer) - var(--clock-feather) + var(--ring-expand)), transparent calc(var(--ring-outer) + var(--clock-feather) + var(--ring-expand)))`;
       const bg = conicGradientFromSamples(light.samples || []);
 
       const ring = document.createElement("div");
       ring.className = "clock-ring";
       ring.dataset.entityId = light.entity_id;
+      ring.style.setProperty("--ring-inner", `${inner}%`);
+      ring.style.setProperty("--ring-outer", `${outer}%`);
       if (light.entity_id === this._sidebarLightId) {
         ring.classList.add("selected");
         ring.setAttribute("aria-current", "true");
       }
       ring.style.background = bg;
-      // Soft radial edges so rings blend like the stacked table; --clock-feather
-      // shrinks on hover to sharpen the seams.
       ring.style.webkitMaskImage = mask;
       ring.style.maskImage = mask;
       ring.title = light.name;
       ringsHost.appendChild(ring);
     }
+    const setHoveredRing = (entityId) => {
+      for (const ring of ringsHost.querySelectorAll(".clock-ring")) {
+        ring.classList.toggle(
+          "hovered",
+          Boolean(entityId) && ring.dataset.entityId === entityId
+        );
+      }
+    };
+    ringsHost.addEventListener("pointermove", (ev) => {
+      const light = this._lightAtClockPointer(ev, face, ringLights);
+      setHoveredRing(light?.entity_id || null);
+    });
+    ringsHost.addEventListener("pointerleave", () => {
+      setHoveredRing(null);
+    });
     const openRingAt = (ev, light) => {
       if (!light) {
         return;
