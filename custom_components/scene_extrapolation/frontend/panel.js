@@ -26,7 +26,7 @@ const CLOCK_SUN_SIZE_PX = 52;
 /* Daytime elevation where size falls back to 1× (degrees). */
 const CLOCK_SUN_SIZE_HORIZON_DEG = 18;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
-const CLOCK_SUN_STROKE_MAX_PX = 3;
+const CLOCK_SUN_STROKE_MAX_PX = 5;
 const SIDEBAR_ANIMATION_MS = 200;
 const SIDEBAR_SWAP_MS = 160;
 const LIGHT_BAR_HEIGHT = 108;
@@ -519,8 +519,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
-          stroke: ${SUN_LINE_DAY};
-          /* Stroke width set per-line in JS (elevation → 0.2–3px). */
+          /* Stroke width + sky-tinted color set per-line in JS. */
           vector-effect: non-scaling-stroke;
           stroke-dasharray: 3.5 3;
           stroke-linejoin: round;
@@ -529,13 +528,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-overlay .clock-sun-night {
           fill: none;
-          stroke: color-mix(in srgb, ${SUN_LINE_NIGHT} 55%, white);
-          /* Stroke width set per-line in JS. */
+          /* Below horizon: neutral (not sky-colored). */
+          stroke: var(--secondary-text-color);
           vector-effect: non-scaling-stroke;
           stroke-dasharray: 3.5 3;
           stroke-linejoin: round;
           stroke-linecap: round;
-          opacity: 0.9;
+          opacity: 0.55;
         }
         /* CSS sun + lens flare; --sun-* set from elevation.
            z-index below rings so night sits behind the planet; day sits
@@ -5886,7 +5885,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           .map(({ s0, e0, s1, e1, night }) => {
             const midElev = (e0 + e1) / 2;
             const w = strokeOf(midElev);
-            return `<line x1="${xOf(s0).toFixed(1)}" y1="${yOf(e0).toFixed(1)}" x2="${xOf(s1).toFixed(1)}" y2="${yOf(e1).toFixed(1)}" fill="none" stroke="${night ? SUN_LINE_NIGHT : SUN_LINE_DAY}" stroke-width="${w}px" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></line>`;
+            const stroke = night
+              ? "var(--secondary-text-color)"
+              : skyLookFromElevation(midElev).pathColor;
+            return `<line x1="${xOf(s0).toFixed(1)}" y1="${yOf(e0).toFixed(1)}" x2="${xOf(s1).toFixed(1)}" y2="${yOf(e1).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="${w}px" stroke-opacity="${night ? 0.55 : 0.5}" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></line>`;
           })
           .join("")}
       </svg>
@@ -6456,6 +6458,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       line.setAttribute("y2", p1.y.toFixed(2));
       const midElev = (segment.e0 + segment.e1) / 2;
       line.style.strokeWidth = `${strokeOf(midElev)}px`;
+      if (!segment.night) {
+        // Daytime path follows the sky/sun palette at that elevation.
+        line.style.stroke = skyLookFromElevation(midElev).pathColor;
+      }
       overlay.appendChild(line);
     }
 
@@ -8834,6 +8840,7 @@ function skyLookFromElevation(elev) {
     sunCore: mixHex(lo.sunCore, hi.sunCore),
     sunCorona: mixHex(lo.sunCorona, hi.sunCorona),
     sunStreak: mixHex(lo.sunStreak, hi.sunStreak),
+    pathColor: `rgb(${mid[0]},${mid[1]},${mid[2]})`,
     streakOpacity: lerp(lo.streakOpacity, hi.streakOpacity),
     rayOpacity: lerp(lo.rayOpacity, hi.rayOpacity),
     ghostOpacity: lerp(lo.ghostOpacity, hi.ghostOpacity),
