@@ -8,29 +8,43 @@ const PLOT_LEFT = 16;
 const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
-/* Clock overlay viewBox is 200×200; rings host is inset 14% → outer r=72. */
+/* Clock overlay viewBox is 200×200. Planet (rings) is smaller than elev=0 so
+   the sun path sits outside the rim; day path reaches toward ~96. */
 const CLOCK_VIEW = 200;
 const CLOCK_CX = 100;
 const CLOCK_CY = 100;
-const CLOCK_RINGS_OUTER = 72;
-const CLOCK_SUN_HORIZON = CLOCK_RINGS_OUTER;
-/* Drawn stroke: day height exaggerated so noon sits clearly outside the rim.
-   Marker track is a separate, more inset path so night sits deeper under the
-   planet (hides better) while day stays slightly inside the dashed stroke. */
+const CLOCK_RINGS_OUTER = 52;
+/* elev=0 is outside the planet — night sun is not under the rings. */
+const CLOCK_SUN_HORIZON = 68;
+/* Drawn stroke: day height so noon sits near ~96. Marker track is a separate,
+   more inset path (night deeper) while day stays slightly inside the stroke. */
 const CLOCK_SUN_PATH_DAY_EMPHASIS = 2;
-const CLOCK_SUN_PATH_DAY_BASE_SPAN = 22;
-const CLOCK_SUN_PATH_NIGHT_MIN = 40;
+const CLOCK_SUN_PATH_DAY_BASE_SPAN = 14;
+const CLOCK_SUN_PATH_NIGHT_MIN = 36;
 const CLOCK_SUN_MARKER_DAY_EMPHASIS = 1.25;
-const CLOCK_SUN_MARKER_DAY_BASE_SPAN = 22;
-const CLOCK_SUN_MARKER_NIGHT_MIN = 26;
-const CLOCK_EVENT_ICON_R = 56;
+const CLOCK_SUN_MARKER_DAY_BASE_SPAN = 14;
+const CLOCK_SUN_MARKER_NIGHT_MIN = 22;
+/* Event spokes aim near the face edge; buttons sit in slim chrome. */
+const CLOCK_EVENT_ICON_R = 92;
 /* Fixed px band around the dial for event buttons + labels (do not scale). */
-const CLOCK_CHROME_PX = 56;
+const CLOCK_CHROME_PX = 28;
 const CLOCK_SCRUB_RAIL_PX = 88;
-/* Far from horizon (day high) = ~10.4% of dial core (≈52px on a 500px core);
-   at/near horizon and all night = 2× via --sun-scale. Size is % of the core so
-   it shrinks with the dial. Below the horizon the disc stays at max scale. */
-const CLOCK_SUN_SIZE_PX = 52;
+/* Rings host inset so CSS outer edge matches CLOCK_RINGS_OUTER in viewBox. */
+const CLOCK_RINGS_INSET_PCT = 50 - CLOCK_RINGS_OUTER / 2;
+/* Wedges/rays cover the square including corners; back layer is slightly
+   larger than the face so they land just outside the container. */
+const CLOCK_SKY_R = (CLOCK_VIEW / 2) * Math.SQRT2;
+/* Deep night wedge tint (sun disc below horizon is pure black). */
+const CLOCK_NIGHT_BLUE = "#15224d";
+/* Outline diameter ≈ 3.47% of dial core (1/3 of the prior 10.4%). */
+const CLOCK_SUN_SIZE_PCT = 10.4 / 3;
+const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
+const CLOCK_SUN_GROW = 0.15;
+/* Handle tip / major tick outer radius in viewBox units. */
+const CLOCK_TICK_OUTER = 98;
+const CLOCK_TICK_INNER_MAJOR = 90;
+const CLOCK_TICK_INNER_MINOR = 94;
+const CLOCK_LABEL_R = 86;
 /* Daytime elevation where size falls back to 1× (degrees). */
 const CLOCK_SUN_SIZE_HORIZON_DEG = 18;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
@@ -167,6 +181,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._yearScrubbing = false;
     this._sidebarEventId = null;
     this._sidebarLightId = null;
+    this._clockStickySeconds = undefined;
     this._hashConfirming = false;
     this._lightView = "table";
     this._liveEdit = false;
@@ -676,24 +691,36 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-face {
           position: relative;
-          /* Full column width, but never taller than 80vh (square). */
-          width: min(100%, 80vh);
+          /* Full stage width, up to ~viewport height (square). */
+          width: min(100%, 100vh);
+          max-width: 100vh;
           aspect-ratio: 1;
           flex: 0 0 auto;
-          touch-action: none;
-          cursor: crosshair;
-          /* Visible so the sky glow (scaled + blurred) is not clipped. */
+          /* Allow page scroll over the dial; only the sun/handle capture. */
+          touch-action: pan-y;
+          cursor: default;
+          /* Visible so horizon glow/rays can bleed past the face. */
           overflow: visible;
           transform-origin: center center;
           --clock-chrome: ${CLOCK_CHROME_PX}px;
         }
-        /* Planet / path / glow live in the inset core; event chips stay on the
-           face so their px size does not shrink with the dial. */
+        /* Sunrise/sunset shadow + glow sit behind the planet (back-most).
+           Same center as the core; inset bleeds past chrome/face edge. */
+        .clock-horizon-back {
+          position: absolute;
+          inset: calc(var(--clock-chrome) - 12%);
+          pointer-events: none;
+          z-index: 0;
+          overflow: visible;
+        }
+        /* Planet / path live in the inset core; event chips stay on the face
+           so their px size does not shrink with the dial. */
         .sun-light-clock-core {
           position: absolute;
           inset: var(--clock-chrome);
           border-radius: 50%;
           pointer-events: none;
+          z-index: 1;
         }
         .sun-light-clock-core .sun-light-clock-rings {
           pointer-events: auto;
@@ -747,21 +774,33 @@ class SceneExtrapolationPanel extends HTMLElement {
         /* Soft disc tinted by solar elevation (sky), not lamp conics. */
         .sun-light-clock-glow {
           position: absolute;
-          inset: 14%;
+          inset: ${CLOCK_RINGS_INSET_PCT}%;
           border-radius: 50%;
           pointer-events: none;
           z-index: 0;
-          /* Larger than the face rings (= bigger “spread”). */
-          transform: scale(1.35);
+          transform: scale(1.2);
           transform-origin: center center;
-          filter: blur(81px);
-          opacity: 0.55;
+          filter: blur(64px);
+          opacity: 0.4;
+        }
+        /* Warmth along sunrise/sunset rays — not clipped to the planet rim. */
+        .clock-horizon-glow {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          mix-blend-mode: screen;
+        }
+        .clock-horizon-sky {
+          position: absolute;
+          inset: 0;
+          overflow: visible;
+          pointer-events: none;
         }
         .sun-light-clock-rings {
           position: absolute;
-          inset: 14%;
+          inset: ${CLOCK_RINGS_INSET_PCT}%;
           border-radius: 50%;
-          /* Above the sun so the planet occludes the disc below the horizon. */
+          /* Below sun/path — planet no longer occludes the night sun. */
           z-index: 2;
           --clock-feather: ${CLOCK_FEATHER_PCT}%;
           transition: --clock-feather 220ms cubic-bezier(0.2, 0, 0, 1);
@@ -903,18 +942,36 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: visible;
           z-index: 5;
         }
+        .clock-horizon-sky .clock-sky-night {
+          fill: color-mix(in srgb, #243878 42%, transparent);
+        }
+        .clock-horizon-sky .clock-sky-deep {
+          fill: color-mix(in srgb, ${CLOCK_NIGHT_BLUE} 48%, transparent);
+        }
+        .clock-horizon-sky .clock-horizon-ray {
+          stroke: var(--secondary-text-color);
+          stroke-width: 1px;
+          vector-effect: non-scaling-stroke;
+          opacity: 0.45;
+        }
+        .clock-horizon-sky .clock-event-ray {
+          stroke: var(--secondary-text-color);
+          stroke-width: 0.5px;
+          vector-effect: non-scaling-stroke;
+          stroke-dasharray: 2.5 2;
+          stroke-linecap: round;
+          opacity: 0.4;
+        }
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
-          /* Stroke width + sky-tinted color set per-line in JS. */
           vector-effect: non-scaling-stroke;
           stroke-dasharray: 8 7;
           stroke-linejoin: round;
           stroke-linecap: round;
           opacity: 0.5;
         }
-        .sun-light-clock-overlay .clock-sun-night {
+        .sun-light-clock-overlay .clock-sun-path-night {
           fill: none;
-          /* Below horizon: neutral (not sky-colored). */
           stroke: var(--secondary-text-color);
           vector-effect: non-scaling-stroke;
           stroke-dasharray: 8 7;
@@ -922,26 +979,53 @@ class SceneExtrapolationPanel extends HTMLElement {
           stroke-linecap: round;
           opacity: 0.5;
         }
-        /* CSS sun + lens flare; --sun-* set from elevation.
-           z-index below rings so night sits behind the planet; day sits
-           outside the rings host and stays visible (rim clips at sunrise).
-           Position is driven in JS along the sun-path arc (no CSS left/top
-           tween — that cut chords and stuttered when the target moved). */
+        .sun-light-clock-overlay .clock-handle {
+          stroke: var(--primary-text-color);
+          stroke-width: 1.5px;
+          vector-effect: non-scaling-stroke;
+          stroke-linecap: round;
+          opacity: 0.85;
+        }
+        .clock-handle-hit {
+          position: absolute;
+          left: 50%;
+          bottom: 50%;
+          width: 22px;
+          height: ${(CLOCK_TICK_OUTER / CLOCK_VIEW) * 100}%;
+          transform-origin: center bottom;
+          transform: translateX(-50%) rotate(var(--handle-deg, 0deg));
+          z-index: 5;
+          cursor: grab;
+          pointer-events: auto;
+          touch-action: none;
+        }
+        .clock-handle-hit:active,
+        .clock-sun:active {
+          cursor: grabbing;
+        }
+        .sun-light-clock-overlay .clock-sun-fill,
+        .sun-light-clock-overlay .clock-sun-night-disc {
+          pointer-events: none;
+        }
+        .sun-light-clock-overlay .clock-sun-night-disc {
+          fill: #000;
+        }
+        /* Outline + hit target; SVG fill is clipped to the day wedge. */
         .clock-sun {
           position: absolute;
-          /* Size tracks the dial core (52px ≈ 10.4% of a ~500px core). */
-          width: 10.4%;
-          height: 10.4%;
+          width: ${CLOCK_SUN_SIZE_PCT}%;
+          height: ${CLOCK_SUN_SIZE_PCT}%;
           transform: translate(-50%, -50%) scale(var(--sun-scale, 1));
-          pointer-events: none;
-          z-index: 1;
+          pointer-events: auto;
+          cursor: grab;
+          touch-action: none;
+          z-index: 6;
           --sun-core: #fff8e7;
           --sun-corona: #ffb74d;
-          --sun-streak: #ffe0b2;
-          --sun-streak-opacity: 0.85;
-          --sun-ray-opacity: 0.55;
-          --sun-ghost-opacity: 0.35;
           --sun-scale: 1;
+        }
+        .clock-sun:active {
+          cursor: grabbing;
         }
         .clock-sun > span {
           position: absolute;
@@ -949,89 +1033,34 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 50%;
           pointer-events: none;
         }
-        .clock-sun-ghost {
-          inset: -40% -10%;
-          border-radius: 50%;
-          background: radial-gradient(
-            closest-side circle at 35% 50%,
-            color-mix(in srgb, var(--sun-corona) 55%, transparent) 0%,
-            transparent 70%
-          );
-          opacity: var(--sun-ghost-opacity);
-          mix-blend-mode: screen;
-          transform: translate(-18%, 0) scale(1.6);
+        .clock-sun-ring {
+          inset: 0;
+          border: 1.5px solid #fff;
+          background: transparent;
+          box-sizing: border-box;
         }
-        .clock-sun-rays {
-          inset: -120%;
-          background: repeating-conic-gradient(
-            from 8deg,
-            color-mix(in srgb, var(--sun-streak) 70%, transparent) 0deg 3deg,
-            transparent 3deg 28deg
-          );
-          -webkit-mask-image: radial-gradient(
-            closest-side,
-            #000 8%,
-            transparent 55%
-          );
-          mask-image: radial-gradient(closest-side, #000 8%, transparent 55%);
-          opacity: var(--sun-ray-opacity);
-          mix-blend-mode: screen;
-        }
-        .clock-sun-streak {
-          inset: 35% -160%;
-          border-radius: 50%;
-          background: radial-gradient(
-            closest-side ellipse at center,
-            color-mix(in srgb, var(--sun-streak) 90%, white) 0%,
-            color-mix(in srgb, var(--sun-streak) 40%, transparent) 45%,
-            transparent 72%
-          );
-          opacity: var(--sun-streak-opacity);
-          mix-blend-mode: screen;
-        }
-        .clock-sun-corona {
-          inset: -55%;
-          background: radial-gradient(
-            closest-side circle at center,
-            color-mix(in srgb, var(--sun-corona) 85%, transparent) 0%,
-            color-mix(in srgb, var(--sun-corona) 35%, transparent) 42%,
-            transparent 72%
-          );
-          mix-blend-mode: screen;
-        }
-        .clock-sun-core {
-          inset: 22%;
-          background: radial-gradient(
-            closest-side circle at center,
-            #fff 0%,
-            var(--sun-core) 45%,
-            color-mix(in srgb, var(--sun-corona) 80%, var(--sun-core)) 78%,
-            transparent 100%
-          );
-          box-shadow: 0 0 6px color-mix(in srgb, var(--sun-core) 70%, transparent);
-        }
+        /* Two tick styles only: 6-hour majors (2px) and 15-min minors (1px). */
         .sun-light-clock-overlay .clock-tick {
           stroke: var(--divider-color);
-          stroke-width: 1;
+          stroke-width: 1px;
+          vector-effect: non-scaling-stroke;
+          stroke-linecap: round;
         }
         .sun-light-clock-overlay .clock-tick.major {
           stroke: var(--secondary-text-color);
-          stroke-width: 1.5;
+          stroke-width: 2px;
         }
         .sun-light-clock-overlay .clock-label {
           fill: var(--secondary-text-color);
-          font-size: 8px;
+          font-size: 10px;
           font-variant-numeric: tabular-nums;
           text-anchor: middle;
           dominant-baseline: middle;
         }
-        .sun-light-clock-overlay .clock-event-ray {
-          stroke: var(--secondary-text-color);
-          stroke-width: 0.5px;
-          vector-effect: non-scaling-stroke;
-          stroke-dasharray: 2.5 2;
-          stroke-linecap: round;
-          opacity: 0.4;
+        @media (min-width: 871px) {
+          .sun-light-clock-overlay .clock-label {
+            font-size: 14px;
+          }
         }
         .clock-event-anchor {
           position: absolute;
@@ -1136,7 +1165,7 @@ class SceneExtrapolationPanel extends HTMLElement {
             0 2px 8px rgba(0, 0, 0, 0.22);
         }
         .sun-light-clock-legend {
-          width: min(100%, 80vh);
+          width: min(100%, 100vh);
           display: flex;
           flex-direction: column;
           gap: 4px;
@@ -2349,9 +2378,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           box-sizing: border-box;
         }
         .page.dial-wide {
-          --page-max-width: 1920px;
-          /* Dial needs every horizontal pixel of the stage column. */
+          --page-max-width: none;
+          max-width: none;
           padding-inline: 0;
+          position: relative;
+          /* Let horizon glow bleed past the dial face. */
+          overflow: visible;
         }
         .draft-restore {
           display: flex;
@@ -2678,6 +2710,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._closeSceneSidebar();
     // Allow clock enter again the next time an editor opens.
     this._clockEnterPlayed = false;
+    this._clockStickySeconds = undefined;
     this._liveEdit = false;
     this._liveEditSidebarHandler = null;
     this._cancelClockSunArc();
@@ -3913,12 +3946,15 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _setSidebarEvent(eventId) {
     this._sidebarEventId = eventId || null;
+    if (eventId) {
+      this._clockStickySeconds = undefined;
+    }
     const host = this.shadowRoot?.querySelector(".scene-sidebar");
     if (host) {
       host._eventId = this._sidebarEventId;
     }
     this._syncEventSelection();
-    // Selected solar event pins the sun (hover must not move it).
+    // Selected solar event pins the sun (drag sticky yields to the pin).
     if (this._clockSunEl) {
       this._clockSunLive = false;
       this._cancelClockSunArc();
@@ -5834,6 +5870,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!changed) {
       return;
     }
+    this._clockStickySeconds = undefined;
     this._sunPathKey = undefined;
     if (debounce) {
       this._schedulePreview();
@@ -6940,6 +6977,9 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _clockSunIdleSeconds() {
+    if (this._clockStickySeconds != null) {
+      return this._clockStickySeconds;
+    }
     const id = this._sidebarEventId;
     if (id) {
       const event = (this._sunPath?.events || []).find((item) => item.id === id);
@@ -6951,6 +6991,9 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _idleReadoutSeconds() {
+    if (this._clockStickySeconds != null) {
+      return this._clockStickySeconds;
+    }
     if (this._sidebarEventId) {
       const event = (this._sunPath?.events || []).find(
         (item) => item.id === this._sidebarEventId
@@ -7085,6 +7128,37 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
   }
 
+  _clockPolar(seconds, radius) {
+    const deg = this._clockAngleDeg(seconds);
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return {
+      deg,
+      rad,
+      cos: Math.cos(rad),
+      sin: Math.sin(rad),
+      x: CLOCK_CX + Math.cos(rad) * radius,
+      y: CLOCK_CY + Math.sin(rad) * radius,
+    };
+  }
+
+  _clockWedgePath(fromSeconds, toSeconds, radius = CLOCK_SKY_R) {
+    let span =
+      (((toSeconds - fromSeconds) % SECONDS_PER_DAY) + SECONDS_PER_DAY) %
+      SECONDS_PER_DAY;
+    if (span < 1) {
+      span = SECONDS_PER_DAY;
+    }
+    const start = this._clockPolar(fromSeconds, radius);
+    const end = this._clockPolar(fromSeconds + span, radius);
+    const large = span / SECONDS_PER_DAY > 0.5 ? 1 : 0;
+    return `M ${CLOCK_CX} ${CLOCK_CY} L ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${radius} ${radius} 0 ${large} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)} Z`;
+  }
+
+  _clockEventSeconds(events, id) {
+    const event = (events || []).find((item) => item.id === id);
+    return event?.seconds != null ? event.seconds : null;
+  }
+
   _applyClockSunAppearance(seconds) {
     const curve = this._sunPath?.curve;
     if (!curve?.length) {
@@ -7092,37 +7166,234 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._clockSunDisplayedSeconds = seconds;
     const elev = interpolateElevation(curve, seconds);
-    // Below the horizon the disc keeps the horizon look (not night blues).
+    // Below the horizon the night disc is black; day fill still uses horizon look.
     const sunLook = skyLookFromElevation(elev < 0 ? 0 : elev);
     const glowLook = skyLookFromElevation(elev);
+    const pos = this._clockSunXy(seconds, elev, { marker: true });
     const sun = this._clockSunEl;
+    const nearHorizon =
+      elev < 0 ? 1 : 1 - Math.min(1, elev / CLOCK_SUN_SIZE_HORIZON_DEG);
+    const scale = 1 + CLOCK_SUN_GROW * nearHorizon + (elev < 0 ? 0.1 : 0);
     if (sun) {
-      const pos = this._clockSunXy(seconds, elev, { marker: true });
-      // Max scale (2×) for the whole night and at the horizon; shrink only
-      // as daytime elevation rises away from 0°.
-      const scale =
-        elev < 0
-          ? 2
-          : 1 + (1 - Math.min(1, elev / CLOCK_SUN_SIZE_HORIZON_DEG));
       sun.style.left = `${(pos.x / CLOCK_VIEW) * 100}%`;
       sun.style.top = `${(pos.y / CLOCK_VIEW) * 100}%`;
       sun.style.setProperty("--sun-scale", String(scale));
       sun.style.setProperty("--sun-core", sunLook.sunCore);
       sun.style.setProperty("--sun-corona", sunLook.sunCorona);
-      sun.style.setProperty("--sun-streak", sunLook.sunStreak);
-      sun.style.setProperty("--sun-streak-opacity", String(sunLook.streakOpacity));
-      sun.style.setProperty("--sun-ray-opacity", String(sunLook.rayOpacity));
-      sun.style.setProperty("--sun-ghost-opacity", String(sunLook.ghostOpacity));
       sun.setAttribute(
         "aria-label",
         `Sun ${elev >= 0 ? "above" : "below"} horizon`
+      );
+      this._layoutClockSunFill(pos, scale, sunLook);
+      this._layoutClockHandle(seconds, elev, scale);
+    } else {
+      this._layoutClockHandle(seconds, elev, 1);
+    }
+    const handleHit = this._clockHandleHitEl;
+    if (handleHit) {
+      handleHit.style.setProperty(
+        "--handle-deg",
+        `${this._clockAngleDeg(seconds)}deg`
       );
     }
     const glow = this._clockSkyGlow;
     if (glow) {
       glow.style.background = glowLook.glowBackground;
-      glow.style.opacity = String(glowLook.glowOpacity);
+      glow.style.opacity = String(Math.min(0.42, glowLook.glowOpacity));
     }
+    this._updateHorizonGlow(elev, glowLook);
+  }
+
+  _layoutClockSunFill(pos, scale, sunLook) {
+    const fill = this._clockSunFillEl;
+    const night = this._clockSunNightEl;
+    if (!fill) {
+      return;
+    }
+    const r = CLOCK_SUN_R_VIEW * scale * 0.94;
+    fill.setAttribute("cx", pos.x.toFixed(2));
+    fill.setAttribute("cy", pos.y.toFixed(2));
+    fill.setAttribute("r", r.toFixed(2));
+    if (night) {
+      night.setAttribute("cx", pos.x.toFixed(2));
+      night.setAttribute("cy", pos.y.toFixed(2));
+      night.setAttribute("r", r.toFixed(2));
+    }
+    const stops = this._clockSunFillStops;
+    if (stops) {
+      stops.core.setAttribute("stop-color", sunLook.sunCore);
+      stops.mid.setAttribute(
+        "stop-color",
+        `color-mix(in srgb, ${sunLook.sunCorona} 80%, ${sunLook.sunCore})`
+      );
+      stops.corona.setAttribute("stop-color", sunLook.sunCorona);
+    }
+  }
+
+  _layoutClockHandle(seconds, elev, scale = 1) {
+    const inner = this._clockHandleInnerEl;
+    const outer = this._clockHandleOuterEl;
+    if (!inner || !outer) {
+      return;
+    }
+    const pos = this._clockSunXy(seconds, elev, { marker: true });
+    const sunR = CLOCK_SUN_R_VIEW * scale;
+    const dist = Math.hypot(pos.x - CLOCK_CX, pos.y - CLOCK_CY);
+    const near = this._clockPolar(seconds, Math.max(0, dist - sunR));
+    const far = this._clockPolar(seconds, dist + sunR);
+    const tip = this._clockPolar(
+      seconds,
+      Math.max(CLOCK_TICK_OUTER, dist + sunR + 4)
+    );
+    inner.setAttribute("x1", String(CLOCK_CX));
+    inner.setAttribute("y1", String(CLOCK_CY));
+    inner.setAttribute("x2", near.x.toFixed(2));
+    inner.setAttribute("y2", near.y.toFixed(2));
+    outer.setAttribute("x1", far.x.toFixed(2));
+    outer.setAttribute("y1", far.y.toFixed(2));
+    outer.setAttribute("x2", tip.x.toFixed(2));
+    outer.setAttribute("y2", tip.y.toFixed(2));
+  }
+
+  _horizonWeight(seconds, center, band) {
+    let delta = Math.abs(seconds - center);
+    delta = Math.min(delta, SECONDS_PER_DAY - delta);
+    if (delta >= band) {
+      return 0;
+    }
+    return 0.5 * (1 + Math.cos((delta / band) * Math.PI));
+  }
+
+  _updateHorizonGlow(elev, glowLook) {
+    const el = this._clockHorizonGlowEl;
+    if (!el) {
+      return;
+    }
+    const sunrise = this._clockSunriseSeconds;
+    const sunset = this._clockSunsetSeconds;
+    if (sunrise == null && sunset == null) {
+      el.style.background = "transparent";
+      return;
+    }
+    const nearHorizon =
+      elev < 0 ? 1 : 1 - Math.min(1, elev / CLOCK_SUN_SIZE_HORIZON_DEG);
+    const strength = 0.28 + 0.72 * nearHorizon;
+    const band = 2.6 * 3600;
+    const steps = 72;
+    const stops = [];
+    for (let i = 0; i <= steps; i += 1) {
+      const seconds = (i / steps) * SECONDS_PER_DAY;
+      let weight = 0;
+      if (sunrise != null) {
+        weight = Math.max(weight, this._horizonWeight(seconds, sunrise, band));
+      }
+      if (sunset != null) {
+        weight = Math.max(weight, this._horizonWeight(seconds, sunset, band));
+      }
+      const mix = weight * strength;
+      stops.push(
+        `color-mix(in srgb, ${glowLook.horizonFill || glowLook.pathColor} ${Math.round(mix * 100)}%, transparent) ${((i / steps) * 100).toFixed(2)}%`
+      );
+    }
+    el.style.background = `conic-gradient(from 180deg, ${stops.join(", ")})`;
+  }
+
+  _paintHorizonShadow(overlay, events) {
+    const sunrise = this._clockEventSeconds(events, "sunrise");
+    const sunset = this._clockEventSeconds(events, "sunset");
+    const dawn = this._clockEventSeconds(events, "dawn");
+    const dusk = this._clockEventSeconds(events, "dusk");
+    this._clockSunriseSeconds = sunrise;
+    this._clockSunsetSeconds = sunset;
+    if (sunset != null && sunrise != null) {
+      const night = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path"
+      );
+      night.setAttribute("class", "clock-sky-night");
+      night.setAttribute("d", this._clockWedgePath(sunset, sunrise, CLOCK_SKY_R));
+      overlay.appendChild(night);
+    }
+    if (dusk != null && dawn != null) {
+      const deep = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path"
+      );
+      deep.setAttribute("class", "clock-sky-deep");
+      deep.setAttribute("d", this._clockWedgePath(dusk, dawn, CLOCK_SKY_R));
+      overlay.appendChild(deep);
+    }
+    for (const id of ["sunrise", "sunset"]) {
+      const seconds = this._clockEventSeconds(events, id);
+      if (seconds == null) {
+        continue;
+      }
+      const inner = this._clockPolar(seconds, 0);
+      const outer = this._clockPolar(seconds, CLOCK_SKY_R);
+      const ray = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      ray.setAttribute("class", "clock-horizon-ray");
+      ray.setAttribute("x1", inner.x.toFixed(2));
+      ray.setAttribute("y1", inner.y.toFixed(2));
+      ray.setAttribute("x2", outer.x.toFixed(2));
+      ray.setAttribute("y2", outer.y.toFixed(2));
+      overlay.appendChild(ray);
+    }
+    // Dashed spokes toward elev=0 (same back layer as the horizon shadow).
+    const eventRayOuter = Math.min(96, CLOCK_EVENT_ICON_R - 4);
+    for (const event of events) {
+      const deg = this._clockAngleDeg(event.seconds);
+      const rad = ((deg - 90) * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const spoke = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "line"
+      );
+      spoke.setAttribute("class", "clock-event-ray");
+      spoke.setAttribute(
+        "x1",
+        (CLOCK_CX + cos * eventRayOuter).toFixed(2)
+      );
+      spoke.setAttribute(
+        "y1",
+        (CLOCK_CY + sin * eventRayOuter).toFixed(2)
+      );
+      spoke.setAttribute(
+        "x2",
+        (CLOCK_CX + cos * CLOCK_SUN_HORIZON).toFixed(2)
+      );
+      spoke.setAttribute(
+        "y2",
+        (CLOCK_CY + sin * CLOCK_SUN_HORIZON).toFixed(2)
+      );
+      overlay.appendChild(spoke);
+    }
+  }
+
+  _paintSunDayClip(overlay, events) {
+    const sunrise = this._clockEventSeconds(events, "sunrise");
+    const sunset = this._clockEventSeconds(events, "sunset");
+    this._clockSunDayClipId = null;
+    if (sunset == null || sunrise == null) {
+      return;
+    }
+    const defs =
+      overlay.querySelector("defs") ||
+      overlay.insertBefore(
+        document.createElementNS("http://www.w3.org/2000/svg", "defs"),
+        overlay.firstChild
+      );
+    const clip = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "clipPath"
+    );
+    clip.setAttribute("id", "clock-sun-day-clip");
+    clip.setAttribute("clipPathUnits", "userSpaceOnUse");
+    const slice = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    slice.setAttribute("d", this._clockWedgePath(sunrise, sunset, CLOCK_SKY_R));
+    clip.appendChild(slice);
+    defs.appendChild(clip);
+    this._clockSunDayClipId = "clock-sun-day-clip";
   }
 
   /** Timed ease along the elevation curve (used for the clock enter sweep). */
@@ -7223,7 +7494,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       );
       path.setAttribute(
         "class",
-        run.night ? "clock-sun-night" : "clock-sun-day"
+        run.night ? "clock-sun-path-night" : "clock-sun-day"
       );
       path.setAttribute("d", d);
       path.style.strokeWidth = `${run.width}px`;
@@ -7235,85 +7506,152 @@ class SceneExtrapolationPanel extends HTMLElement {
       overlay.appendChild(path);
     }
 
-    // CSS sun+flare at “this time of day” on the preview date’s curve.
+    // Outline hit target + SVG fill clipped to the day wedge.
+    const defs =
+      overlay.querySelector("defs") ||
+      overlay.insertBefore(
+        document.createElementNS("http://www.w3.org/2000/svg", "defs"),
+        overlay.firstChild
+      );
+    const grad = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "radialGradient"
+    );
+    grad.setAttribute("id", "clock-sun-fill-grad");
+    grad.setAttribute("cx", "50%");
+    grad.setAttribute("cy", "50%");
+    grad.setAttribute("r", "50%");
+    const mkStop = (offset, color) => {
+      const stop = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "stop"
+      );
+      stop.setAttribute("offset", offset);
+      stop.setAttribute("stop-color", color);
+      grad.appendChild(stop);
+      return stop;
+    };
+    this._clockSunFillStops = {
+      white: mkStop("0%", "#fff"),
+      core: mkStop("45%", "#fff8e7"),
+      mid: mkStop("78%", "#ffb74d"),
+      corona: mkStop("100%", "#ffb74d"),
+    };
+    defs.appendChild(grad);
+
+    const nightFill = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle"
+    );
+    nightFill.setAttribute("class", "clock-sun-night-disc");
+    const fill = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    fill.setAttribute("class", "clock-sun-fill");
+    fill.setAttribute("fill", "url(#clock-sun-fill-grad)");
+    if (this._clockSunDayClipId) {
+      fill.setAttribute("clip-path", `url(#${this._clockSunDayClipId})`);
+    }
+    overlay.append(nightFill, fill);
+    this._clockSunNightEl = nightFill;
+    this._clockSunFillEl = fill;
+
+    const handleInner = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "line"
+    );
+    handleInner.setAttribute("class", "clock-handle");
+    const handleOuter = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "line"
+    );
+    handleOuter.setAttribute("class", "clock-handle");
+    overlay.append(handleInner, handleOuter);
+    this._clockHandleInnerEl = handleInner;
+    this._clockHandleOuterEl = handleOuter;
+
     const marker = document.createElement("div");
     marker.className = "clock-sun";
-    marker.setAttribute("aria-hidden", "true");
-    for (const layer of [
-      "clock-sun-ghost",
-      "clock-sun-rays",
-      "clock-sun-streak",
-      "clock-sun-corona",
-      "clock-sun-core",
-    ]) {
-      const span = document.createElement("span");
-      span.className = layer;
-      marker.appendChild(span);
-    }
+    marker.setAttribute("role", "slider");
+    marker.setAttribute("aria-label", "Drag to preview time of day");
+    const ring = document.createElement("span");
+    ring.className = "clock-sun-ring";
+    marker.appendChild(ring);
     host.appendChild(marker);
     this._clockSunEl = marker;
     this._clockSunLive = false;
     this._cancelClockSunArc();
-    // Position is set by _playClockEnterAnimation (or idle if no enter).
   }
 
-  _bindClockHover(face) {
+  _bindClockSunDrag(face, handles) {
     const apply = (seconds) => {
-      const starting = !face.hasAttribute("data-hovering");
       this._hoverSeconds = seconds;
-      face.setAttribute("data-hovering", "");
-      if (this._hoverLine) {
-        this._hoverLine.style.display = "none";
-      }
-      // Selected solar event pins the sun; hover only updates the readout.
-      if (!this._sidebarEventId) {
-        if (starting) {
-          this._clockSunLive = false;
-        }
-        if (this._clockSunLive) {
-          this._applyClockSunAppearance(seconds);
-        } else {
-          // Follow the sun-path arc; retarget if the pointer moves mid-intro.
-          this._setClockSunArcTarget(seconds, { thenLive: true });
-        }
-      }
+      this._clockStickySeconds = seconds;
+      this._applyClockSunAppearance(seconds);
       this._fillHoverReadout(seconds, { hovering: true });
     };
-    const clear = () => {
-      this._hoverSeconds = undefined;
-      face.removeAttribute("data-hovering");
-      if (this._hoverLine) {
-        this._hoverLine.style.display = "";
+    const onMove = (ev) => {
+      if (!this._clockSunDragging) {
+        return;
       }
-      this._clockSunLive = false;
-      if (!this._sidebarEventId) {
-        this._setClockSunArcTarget(this._clockSunIdleSeconds(), {
-          thenLive: false,
-        });
-      }
-      this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
-    };
-    face.addEventListener("pointermove", (ev) => {
       this._pendingClockHover = { clientX: ev.clientX, clientY: ev.clientY };
       if (this._clockHoverRaf) {
         return;
       }
       this._clockHoverRaf = window.requestAnimationFrame(() => {
         this._clockHoverRaf = undefined;
-        if (!this._pendingClockHover) {
+        if (!this._pendingClockHover || !this._clockSunDragging) {
           return;
         }
         apply(this._secondsFromClockPointer(this._pendingClockHover, face));
       });
-    });
-    face.addEventListener("pointerleave", () => {
+    };
+    const onUp = (ev) => {
+      if (!this._clockSunDragging) {
+        return;
+      }
+      this._clockSunDragging = false;
       this._pendingClockHover = undefined;
       if (this._clockHoverRaf) {
         window.cancelAnimationFrame(this._clockHoverRaf);
         this._clockHoverRaf = undefined;
       }
-      clear();
-    });
+      const seconds = this._secondsFromClockPointer(ev, face);
+      this._clockStickySeconds = seconds;
+      this._hoverSeconds = undefined;
+      this._clockSunLive = false;
+      this._applyClockSunAppearance(seconds);
+      this._fillHoverReadout(seconds, { hovering: false });
+      try {
+        ev.currentTarget.releasePointerCapture?.(ev.pointerId);
+      } catch {
+        /* already released */
+      }
+    };
+    const onDown = (ev) => {
+      if (ev.button != null && ev.button !== 0) {
+        return;
+      }
+      ev.preventDefault();
+      ev.stopPropagation();
+      const seconds = this._secondsFromClockPointer(ev, face);
+      this._clockStickySeconds = seconds;
+      this._cancelClockSunArc();
+      this._clockSunLive = true;
+      this._clockSunDragging = true;
+      if (this._sidebarEventId) {
+        this._closeSceneSidebar({ animate: true });
+      }
+      ev.currentTarget.setPointerCapture?.(ev.pointerId);
+      apply(seconds);
+    };
+    for (const el of handles) {
+      if (!el) {
+        continue;
+      }
+      el.addEventListener("pointerdown", onDown);
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+      el.addEventListener("pointercancel", onUp);
+    }
   }
 
   _buildLightClock(events) {
@@ -7334,6 +7672,23 @@ class SceneExtrapolationPanel extends HTMLElement {
       "aria-label",
       "24-hour light rings with sun elevation around the rim; midnight at the bottom"
     );
+
+    // Horizon glow + event shadow sit behind the planet (and outside the core).
+    const horizonBack = document.createElement("div");
+    horizonBack.className = "clock-horizon-back";
+    horizonBack.setAttribute("aria-hidden", "true");
+    const horizonGlow = document.createElement("div");
+    horizonGlow.className = "clock-horizon-glow";
+    this._clockHorizonGlowEl = horizonGlow;
+    const skyOverlay = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg"
+    );
+    skyOverlay.setAttribute("class", "clock-horizon-sky");
+    skyOverlay.setAttribute("viewBox", `0 0 ${CLOCK_VIEW} ${CLOCK_VIEW}`);
+    this._paintHorizonShadow(skyOverlay, events);
+    horizonBack.append(horizonGlow, skyOverlay);
+
     const core = document.createElement("div");
     core.className = "sun-light-clock-core";
 
@@ -7404,12 +7759,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         return;
       }
       const seconds =
-        ev.clientX != null
-          ? this._secondsFromClockPointer(ev, face)
-          : this._hoverSeconds ??
-            (this._sunPath?.today
-              ? nowSecondsSinceMidnight()
-              : SECONDS_PER_DAY / 2);
+        this._clockSunDisplayedSeconds ??
+        this._clockStickySeconds ??
+        this._clockSunIdleSeconds();
       const closest = this._closestEvent(assigned, seconds);
       if (closest) {
         this._openLightEditDialog(light, closest);
@@ -7437,24 +7789,19 @@ class SceneExtrapolationPanel extends HTMLElement {
     overlay.setAttribute("class", "sun-light-clock-overlay");
     overlay.setAttribute("viewBox", `0 0 ${CLOCK_VIEW} ${CLOCK_VIEW}`);
     overlay.setAttribute("aria-hidden", "true");
+    this._paintSunDayClip(overlay, events);
     const cx = CLOCK_CX;
     const cy = CLOCK_CY;
-    // Hour ticks sit just outside the planet rim (rings outer = horizon).
-    // Keep them outside the light rings — not inset onto the visualization.
-    const tickOuter = 86;
-    const tickInnerMinor = 82;
-    const tickInnerMajor = 78;
-    // Labels just outside the tick marks.
-    const labelR = 94;
-    for (let hour = 0; hour < 24; hour += 1) {
-      const deg = this._clockAngleDeg(hour * 3600);
+    // 15-minute ticks; only 6-hour marks use the major style.
+    for (let seconds = 0; seconds < SECONDS_PER_DAY; seconds += 15 * 60) {
+      const deg = this._clockAngleDeg(seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
-      const major = hour % 6 === 0;
-      const inner = major ? tickInnerMajor : tickInnerMinor;
+      const major = seconds % (6 * 3600) === 0;
+      const inner = major ? CLOCK_TICK_INNER_MAJOR : CLOCK_TICK_INNER_MINOR;
       const x1 = cx + Math.cos(rad) * inner;
       const y1 = cy + Math.sin(rad) * inner;
-      const x2 = cx + Math.cos(rad) * tickOuter;
-      const y2 = cy + Math.sin(rad) * tickOuter;
+      const x2 = cx + Math.cos(rad) * CLOCK_TICK_OUTER;
+      const y2 = cy + Math.sin(rad) * CLOCK_TICK_OUTER;
       const tick = document.createElementNS("http://www.w3.org/2000/svg", "line");
       tick.setAttribute("class", major ? "clock-tick major" : "clock-tick");
       tick.setAttribute("x1", x1.toFixed(2));
@@ -7463,13 +7810,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       tick.setAttribute("y2", y2.toFixed(2));
       overlay.appendChild(tick);
       if (major) {
+        const hour = seconds / 3600;
         const label = document.createElementNS(
           "http://www.w3.org/2000/svg",
           "text"
         );
         label.setAttribute("class", "clock-label");
-        const lx = cx + Math.cos(rad) * labelR;
-        const ly = cy + Math.sin(rad) * labelR;
+        const lx = cx + Math.cos(rad) * CLOCK_LABEL_R;
+        const ly = cy + Math.sin(rad) * CLOCK_LABEL_R;
         label.setAttribute("x", lx.toFixed(2));
         label.setAttribute("y", ly.toFixed(2));
         label.textContent = String(hour).padStart(2, "0");
@@ -7478,39 +7826,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._paintClockSunPath(overlay, core, cx, cy);
 
-    // Dashed spokes from each solar-event marker in to the planet horizon.
-    const eventRayOuter =
-      CLOCK_EVENT_ICON_R * (CLOCK_VIEW / 100) - 14;
-    for (const event of events) {
-      const deg = this._clockAngleDeg(event.seconds);
-      const rad = ((deg - 90) * Math.PI) / 180;
-      const cos = Math.cos(rad);
-      const sin = Math.sin(rad);
-      const ray = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "line"
-      );
-      ray.setAttribute("class", "clock-event-ray");
-      ray.setAttribute(
-        "x1",
-        (cx + cos * eventRayOuter).toFixed(2)
-      );
-      ray.setAttribute(
-        "y1",
-        (cy + sin * eventRayOuter).toFixed(2)
-      );
-      ray.setAttribute(
-        "x2",
-        (cx + cos * CLOCK_SUN_HORIZON).toFixed(2)
-      );
-      ray.setAttribute(
-        "y2",
-        (cy + sin * CLOCK_SUN_HORIZON).toFixed(2)
-      );
-      overlay.appendChild(ray);
-    }
-    core.appendChild(overlay);
-    face.appendChild(core);
+    const handleHit = document.createElement("div");
+    handleHit.className = "clock-handle-hit";
+    handleHit.setAttribute("aria-hidden", "true");
+    this._clockHandleHitEl = handleHit;
+    core.append(overlay, handleHit);
+    face.append(horizonBack, core);
 
     const editable = this._view === "edit";
     const eventAnchors = [];
@@ -7587,8 +7908,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (!w) {
         return;
       }
-      // Button centers sit just outside the chrome-inset core (fixed px chrome).
-      const iconR = ((w / 2 - CLOCK_CHROME_PX + 16) / w) * 100;
+      // Button centers near the face edge (slim chrome).
+      const iconR = ((w / 2 - CLOCK_CHROME_PX + 8) / w) * 100;
       for (const anchor of eventAnchors) {
         const { cos, sin } = anchor._clockPolar;
         anchor.style.left = `${50 + cos * iconR}%`;
@@ -7604,7 +7925,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       ro.observe(face);
     }
 
-    this._bindClockHover(face);
+    this._bindClockSunDrag(face, [this._clockSunEl, this._clockHandleHitEl]);
     // Enter once per editor visit (not on date/scene redraws). Cleared when
     // returning to the list so list → edit plays again.
     if (this._clockEnterPlayed) {
@@ -9734,6 +10055,7 @@ function skyLookFromElevation(elev) {
     sunCorona: mixHex(lo.sunCorona, hi.sunCorona),
     sunStreak: mixHex(lo.sunStreak, hi.sunStreak),
     pathColor: `rgb(${mid[0]},${mid[1]},${mid[2]})`,
+    horizonFill: `rgb(${mid[0]},${mid[1]},${mid[2]})`,
     streakOpacity: lerp(lo.streakOpacity, hi.streakOpacity),
     rayOpacity: lerp(lo.rayOpacity, hi.rayOpacity),
     ghostOpacity: lerp(lo.ghostOpacity, hi.ghostOpacity),
