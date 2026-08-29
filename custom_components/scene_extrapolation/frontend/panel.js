@@ -23,8 +23,9 @@ const CLOCK_EVENT_ICON_R = 56;
 /* Fixed px band around the dial for event buttons + labels (do not scale). */
 const CLOCK_CHROME_PX = 56;
 const CLOCK_SCRUB_RAIL_PX = 88;
-/* Far from horizon (day high) = 52px; at/near horizon and all night = 2×.
-   Below the horizon the disc stays at max scale (no shrink until daytime rise). */
+/* Far from horizon (day high) = ~10.4% of dial core (≈52px on a 500px core);
+   at/near horizon and all night = 2× via --sun-scale. Size is % of the core so
+   it shrinks with the dial. Below the horizon the disc stays at max scale. */
 const CLOCK_SUN_SIZE_PX = 52;
 /* Daytime elevation where size falls back to 1× (degrees). */
 const CLOCK_SUN_SIZE_HORIZON_DEG = 18;
@@ -174,6 +175,15 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._flushPersistedDraft();
     };
     this._onLandscapeChange = () => this._syncYearScrubLayout();
+    this._onWindowResize = () => {
+      if (this._resizeRaf) {
+        return;
+      }
+      this._resizeRaf = window.requestAnimationFrame(() => {
+        this._resizeRaf = undefined;
+        this._syncYearScrubLayout();
+      });
+    };
   }
 
   set hass(hass) {
@@ -213,6 +223,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     window.addEventListener("hashchange", this._onHashChange);
     window.addEventListener("keydown", this._onEditorKeydown);
     window.addEventListener("pagehide", this._onPageHide);
+    window.addEventListener("resize", this._onWindowResize);
     document.addEventListener("visibilitychange", this._onPageHide);
     if (!this._landscapeMq) {
       this._landscapeMq = window.matchMedia("(orientation: landscape)");
@@ -250,7 +261,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     window.removeEventListener("hashchange", this._onHashChange);
     window.removeEventListener("keydown", this._onEditorKeydown);
     window.removeEventListener("pagehide", this._onPageHide);
+    window.removeEventListener("resize", this._onWindowResize);
     document.removeEventListener("visibilitychange", this._onPageHide);
+    if (this._resizeRaf) {
+      window.cancelAnimationFrame(this._resizeRaf);
+      this._resizeRaf = undefined;
+    }
     if (this._landscapeMq) {
       if (this._landscapeMq.removeEventListener) {
         this._landscapeMq.removeEventListener("change", this._onLandscapeChange);
@@ -641,7 +657,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           align-items: center;
           gap: 12px;
           width: 100%;
-          padding: 8px 16px 16px;
+          /* No horizontal padding — use the full stage column for the dial. */
+          padding: 8px 0 16px;
           box-sizing: border-box;
           overflow: visible;
         }
@@ -653,8 +670,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex: 0 0 auto;
           touch-action: none;
           cursor: crosshair;
-          /* Clip labels/buttons to the face; chrome padding keeps them readable. */
-          overflow: hidden;
+          /* Visible so the sky glow (scaled + blurred) is not clipped. */
+          overflow: visible;
           transform-origin: center center;
           --clock-chrome: ${CLOCK_CHROME_PX}px;
         }
@@ -900,8 +917,9 @@ class SceneExtrapolationPanel extends HTMLElement {
            tween — that cut chords and stuttered when the target moved). */
         .clock-sun {
           position: absolute;
-          width: ${CLOCK_SUN_SIZE_PX}px;
-          height: ${CLOCK_SUN_SIZE_PX}px;
+          /* Size tracks the dial core (52px ≈ 10.4% of a ~500px core). */
+          width: 10.4%;
+          height: 10.4%;
           transform: translate(-50%, -50%) scale(var(--sun-scale, 1));
           pointer-events: none;
           z-index: 1;
@@ -2320,6 +2338,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .page.dial-wide {
           --page-max-width: 1920px;
+          /* Dial needs every horizontal pixel of the stage column. */
+          padding-inline: 0;
         }
         .draft-restore {
           display: flex;
@@ -7487,7 +7507,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
     layoutEventAnchors();
     if (typeof ResizeObserver === "function") {
-      const ro = new ResizeObserver(() => layoutEventAnchors());
+      const ro = new ResizeObserver(() => {
+        layoutEventAnchors();
+        this._alignYearScrubRail();
+      });
       ro.observe(face);
     }
 
