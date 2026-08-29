@@ -425,16 +425,24 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform-origin: center center;
         }
         .sun-light-clock-face.clock-face-enter {
-          animation: clock-face-enter 750ms cubic-bezier(0.2, 0, 0, 1) both;
+          animation:
+            clock-face-fade 500ms cubic-bezier(0.2, 0, 0, 1) both,
+            clock-face-motion 1000ms cubic-bezier(0.2, 0, 0, 1) both;
         }
-        @keyframes clock-face-enter {
+        @keyframes clock-face-fade {
           from {
             opacity: 0;
-            transform: scale(0.9);
           }
           to {
             opacity: 1;
-            transform: scale(1);
+          }
+        }
+        @keyframes clock-face-motion {
+          from {
+            transform: scale(0.9) rotate(-12deg);
+          }
+          to {
+            transform: scale(1) rotate(0deg);
           }
         }
         /* Registered via CSS.registerProperty (document), not @property here —
@@ -6374,9 +6382,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Restart CSS enter if the face was recycled in the same document.
     void face.offsetWidth;
     face.classList.add("clock-face-enter");
-    const clearEnter = () => face.classList.remove("clock-face-enter");
-    face.addEventListener("animationend", clearEnter, { once: true });
-    this._animateClockSunArc(from, idle, 1200, { forward: true });
+    const clearEnter = (ev) => {
+      // Wait for the longer motion animation (1s), not the brief fade.
+      if (ev.animationName && ev.animationName !== "clock-face-motion") {
+        return;
+      }
+      face.classList.remove("clock-face-enter");
+    };
+    face.addEventListener("animationend", clearEnter);
+    this._animateClockSunArc(from, idle, 1500, { forward: true });
   }
 
   _paintClockSunPath(overlay, face, cx, cy) {
