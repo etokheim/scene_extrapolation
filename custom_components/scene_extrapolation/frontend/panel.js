@@ -8,6 +8,15 @@ const PLOT_LEFT = 16;
 const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
+/* Clock overlay viewBox is 200×200; rings host is inset 14% → outer r=72. */
+const CLOCK_VIEW = 200;
+const CLOCK_CX = 100;
+const CLOCK_CY = 100;
+const CLOCK_RINGS_OUTER = 72;
+const CLOCK_SUN_HORIZON = CLOCK_RINGS_OUTER;
+const CLOCK_SUN_DAY_MAX = 94;
+const CLOCK_SUN_NIGHT_MIN = 40;
+const CLOCK_EVENT_ICON_R = 52;
 const SIDEBAR_ANIMATION_MS = 200;
 const SIDEBAR_SWAP_MS = 160;
 const LIGHT_BAR_HEIGHT = 108;
@@ -451,6 +460,29 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
           overflow: visible;
           z-index: 5;
+        }
+        .sun-light-clock-overlay .clock-horizon {
+          fill: none;
+          stroke: var(--divider-color);
+          stroke-width: 1;
+          stroke-dasharray: 2 3;
+          opacity: 0.65;
+        }
+        .sun-light-clock-overlay .clock-sun-day {
+          fill: none;
+          stroke: ${SUN_LINE_DAY};
+          stroke-width: 2.25;
+          stroke-linejoin: round;
+          stroke-linecap: round;
+        }
+        .sun-light-clock-overlay .clock-sun-night {
+          fill: none;
+          stroke: color-mix(in srgb, ${SUN_LINE_NIGHT} 55%, white);
+          stroke-width: 1.75;
+          stroke-dasharray: 3.5 3;
+          stroke-linejoin: round;
+          stroke-linecap: round;
+          opacity: 0.9;
         }
         .sun-light-clock-overlay .clock-tick {
           stroke: var(--divider-color);
@@ -5755,7 +5787,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     const hoverLine = document.createElement("div");
     hoverLine.className = "sun-hover-line";
     this._hoverLine = hoverLine;
-    plots.append(chart, hours);
     // Read before painting lights: toolbar build (below) also syncs the
     // toggle, but the graphs must use storage on the first paint or the
     // highlight and the rendered view disagree after refresh.
@@ -5768,20 +5799,27 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (useClock) {
         clockEl = this._buildLightClock(events);
       } else {
+        plots.append(chart, hours);
         const lights = this._buildLightBars(xOf, events);
         if (lights) {
           plots.appendChild(lights);
         }
       }
+    } else {
+      plots.append(chart, hours);
     }
-    if (isToday) {
+    if (isToday && !useClock) {
       const nowLine = document.createElement("div");
       nowLine.className = "sun-now-line";
       nowLine.style.left = `${(xOf(nowSeconds) / CHART_WIDTH) * 100}%`;
       plots.appendChild(nowLine);
     }
-    plots.appendChild(hoverLine);
-    this._bindPlotHover(plots);
+    if (!useClock) {
+      plots.appendChild(hoverLine);
+      this._bindPlotHover(plots);
+    } else {
+      this._hoverLine = null;
+    }
 
     const children = [];
     if (this._view === "edit") {
@@ -5807,7 +5845,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         "* Time uses a seasonal fallback because the sun does not rise or set that day.";
       children.push(note);
     }
-    children.push(readout, plots);
+    children.push(readout);
+    if (!useClock) {
+      children.push(plots);
+    }
     if (clockEl) {
       children.push(clockEl);
     }
@@ -5958,6 +5999,62 @@ class SceneExtrapolationPanel extends HTMLElement {
     return null;
   }
 
+  _paintClockSunPath(overlay, cx, cy) {
+    const curve = this._sunPath?.curve;
+    if (!curve?.length) {
+      return;
+    }
+    // Same annual peak scale as the linear chart — winter noon stays low.
+    const scale = Math.max(this._sunPath.max_elevation || 0, 1);
+    const rOf = (elevation) => {
+      const t = elevation / scale;
+      if (elevation >= 0) {
+        return (
+          CLOCK_SUN_HORIZON +
+          Math.min(1, t) * (CLOCK_SUN_DAY_MAX - CLOCK_SUN_HORIZON)
+        );
+      }
+      return (
+        CLOCK_SUN_HORIZON +
+        Math.max(-1, t) * (CLOCK_SUN_HORIZON - CLOCK_SUN_NIGHT_MIN)
+      );
+    };
+    const point = (seconds, elevation) => {
+      const deg = this._clockAngleDeg(seconds);
+      const rad = ((deg - 90) * Math.PI) / 180;
+      const r = rOf(elevation);
+      return `${(cx + Math.cos(rad) * r).toFixed(2)},${(
+        cy +
+        Math.sin(rad) * r
+      ).toFixed(2)}`;
+    };
+
+    const horizon = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle"
+    );
+    horizon.setAttribute("class", "clock-horizon");
+    horizon.setAttribute("cx", String(cx));
+    horizon.setAttribute("cy", String(cy));
+    horizon.setAttribute("r", String(CLOCK_SUN_HORIZON));
+    overlay.appendChild(horizon);
+
+    for (const segment of sunStrokePaths(curve, null, null, {
+      point,
+    })) {
+      const path = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path"
+      );
+      path.setAttribute(
+        "class",
+        segment.night ? "clock-sun-night" : "clock-sun-day"
+      );
+      path.setAttribute("d", segment.d);
+      overlay.appendChild(path);
+    }
+  }
+
   _bindClockHover(face, hoverRay) {
     const apply = (seconds) => {
       this._hoverSeconds = seconds;
@@ -6019,7 +6116,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     face.setAttribute("role", "img");
     face.setAttribute(
       "aria-label",
-      "24-hour light rings; midnight at the top"
+      "24-hour light rings with sun elevation around the rim; midnight at the top"
     );
 
     const glowHost = document.createElement("div");
@@ -6106,14 +6203,15 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("class", "sun-light-clock-overlay");
-    overlay.setAttribute("viewBox", "0 0 200 200");
+    overlay.setAttribute("viewBox", `0 0 ${CLOCK_VIEW} ${CLOCK_VIEW}`);
     overlay.setAttribute("aria-hidden", "true");
-    const cx = 100;
-    const cy = 100;
+    const cx = CLOCK_CX;
+    const cy = CLOCK_CY;
     const tickOuter = 86;
     const tickInnerMinor = 82;
     const tickInnerMajor = 78;
-    const labelR = 72;
+    // Hour labels sit inside the planet rim so the day sun path keeps the sky.
+    const labelR = 64;
     for (let hour = 0; hour < 24; hour += 1) {
       const deg = (hour / 24) * 360;
       const rad = ((deg - 90) * Math.PI) / 180;
@@ -6144,6 +6242,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         overlay.appendChild(label);
       }
     }
+    this._paintClockSunPath(overlay, cx, cy);
     const hoverRay = document.createElementNS(
       "http://www.w3.org/2000/svg",
       "line"
@@ -6182,7 +6281,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     face.appendChild(overlay);
 
     const editable = this._view === "edit";
-    const iconR = 48;
+    const iconR = CLOCK_EVENT_ICON_R;
     for (const event of events) {
       const deg = this._clockAngleDeg(event.seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
@@ -8023,13 +8122,15 @@ function sameLocation(a, b) {
   );
 }
 
-function sunStrokePaths(curve, xOf, yOf) {
+function sunStrokePaths(curve, xOf, yOf, { point: pointFn } = {}) {
   const paths = [];
   if (curve.length < 2) {
     return paths;
   }
-  const point = (seconds, elevation) =>
-    `${xOf(seconds).toFixed(1)},${yOf(elevation).toFixed(1)}`;
+  const point =
+    pointFn ||
+    ((seconds, elevation) =>
+      `${xOf(seconds).toFixed(1)},${yOf(elevation).toFixed(1)}`);
   let night = curve[0][1] < 0;
   let current = [point(curve[0][0], curve[0][1])];
   const flush = () => {
