@@ -22,15 +22,17 @@ const CLOCK_TICK_OUTER = CLOCK_FACE_R;
 const CLOCK_TICK_INNER_MAJOR = CLOCK_FACE_R - 9;
 const CLOCK_TICK_INNER_MINOR = CLOCK_FACE_R - 5;
 const CLOCK_LABEL_R = CLOCK_TICK_INNER_MAJOR - 5;
-/* Floating rings stay strictly inside the path: offset+radius+gap < path R. */
-const CLOCK_FLOAT_OFFSET = 28;
-const CLOCK_FLOAT_R = 22;
-const CLOCK_FLOAT_GAP = 12; // 28+22+12 = 62 < 72
+/* Floating rings opposite the handle; 2× prior size, still inside the path. */
+const CLOCK_FLOAT_OFFSET = 18;
+const CLOCK_FLOAT_R = 44;
+const CLOCK_FLOAT_GAP = 10; // 18+44+10 = 72
 const CLOCK_SCRUB_RAIL_PX = 88;
-/* Sun disc size as % of the face (≈52px on a 500px face); 2× near horizon. */
+/* Sun outline size as % of the face; grows 10% toward the horizon. */
 const CLOCK_SUN_SIZE_PCT = 8.5;
+const CLOCK_SUN_GROW = 0.1;
 /* Daytime elevation where size falls back to 1× (degrees). */
 const CLOCK_SUN_SIZE_HORIZON_DEG = 18;
+const CLOCK_SUN_R_VIEW = (CLOCK_SUN_SIZE_PCT / 100) * (CLOCK_VIEW / 2);
 /* Linear sun chart stroke width vs elevation (table view). */
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
 const CLOCK_SUN_STROKE_MAX_PX = 10;
@@ -972,8 +974,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-sun:active {
           cursor: grabbing;
         }
-        /* CSS sun + lens flare; --sun-* set from elevation.
-           On the fixed path; drag handle. Icons sit above for clicks. */
+        /* Outlined sun on the path; fill clips away below the horizon. */
         .clock-sun {
           position: absolute;
           width: ${CLOCK_SUN_SIZE_PCT}%;
@@ -985,10 +986,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 5;
           --sun-core: #fff8e7;
           --sun-corona: #ffb74d;
-          --sun-streak: #ffe0b2;
-          --sun-streak-opacity: 0.85;
-          --sun-ray-opacity: 0.55;
-          --sun-ghost-opacity: 0.35;
           --sun-scale: 1;
         }
         .clock-sun::before {
@@ -1003,66 +1000,24 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 50%;
           pointer-events: none;
         }
-        .clock-sun-ghost {
-          inset: -40% -10%;
-          border-radius: 50%;
-          background: radial-gradient(
-            closest-side circle at 35% 50%,
-            color-mix(in srgb, var(--sun-corona) 55%, transparent) 0%,
-            transparent 70%
-          );
-          opacity: var(--sun-ghost-opacity);
-          mix-blend-mode: screen;
-          transform: translate(-18%, 0) scale(1.6);
-        }
-        .clock-sun-rays {
-          inset: -120%;
-          background: repeating-conic-gradient(
-            from 8deg,
-            color-mix(in srgb, var(--sun-streak) 70%, transparent) 0deg 3deg,
-            transparent 3deg 28deg
-          );
-          -webkit-mask-image: radial-gradient(
-            closest-side,
-            #000 8%,
-            transparent 55%
-          );
-          mask-image: radial-gradient(closest-side, #000 8%, transparent 55%);
-          opacity: var(--sun-ray-opacity);
-          mix-blend-mode: screen;
-        }
-        .clock-sun-streak {
-          inset: 35% -160%;
-          border-radius: 50%;
-          background: radial-gradient(
-            closest-side ellipse at center,
-            color-mix(in srgb, var(--sun-streak) 90%, white) 0%,
-            color-mix(in srgb, var(--sun-streak) 40%, transparent) 45%,
-            transparent 72%
-          );
-          opacity: var(--sun-streak-opacity);
-          mix-blend-mode: screen;
-        }
-        .clock-sun-corona {
-          inset: -55%;
-          background: radial-gradient(
-            closest-side circle at center,
-            color-mix(in srgb, var(--sun-corona) 85%, transparent) 0%,
-            color-mix(in srgb, var(--sun-corona) 35%, transparent) 42%,
-            transparent 72%
-          );
-          mix-blend-mode: screen;
-        }
         .clock-sun-core {
-          inset: 22%;
+          inset: 6%;
           background: radial-gradient(
             closest-side circle at center,
             #fff 0%,
             var(--sun-core) 45%,
             color-mix(in srgb, var(--sun-corona) 80%, var(--sun-core)) 78%,
-            transparent 100%
+            var(--sun-corona) 100%
           );
-          box-shadow: 0 0 6px color-mix(in srgb, var(--sun-core) 70%, transparent);
+        }
+        .clock-sun.below-horizon .clock-sun-core {
+          visibility: hidden;
+        }
+        .clock-sun-ring {
+          inset: 0;
+          border: 1.5px solid #fff;
+          background: transparent;
+          box-sizing: border-box;
         }
         .sun-light-clock-overlay .clock-tick {
           stroke: var(--divider-color);
@@ -6979,8 +6934,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const pct = (r / ringsRadius) * 100;
     const n = ringLights.length;
-    const hole = 20;
-    const stroke = (100 - hole) / n;
+    const hole = 0;
+    const stroke = n ? 100 / n : 0;
     for (let index = 0; index < n; index += 1) {
       const midOuter = 100 - index * stroke;
       const midInner = Math.max(hole, midOuter - stroke);
@@ -7135,31 +7090,22 @@ class SceneExtrapolationPanel extends HTMLElement {
     const pos = this._clockPolar(seconds, CLOCK_SUN_PATH_R);
     const sun = this._clockSunEl;
     if (sun) {
-      // Max scale (2×) for the whole night and at the horizon; shrink only
-      // as daytime elevation rises away from 0°.
-      const scale =
-        elev < 0
-          ? 2
-          : 1 + (1 - Math.min(1, elev / CLOCK_SUN_SIZE_HORIZON_DEG));
+      const nearHorizon =
+        elev < 0 ? 1 : 1 - Math.min(1, elev / CLOCK_SUN_SIZE_HORIZON_DEG);
+      const scale = 1 + CLOCK_SUN_GROW * nearHorizon;
       sun.style.left = `${(pos.x / CLOCK_VIEW) * 100}%`;
       sun.style.top = `${(pos.y / CLOCK_VIEW) * 100}%`;
       sun.style.setProperty("--sun-scale", String(scale));
       sun.style.setProperty("--sun-core", sunLook.sunCore);
       sun.style.setProperty("--sun-corona", sunLook.sunCorona);
-      sun.style.setProperty("--sun-streak", sunLook.sunStreak);
-      sun.style.setProperty("--sun-streak-opacity", String(sunLook.streakOpacity));
-      sun.style.setProperty("--sun-ray-opacity", String(sunLook.rayOpacity));
-      sun.style.setProperty("--sun-ghost-opacity", String(sunLook.ghostOpacity));
+      sun.classList.toggle("below-horizon", elev < 0);
       sun.setAttribute(
         "aria-label",
         `Sun ${elev >= 0 ? "above" : "below"} horizon`
       );
-    }
-    const handle = this._clockHandleEl;
-    if (handle) {
-      const tip = this._clockPolar(seconds, CLOCK_TICK_OUTER);
-      handle.setAttribute("x2", tip.x.toFixed(2));
-      handle.setAttribute("y2", tip.y.toFixed(2));
+      this._layoutClockHandle(seconds, scale);
+    } else {
+      this._layoutClockHandle(seconds, 1);
     }
     const handleHit = this._clockHandleHitEl;
     if (handleHit) {
@@ -7181,6 +7127,29 @@ class SceneExtrapolationPanel extends HTMLElement {
       // Horizon bands carry sunrise/sunset warmth; this disc stays a faint wash.
       glow.style.opacity = String(glowLook.glowOpacity * 0.35);
     }
+  }
+
+  _layoutClockHandle(seconds, scale = 1) {
+    const inner = this._clockHandleInnerEl;
+    const outer = this._clockHandleOuterEl;
+    if (!inner || !outer) {
+      return;
+    }
+    const sunR = CLOCK_SUN_R_VIEW * scale;
+    const near = this._clockPolar(
+      seconds,
+      Math.max(0, CLOCK_SUN_PATH_R - sunR)
+    );
+    const far = this._clockPolar(seconds, CLOCK_SUN_PATH_R + sunR);
+    const tip = this._clockPolar(seconds, CLOCK_TICK_OUTER);
+    inner.setAttribute("x1", String(CLOCK_CX));
+    inner.setAttribute("y1", String(CLOCK_CY));
+    inner.setAttribute("x2", near.x.toFixed(2));
+    inner.setAttribute("y2", near.y.toFixed(2));
+    outer.setAttribute("x1", far.x.toFixed(2));
+    outer.setAttribute("y1", far.y.toFixed(2));
+    outer.setAttribute("x2", tip.x.toFixed(2));
+    outer.setAttribute("y2", tip.y.toFixed(2));
   }
 
   /** Timed ease along the elevation curve (used for the clock enter sweep). */
@@ -7385,26 +7354,25 @@ class SceneExtrapolationPanel extends HTMLElement {
     path.setAttribute("r", String(CLOCK_SUN_PATH_R));
     overlay.appendChild(path);
 
-    const handle = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    handle.setAttribute("class", "clock-handle");
-    handle.setAttribute("x1", String(CLOCK_CX));
-    handle.setAttribute("y1", String(CLOCK_CY));
-    handle.setAttribute("x2", String(CLOCK_CX));
-    handle.setAttribute("y2", String(CLOCK_CY + CLOCK_TICK_OUTER));
-    overlay.appendChild(handle);
-    this._clockHandleEl = handle;
+    const handleInner = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "line"
+    );
+    handleInner.setAttribute("class", "clock-handle");
+    const handleOuter = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "line"
+    );
+    handleOuter.setAttribute("class", "clock-handle");
+    overlay.append(handleInner, handleOuter);
+    this._clockHandleInnerEl = handleInner;
+    this._clockHandleOuterEl = handleOuter;
 
     const marker = document.createElement("div");
     marker.className = "clock-sun";
     marker.setAttribute("role", "slider");
     marker.setAttribute("aria-label", "Drag to preview time of day");
-    for (const layer of [
-      "clock-sun-ghost",
-      "clock-sun-rays",
-      "clock-sun-streak",
-      "clock-sun-corona",
-      "clock-sun-core",
-    ]) {
+    for (const layer of ["clock-sun-core", "clock-sun-ring"]) {
       const span = document.createElement("span");
       span.className = layer;
       marker.appendChild(span);
@@ -7562,7 +7530,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const ringsHost = document.createElement("div");
     ringsHost.className = "sun-light-clock-rings";
     const n = ringLights.length;
-    const hole = 20;
+    const hole = 0;
     const usable = 100 - hole;
     const stroke = n ? usable / n : 0;
     const overlap = CLOCK_FEATHER_PCT;
@@ -7572,7 +7540,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       const midInner = Math.max(hole, midOuter - stroke);
       const outer = Math.min(100, midOuter + overlap);
       const inner = Math.max(0, midInner - overlap);
-      const mask = `radial-gradient(farthest-side, transparent calc(var(--ring-inner) - var(--clock-feather) - var(--ring-expand)), #000 calc(var(--ring-inner) + var(--clock-feather) - var(--ring-expand)), #000 calc(var(--ring-outer) - var(--clock-feather) + var(--ring-expand)), transparent calc(var(--ring-outer) + var(--clock-feather) + var(--ring-expand)))`;
+      // Innermost band is a disc (opaque from 0). Feathering the inner stop
+      // would leave a transparent hole at the center even when hole=0.
+      const mask =
+        midInner <= 0
+          ? `radial-gradient(farthest-side, #000 0, #000 calc(var(--ring-outer) - var(--clock-feather) + var(--ring-expand)), transparent calc(var(--ring-outer) + var(--clock-feather) + var(--ring-expand)))`
+          : `radial-gradient(farthest-side, transparent calc(var(--ring-inner) - var(--clock-feather) - var(--ring-expand)), #000 calc(var(--ring-inner) + var(--clock-feather) - var(--ring-expand)), #000 calc(var(--ring-outer) - var(--clock-feather) + var(--ring-expand)), transparent calc(var(--ring-outer) + var(--clock-feather) + var(--ring-expand)))`;
       const bg = conicGradientFromSamples(light.samples || []);
 
       const ring = document.createElement("div");
