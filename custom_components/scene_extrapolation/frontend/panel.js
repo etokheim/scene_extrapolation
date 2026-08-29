@@ -931,6 +931,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           vector-effect: non-scaling-stroke;
           opacity: 0.45;
         }
+        .sun-light-clock-overlay .clock-horizon-glow {
+          mix-blend-mode: screen;
+        }
         .sun-light-clock-overlay .clock-face-ring {
           fill: none;
           stroke: var(--secondary-text-color);
@@ -7175,7 +7178,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     const glow = this._clockSkyGlow;
     if (glow) {
       glow.style.background = glowLook.glowBackground;
-      glow.style.opacity = String(glowLook.glowOpacity);
+      // Horizon bands carry sunrise/sunset warmth; this disc stays a faint wash.
+      glow.style.opacity = String(glowLook.glowOpacity * 0.35);
     }
   }
 
@@ -7247,6 +7251,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const sunset = this._clockEventSeconds(events, "sunset");
     const dawn = this._clockEventSeconds(events, "dawn");
     const dusk = this._clockEventSeconds(events, "dusk");
+    this._paintHorizonGlows(overlay, sunrise, sunset);
     if (sunset != null && sunrise != null) {
       const night = document.createElementNS(
         "http://www.w3.org/2000/svg",
@@ -7279,6 +7284,86 @@ class SceneExtrapolationPanel extends HTMLElement {
       ray.setAttribute("x2", outer.x.toFixed(2));
       ray.setAttribute("y2", outer.y.toFixed(2));
       overlay.appendChild(ray);
+    }
+  }
+
+  /** Warm wash from each horizon ray into the day (toward noon). */
+  _paintHorizonGlows(overlay, sunrise, sunset) {
+    if (sunrise == null && sunset == null) {
+      return;
+    }
+    let span = 2.5 * 3600;
+    if (sunrise != null && sunset != null) {
+      let day =
+        (((sunset - sunrise) % SECONDS_PER_DAY) + SECONDS_PER_DAY) %
+        SECONDS_PER_DAY;
+      if (day < 1) {
+        day = SECONDS_PER_DAY;
+      }
+      span = Math.min(span, day / 2);
+    }
+    const look = skyLookFromElevation(0);
+    const defs =
+      overlay.querySelector("defs") ||
+      overlay.insertBefore(
+        document.createElementNS("http://www.w3.org/2000/svg", "defs"),
+        overlay.firstChild
+      );
+    const bands = [];
+    if (sunrise != null) {
+      bands.push({
+        id: "sunrise",
+        horizon: sunrise,
+        intoDay: sunrise + span,
+        from: sunrise,
+        to: sunrise + span,
+      });
+    }
+    if (sunset != null) {
+      bands.push({
+        id: "sunset",
+        horizon: sunset,
+        intoDay: sunset - span,
+        from: sunset - span,
+        to: sunset,
+      });
+    }
+    for (const band of bands) {
+      const origin = this._clockPolar(band.horizon, CLOCK_FACE_R * 0.62);
+      const fade = this._clockPolar(band.intoDay, CLOCK_FACE_R * 0.62);
+      const grad = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "linearGradient"
+      );
+      grad.setAttribute("id", `clock-horizon-grad-${band.id}`);
+      grad.setAttribute("gradientUnits", "userSpaceOnUse");
+      grad.setAttribute("x1", origin.x.toFixed(2));
+      grad.setAttribute("y1", origin.y.toFixed(2));
+      grad.setAttribute("x2", fade.x.toFixed(2));
+      grad.setAttribute("y2", fade.y.toFixed(2));
+      const start = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "stop"
+      );
+      start.setAttribute("offset", "0%");
+      start.setAttribute("stop-color", look.pathColor);
+      start.setAttribute("stop-opacity", "0.85");
+      const mid = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+      mid.setAttribute("offset", "42%");
+      mid.setAttribute("stop-color", look.pathColor);
+      mid.setAttribute("stop-opacity", "0.35");
+      const end = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+      end.setAttribute("offset", "100%");
+      end.setAttribute("stop-color", look.pathColor);
+      end.setAttribute("stop-opacity", "0");
+      grad.append(start, mid, end);
+      defs.appendChild(grad);
+
+      const wash = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      wash.setAttribute("class", "clock-horizon-glow");
+      wash.setAttribute("d", this._clockWedgePath(band.from, band.to));
+      wash.setAttribute("fill", `url(#clock-horizon-grad-${band.id})`);
+      overlay.appendChild(wash);
     }
   }
 
