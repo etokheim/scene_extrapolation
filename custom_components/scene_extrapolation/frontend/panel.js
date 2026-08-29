@@ -499,8 +499,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           stroke: ${SUN_LINE_DAY};
           /* Stroke width set per-line in JS (elevation → 0.2–3px). */
           vector-effect: non-scaling-stroke;
+          stroke-dasharray: 3.5 3;
           stroke-linejoin: round;
           stroke-linecap: round;
+          opacity: 0.5;
         }
         .sun-light-clock-overlay .clock-sun-night {
           fill: none;
