@@ -41,6 +41,8 @@ const CLOCK_SUN_SIZE_PCT = (CLOCK_SUN_R_VIEW * 2 / CLOCK_VIEW) * 100;
 const CLOCK_SUN_GROW = 0.1;
 /* Daytime elevation where size falls back to 1× (degrees). */
 const CLOCK_SUN_SIZE_HORIZON_DEG = 18;
+/* Night sun + night-side chips: dark blue, not black. */
+const CLOCK_NIGHT_BLUE = "#15224d";
 /* Linear sun chart stroke width vs elevation (table view). */
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
 const CLOCK_SUN_STROKE_MAX_PX = 10;
@@ -959,10 +961,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 2;
         }
         .clock-sky-overlay .clock-sky-night {
-          fill: color-mix(in srgb, #040814 62%, transparent);
+          fill: color-mix(in srgb, #243878 46%, transparent);
         }
         .clock-sky-overlay .clock-sky-deep {
-          fill: color-mix(in srgb, #02040c 70%, transparent);
+          fill: color-mix(in srgb, #15224d 52%, transparent);
         }
         .clock-sky-overlay .clock-horizon-ray {
           stroke: var(--secondary-text-color);
@@ -1039,7 +1041,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
         }
         .sun-light-clock-overlay .clock-sun-night {
-          fill: #000;
+          fill: ${CLOCK_NIGHT_BLUE};
         }
         .clock-sun-ring {
           inset: 0;
@@ -1155,6 +1157,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           padding: 0;
           font: inherit;
           transition: box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .clock-event.night:not(.missing) {
+          background: ${CLOCK_NIGHT_BLUE};
+          border-color: color-mix(in srgb, #8aa0d4 40%, transparent);
+          color: #d5def4;
         }
         .clock-event ha-icon {
           --mdc-icon-size: 18px;
@@ -6604,16 +6611,20 @@ class SceneExtrapolationPanel extends HTMLElement {
     const w = Math.round(width);
     const h = Math.round(height);
     const f = Math.round(feather);
-    const key = `${w}x${h}:${f}`;
+    const key = `${w}x${h}:${f}:v75`;
     if (this._clockBleedMaskKey === key && this._clockBleedMaskImage) {
       return this._clockBleedMaskImage;
     }
     // One raster mask (blurred inset rect). CSS/SVG ramps on each side
     // would stack in the corners; a single blur does not.
+    // Floor at 25% alpha so the edge is a vignette, not a hard cut to
+    // the panel surface (75% transparent, like a photo matte).
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.fillRect(0, 0, w, h);
     ctx.filter = `blur(${(f / 3).toFixed(1)}px)`;
     ctx.fillStyle = "#fff";
     ctx.fillRect(f, f, Math.max(0, w - f * 2), Math.max(0, h - f * 2));
@@ -7270,6 +7281,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       floatEl.style.top = `${(opposite.y / CLOCK_VIEW) * 100}%`;
     }
     this._updateHorizonGlow(elev, glowLook);
+    this._paintNowSky(glowLook);
+  }
+
+  _paintNowSky(look) {
+    if (this._clockSkyEl) {
+      this._clockSkyEl.style.background = look.skyWash;
+    }
   }
 
   _layoutClockSunFill(pos, scale, sunLook) {
@@ -7400,9 +7418,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         const tint = evening ? "rgb(255, 72, 118)" : "rgb(255, 204, 92)";
         fill = `color-mix(in srgb, ${look.skyFill} ${Math.round((1 - near * 0.38) * 100)}%, ${tint})`;
       }
-      // Sunset→sunrise (below the horizon) is 50% darker.
+      // Sunset→sunrise is 50% darker toward night blue, not black.
       if (elev < 0) {
-        fill = `color-mix(in srgb, ${fill} 50%, black)`;
+        fill = `color-mix(in srgb, ${fill} 50%, ${CLOCK_NIGHT_BLUE})`;
       }
       stops.push(`${fill} ${((i / steps) * 100).toFixed(2)}%`);
     }
@@ -7709,7 +7727,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     backdrop.setAttribute("aria-hidden", "true");
     const skyHost = document.createElement("div");
     skyHost.className = "clock-sky";
-    skyHost.style.background = this._clockSkyConic();
     this._clockSkyEl = skyHost;
     const horizonGlow = document.createElement("div");
     horizonGlow.className = "clock-horizon-glow";
@@ -7928,6 +7945,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         : `${event.name} · ${timeText}`;
       if (!sceneName) {
         btn.classList.add("missing");
+      }
+      const curve = this._sunPath?.curve;
+      if (
+        curve?.length &&
+        interpolateElevation(curve, event.seconds) < 0
+      ) {
+        btn.classList.add("night");
       }
       if (this._sidebarEventId === event.id) {
         btn.classList.add("selected");
@@ -9942,8 +9966,8 @@ function skyLookFromElevation(elev) {
   const keys = [
     {
       e: -90,
-      outer: [6, 10, 32],
-      mid: [10, 16, 48],
+      outer: [12, 22, 64],
+      mid: [20, 34, 88],
       glowOpacity: 0.16,
       sunCore: "#c5d0e8",
       sunCorona: "#6a7a9a",
@@ -9954,8 +9978,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: -18,
-      outer: [18, 16, 58],
-      mid: [36, 28, 100],
+      outer: [16, 30, 82],
+      mid: [36, 48, 120],
       glowOpacity: 0.22,
       sunCore: "#d0daf0",
       sunCorona: "#7a8ab0",
@@ -9966,8 +9990,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: -12,
-      outer: [56, 32, 130],
-      mid: [110, 55, 190],
+      outer: [18, 28, 78],
+      mid: [36, 50, 128],
       glowOpacity: 0.38,
       sunCore: "#e8eeff",
       sunCorona: "#6b8fd4",
@@ -9975,6 +9999,18 @@ function skyLookFromElevation(elev) {
       streakOpacity: 0.35,
       rayOpacity: 0.22,
       ghostOpacity: 0.22,
+    },
+    {
+      e: -8,
+      outer: [16, 26, 72],
+      mid: [32, 44, 112],
+      glowOpacity: 0.32,
+      sunCore: "#d8e2f6",
+      sunCorona: "#6a7eb8",
+      sunStreak: "#a8b8dc",
+      streakOpacity: 0.28,
+      rayOpacity: 0.16,
+      ghostOpacity: 0.18,
     },
     {
       e: -4,
@@ -10090,6 +10126,8 @@ function skyLookFromElevation(elev) {
     glowBackground: `radial-gradient(closest-side circle at center, ${rgb(mid, 1)} 0%, ${rgb(mid, 0.85)} 28%, ${rgb(outer, 0.55)} 58%, ${rgb(outer, 0)} 100%)`,
     glowOpacity: lerp(lo.glowOpacity, hi.glowOpacity),
     skyFill: rgb(outer, 0.92),
+    skySolid: `rgb(${outer[0]},${outer[1]},${outer[2]})`,
+    skyWash: `radial-gradient(closest-side circle at center, ${rgb(mid, 1)} 0%, ${rgb(outer, 1)} 55%, ${rgb(outer, 1)} 100%)`,
     horizonFill: `rgb(${mid[0]},${mid[1]},${mid[2]})`,
     sunCore: mixHex(lo.sunCore, hi.sunCore),
     sunCorona: mixHex(lo.sunCorona, hi.sunCorona),
