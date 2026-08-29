@@ -23,7 +23,7 @@ PANEL_VERSION = json.loads(
     (Path(__file__).parent / "manifest.json").read_text(encoding="utf-8")
 ).get("version", "0")
 # Increment when panel.js changes without a manifest version bump.
-PANEL_ASSET_REV = "66"
+PANEL_ASSET_REV = "67"
 
 
 async def async_setup_panel(hass: HomeAssistant) -> None:

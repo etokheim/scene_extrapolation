@@ -38,6 +38,35 @@ const EVENT_SCENE_KEYS = {
   dusk: "scene_dusk",
 };
 
+/* @property in the shadow stylesheet does not register for animation;
+   CSS.registerProperty on the document does. Call once per page load. */
+function registerFeatherProperties() {
+  if (typeof CSS === "undefined" || typeof CSS.registerProperty !== "function") {
+    return;
+  }
+  for (const spec of [
+    {
+      name: "--light-feather",
+      syntax: "<length>",
+      inherits: true,
+      initialValue: `${LIGHT_FEATHER_PX}px`,
+    },
+    {
+      name: "--clock-feather",
+      syntax: "<percentage>",
+      inherits: true,
+      initialValue: `${CLOCK_FEATHER_PCT}%`,
+    },
+  ]) {
+    try {
+      CSS.registerProperty(spec);
+    } catch (_err) {
+      /* already registered */
+    }
+  }
+}
+registerFeatherProperties();
+
 const LABELS = {
   scene_name: "Scene name",
   area: "Area",
@@ -374,26 +403,21 @@ class SceneExtrapolationPanel extends HTMLElement {
           cursor: crosshair;
           overflow: visible;
         }
-        @property --clock-feather {
-          syntax: "<percentage>";
-          inherits: true;
-          initial-value: ${CLOCK_FEATHER_PCT}%;
-        }
-        /* Same idea as .hue-wheel-glow: blurred, scaled copy behind the face. */
+        /* Registered via CSS.registerProperty (document), not @property here —
+           shadow-root @property does not enable transitions. */
+        /* Soft disc from the outer ring’s average color — cheaper than
+           blurring a full multi-stop conic copy of every ring. */
         .sun-light-clock-glow {
           position: absolute;
           inset: 14%;
           border-radius: 50%;
           pointer-events: none;
           z-index: 0;
-          transform: scale(1.1);
+          /* Larger than the face rings (= bigger “spread”). */
+          transform: scale(1.35);
           transform-origin: center center;
-          filter: blur(54px) saturate(1.45);
+          filter: blur(81px) saturate(1.45);
           opacity: 0.55;
-        }
-        .sun-light-clock-glow .clock-ring {
-          pointer-events: none;
-          cursor: default;
         }
         .sun-light-clock-rings {
           position: absolute;
@@ -674,17 +698,15 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-size: 13px;
           color: var(--secondary-text-color);
         }
-        @property --light-feather {
-          syntax: "<length>";
-          inherits: true;
-          initial-value: ${LIGHT_FEATHER_PX}px;
-        }
         .sun-lights {
           display: flex;
           flex-direction: column;
           gap: 0;
           padding: 0;
           --light-feather: ${LIGHT_FEATHER_PX}px;
+          /* Transition on the element that changes the variable (not the svg).
+             --light-feather is registered via CSS.registerProperty. */
+          transition: --light-feather 220ms cubic-bezier(0.2, 0, 0, 1);
         }
         .light-row {
           position: relative;
@@ -777,7 +799,6 @@ class SceneExtrapolationPanel extends HTMLElement {
             #000 ${LIGHT_FEATHER_PX}px,
             #000 100%
           );
-          transition: --light-feather 220ms cubic-bezier(0.2, 0, 0, 1);
         }
         .light-row:first-child .light-bar svg,
         .light-row:only-child .light-bar svg {
@@ -1335,6 +1356,8 @@ class SceneExtrapolationPanel extends HTMLElement {
             transition-duration: 1ms;
           }
           .light-bar svg,
+          .sun-lights,
+          .sun-light-clock-rings,
           .light-edit-dot,
           .light-edit-action,
           .scene-sidebar-body,
@@ -6002,6 +6025,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Expand each ring into its neighbors so soft edges blend over lamp
     // color, not the dark card (same idea as the table’s negative margin).
     const overlap = CLOCK_FEATHER_PCT;
+    if (n) {
+      // One solid disc from the outer ring — blur is cheap vs N conics.
+      glowHost.style.background = glowColorFromSamples(ringLights[0].samples || []);
+    }
     for (let index = 0; index < n; index += 1) {
       const light = ringLights[index];
       const midOuter = 100 - index * stroke;
@@ -6010,13 +6037,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       const inner = Math.max(0, midInner - overlap);
       const mask = `radial-gradient(farthest-side, transparent calc(${inner}% - var(--clock-feather)), #000 calc(${inner}% + var(--clock-feather)), #000 calc(${outer}% - var(--clock-feather)), transparent calc(${outer}% + var(--clock-feather)))`;
       const bg = conicGradientFromSamples(light.samples || []);
-
-      const glowRing = document.createElement("div");
-      glowRing.className = "clock-ring";
-      glowRing.style.background = bg;
-      glowRing.style.webkitMaskImage = mask;
-      glowRing.style.maskImage = mask;
-      glowHost.appendChild(glowRing);
 
       const ring = document.createElement("div");
       ring.className = "clock-ring";
@@ -8044,6 +8064,28 @@ function interpolateElevation(curve, seconds) {
 function darkenedRgb(sample) {
   const t = sample[1] / 100;
   return `rgb(${Math.round(sample[2] * t)},${Math.round(sample[3] * t)},${Math.round(sample[4] * t)})`;
+}
+
+function glowColorFromSamples(samples) {
+  if (!samples.length) {
+    return "var(--divider-color)";
+  }
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let weight = 0;
+  for (const sample of samples) {
+    const t = sample[1] / 100;
+    const w = Math.max(t, 0.08);
+    r += sample[2] * t * w;
+    g += sample[3] * t * w;
+    b += sample[4] * t * w;
+    weight += w;
+  }
+  if (weight <= 0) {
+    return darkenedRgb(samples[0]);
+  }
+  return `rgb(${Math.round(r / weight)},${Math.round(g / weight)},${Math.round(b / weight)})`;
 }
 
 function conicGradientFromSamples(samples) {
