@@ -77,6 +77,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Superseded in part:** 2026-08-27 — still one full-width row per light with the name on the plot, but Y is not brightness (see “Light brightness darkens the band”).
 - **Superseded in part:** 2026-08-29 — a light missing from some assigned scenes is an “Add to …” button, not a static warning. Click writes a session draft for each missing native scene. The initial state is the typical on-state of the other lights already in that scene (median brightness; median kelvin, else circular-mean HS / median RGB), adapted to the lamp’s color modes. No peers → same circadian seeds as creating a native scene. Until added, preview still treats the gap as off.
 - **Superseded in part:** 2026-08-29 — with an area selected, lights in that area that are in none of the assigned scenes appear as compact suggested rows (`Add to scenes`). Lights that are in the scenes but not in the area keep their graphs and use the warning color on the name. No area → no suggestions and no out-of-area mark. Preview `area` uses `lights_in_area` (entity area, else device).
+- **Superseded in part:** 2026-08-29 — a toolbar toggle can wrap the same light samples into concentric 24-hour rings. See “Light graphs: stacked bands or a 24-hour clock”.
 - **Decision:** Under the sun chart on create/edit, list each light as a full-width brightness polyline (one SVG path + x-gradient from sample colors), not a strip of `<rect>` bars. The entity name sits on the chart and opens more-info. Graphs stack with no gap. Polar / no-rise events use the same seasonal fallbacks as scene activation. An entity present in one scene but not the next is a warning, not an error (treated as off during that transition).
 - **Why:** A single line matches the sun chart and stays cheap to paint. Labels on the plot save vertical space; clicking through to the entity is the usual HA pattern. Missing entities are supported on purpose (e.g. a lamp that only exists in the evening scene). Preview interpolates across whatever solar events already have a scene; unassigned events are skipped so graphs appear as soon as the first scene is picked.
 - **Do not reverse without user ask.**
@@ -245,6 +246,13 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Superseded:** 2026-08-26 — reuse the native scene editor overflow on create and edit.
 - **Decision:** Existing scenes get `ha-dropdown` in `slot="actionItems"` (dots trigger, `wa-select`, Rename + danger Delete). New unsaved scenes have no overflow. Inline Save/Delete buttons on the form are gone.
 - **Why:** Same header overflow pattern as the automation editor. Delete is destructive, so it stays off the FAB.
+- **Do not reverse without user ask.**
+
+## Light graphs: stacked bands or a 24-hour clock
+
+- **Date:** 2026-08-29
+- **Decision:** On create/edit, a toolbar toggle (next to the location pin) switches the light table between the stacked bands and concentric 24-hour rings. Midnight is at the top; hours are equal; noon is at the bottom. One ring per lamp (outer = first table row). The sun-elevation chart stays linear. Today draws an hour hand on the clock. Solar-event icons sit on the rim and open the same event sidebar as the chips above the sun chart. Per-event pencil dots stay on the stacked view only. Hover maps angle → seconds (radial cursor); a legend lists names, brightness %, Add, and Remove. Suggested lights (no samples) stay in the legend, not as empty rings. Remember the choice in `localStorage` per HA user (`scene_extrapolation.lightView.v1.<user>`), not per scene.
+- **Why:** A ring makes the dusk→dawn wrap obvious. Equal clock hours match how people read “now”; solar events still land at their real times on that dial.
 - **Do not reverse without user ask.**
 
 ## Editor overflow matches the native scene page

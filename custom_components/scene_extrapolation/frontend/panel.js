@@ -19,6 +19,8 @@ const LIGHT_EDIT_ACTION_PX = 40;
 const UNDO_STACK_LIMIT = 75;
 const DRAFT_STORAGE_VERSION = 1;
 const DRAFT_PERSIST_MS = 200;
+const LIGHT_VIEW_STORAGE_VERSION = 1;
+const CLOCK_FACE_MAX_PX = 420;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
 // Same circadian seeds as native_scene.EVENT_LIGHT_DEFAULTS (0–255, kelvin).
 const EVENT_LIGHT_DEFAULTS = {
@@ -96,6 +98,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._yearScrubbing = false;
     this._sidebarEventId = null;
     this._hashConfirming = false;
+    this._lightView = "table";
     this._onHashChange = () => this._syncHash();
     this._onEditorKeydown = (ev) => this._handleEditorShortcut(ev);
     this._onPageHide = (ev) => {
@@ -341,6 +344,163 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-location-btn[hidden] {
           display: none;
+        }
+        .light-view-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 0;
+          color: var(--secondary-text-color);
+        }
+        .light-view-toggle ha-icon-button[aria-pressed="true"] {
+          color: var(--primary-color);
+        }
+        .sun-light-clock {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 16px 24px;
+          padding: 8px 16px 16px;
+          align-items: flex-start;
+          justify-content: center;
+        }
+        .sun-light-clock-face {
+          position: relative;
+          width: min(100%, ${CLOCK_FACE_MAX_PX}px);
+          aspect-ratio: 1;
+          flex: 0 1 ${CLOCK_FACE_MAX_PX}px;
+          max-width: ${CLOCK_FACE_MAX_PX}px;
+          touch-action: none;
+          cursor: crosshair;
+        }
+        .sun-light-clock-rings {
+          position: absolute;
+          inset: 14%;
+          border-radius: 50%;
+        }
+        .clock-ring {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          pointer-events: auto;
+          cursor: pointer;
+        }
+        .sun-light-clock-overlay {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          overflow: visible;
+        }
+        .sun-light-clock-overlay .clock-tick {
+          stroke: var(--divider-color);
+          stroke-width: 1;
+        }
+        .sun-light-clock-overlay .clock-tick.major {
+          stroke: var(--secondary-text-color);
+          stroke-width: 1.5;
+        }
+        .sun-light-clock-overlay .clock-label {
+          fill: var(--secondary-text-color);
+          font-size: 11px;
+          font-variant-numeric: tabular-nums;
+          text-anchor: middle;
+          dominant-baseline: middle;
+        }
+        .sun-light-clock-overlay .clock-hand {
+          stroke: var(--primary-color);
+          stroke-width: 2.5;
+          stroke-linecap: round;
+        }
+        .sun-light-clock-overlay .clock-hand-hub {
+          fill: var(--primary-color);
+        }
+        .sun-light-clock-overlay .clock-hover-ray {
+          stroke: var(--primary-text-color);
+          stroke-width: 1.5;
+          stroke-opacity: 0.55;
+          display: none;
+        }
+        .sun-light-clock-face[data-hovering] .clock-hover-ray {
+          display: block;
+        }
+        .clock-event {
+          position: absolute;
+          width: 32px;
+          height: 32px;
+          margin: -16px 0 0 -16px;
+          display: grid;
+          place-items: center;
+          border-radius: 50%;
+          border: 1px solid var(--divider-color);
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+          pointer-events: auto;
+          cursor: pointer;
+          padding: 0;
+          font: inherit;
+        }
+        .clock-event ha-icon {
+          --mdc-icon-size: 18px;
+        }
+        .clock-event.missing {
+          color: var(--warning-color, var(--error-color));
+          border-color: var(--warning-color, var(--error-color));
+        }
+        .clock-event.selected {
+          border-color: var(--primary-color);
+          box-shadow: 0 0 0 2px var(--primary-color);
+        }
+        .sun-light-clock-legend {
+          flex: 1 1 200px;
+          min-width: min(100%, 200px);
+          max-width: 360px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .clock-legend-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          min-height: 36px;
+          padding: 2px 0;
+        }
+        .clock-legend-row.out-of-area .clock-legend-name {
+          color: var(--warning-color, var(--error-color));
+        }
+        .clock-legend-row.suggested {
+          color: var(--secondary-text-color);
+        }
+        .clock-legend-swatch {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          flex-shrink: 0;
+          box-shadow: 0 0 0 1px var(--divider-color);
+        }
+        .clock-legend-name {
+          flex: 1 1 auto;
+          min-width: 0;
+          font-size: 13px;
+          font-weight: 500;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .clock-legend-name .light-brightness {
+          font-weight: 400;
+          font-variant-numeric: tabular-nums;
+        }
+        .clock-legend-row .light-warn {
+          position: static;
+          transform: none;
+          flex-shrink: 0;
+          text-shadow: none;
+        }
+        .clock-legend-row .light-remove {
+          position: static;
+          transform: none;
+          flex-shrink: 0;
+          margin: 0;
         }
         .sun-location-override {
           display: flex;
@@ -1863,6 +2023,53 @@ class SceneExtrapolationPanel extends HTMLElement {
   _draftStorageKey(sceneKey = this._editId || "new") {
     const user = this._hass?.user?.id || "anon";
     return `scene_extrapolation.draft.v1.${user}.${sceneKey}`;
+  }
+
+  _lightViewStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `scene_extrapolation.lightView.v${LIGHT_VIEW_STORAGE_VERSION}.${user}`;
+  }
+
+  _readLightView() {
+    try {
+      const raw = window.localStorage.getItem(this._lightViewStorageKey());
+      return raw === "clock" ? "clock" : "table";
+    } catch (_err) {
+      return "table";
+    }
+  }
+
+  _setLightView(view) {
+    const next = view === "clock" ? "clock" : "table";
+    if (this._lightView === next) {
+      this._syncLightViewButtons();
+      return;
+    }
+    this._lightView = next;
+    try {
+      window.localStorage.setItem(this._lightViewStorageKey(), next);
+    } catch (_err) {
+      /* ignore quota / private mode */
+    }
+    this._syncLightViewButtons();
+    if (this._sunPath) {
+      this._drawSunPath();
+    }
+  }
+
+  _syncLightViewButtons() {
+    if (this._lightViewTableBtn) {
+      this._lightViewTableBtn.setAttribute(
+        "aria-pressed",
+        this._lightView === "table" ? "true" : "false"
+      );
+    }
+    if (this._lightViewClockBtn) {
+      this._lightViewClockBtn.setAttribute(
+        "aria-pressed",
+        this._lightView === "clock" ? "true" : "false"
+      );
+    }
   }
 
   _readPersistedDraft(sceneKey) {
@@ -4573,6 +4780,31 @@ class SceneExtrapolationPanel extends HTMLElement {
     locationBtn.addEventListener("click", () => this._openLocationDialog());
     row.appendChild(locationBtn);
 
+    this._lightView = this._readLightView();
+    const viewToggle = document.createElement("div");
+    viewToggle.className = "light-view-toggle";
+    viewToggle.setAttribute("role", "group");
+    viewToggle.setAttribute("aria-label", "Light graph layout");
+    const tableBtn = document.createElement("ha-icon-button");
+    tableBtn.label = "Stacked light bands";
+    tableBtn.setAttribute("aria-pressed", "false");
+    const tableIcon = document.createElement("ha-icon");
+    tableIcon.setAttribute("icon", "mdi:view-sequential");
+    tableBtn.appendChild(tableIcon);
+    tableBtn.addEventListener("click", () => this._setLightView("table"));
+    const clockBtn = document.createElement("ha-icon-button");
+    clockBtn.label = "Clock light rings";
+    clockBtn.setAttribute("aria-pressed", "false");
+    const clockIcon = document.createElement("ha-icon");
+    clockIcon.setAttribute("icon", "mdi:clock-outline");
+    clockBtn.appendChild(clockIcon);
+    clockBtn.addEventListener("click", () => this._setLightView("clock"));
+    viewToggle.append(tableBtn, clockBtn);
+    row.appendChild(viewToggle);
+    this._lightViewTableBtn = tableBtn;
+    this._lightViewClockBtn = clockBtn;
+    this._syncLightViewButtons();
+
     const banner = document.createElement("div");
     banner.className = "sun-location-override";
     banner.hidden = true;
@@ -5152,10 +5384,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     hoverLine.className = "sun-hover-line";
     this._hoverLine = hoverLine;
     plots.append(chart, hours);
+    const useClock = this._view === "edit" && this._lightView === "clock";
+    let clockEl = null;
     if (this._view === "edit") {
-      const lights = this._buildLightBars(xOf, events);
-      if (lights) {
-        plots.appendChild(lights);
+      if (useClock) {
+        clockEl = this._buildLightClock(events);
+      } else {
+        const lights = this._buildLightBars(xOf, events);
+        if (lights) {
+          plots.appendChild(lights);
+        }
       }
     }
     if (isToday) {
@@ -5192,6 +5430,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       children.push(note);
     }
     children.push(readout, plots);
+    if (clockEl) {
+      children.push(clockEl);
+    }
 
     this._sunPathEl.hidden = false;
     this._sunPathBodyEl.replaceChildren(...children);
@@ -5291,6 +5532,339 @@ class SceneExtrapolationPanel extends HTMLElement {
       pct.textContent = `${Math.round(sample.brightness)}%`;
       el.appendChild(pct);
     }
+  }
+
+  _secondsFromClockPointer(ev, face) {
+    const rect = face.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = ev.clientX - cx;
+    const dy = ev.clientY - cy;
+    // 0° at midnight (top), clockwise — matches conic-gradient(from 0deg).
+    let deg = (Math.atan2(dx, -dy) * 180) / Math.PI;
+    if (deg < 0) {
+      deg += 360;
+    }
+    return (deg / 360) * SECONDS_PER_DAY;
+  }
+
+  _clockAngleDeg(seconds) {
+    return (seconds / SECONDS_PER_DAY) * 360;
+  }
+
+  _bindClockHover(face, hoverRay) {
+    const apply = (seconds) => {
+      this._hoverSeconds = seconds;
+      const deg = this._clockAngleDeg(seconds);
+      hoverRay.setAttribute("transform", `rotate(${deg.toFixed(2)} 100 100)`);
+      face.setAttribute("data-hovering", "");
+      if (this._hoverLine) {
+        this._hoverLine.style.display = "none";
+      }
+      this._fillHoverReadout(seconds, { hovering: true });
+    };
+    const clear = () => {
+      this._hoverSeconds = undefined;
+      face.removeAttribute("data-hovering");
+      if (this._hoverLine) {
+        this._hoverLine.style.display = "";
+      }
+      this._fillHoverReadout(
+        this._sunPath?.today ? nowSecondsSinceMidnight() : null,
+        { hovering: false }
+      );
+    };
+    face.addEventListener("pointermove", (ev) => {
+      this._pendingClockHover = { clientX: ev.clientX, clientY: ev.clientY };
+      if (this._clockHoverRaf) {
+        return;
+      }
+      this._clockHoverRaf = window.requestAnimationFrame(() => {
+        this._clockHoverRaf = undefined;
+        if (!this._pendingClockHover) {
+          return;
+        }
+        apply(this._secondsFromClockPointer(this._pendingClockHover, face));
+      });
+    });
+    face.addEventListener("pointerleave", () => {
+      this._pendingClockHover = undefined;
+      if (this._clockHoverRaf) {
+        window.cancelAnimationFrame(this._clockHoverRaf);
+        this._clockHoverRaf = undefined;
+      }
+      clear();
+    });
+  }
+
+  _buildLightClock(events) {
+    this._lightNameLabels = [];
+    const lights = this._sunPath.lights || [];
+    if (!lights.length) {
+      return null;
+    }
+    const ringLights = lights.filter((light) => !light.suggested);
+    const suggested = lights.filter((light) => light.suggested);
+    const wrap = document.createElement("div");
+    wrap.className = "sun-light-clock";
+
+    const face = document.createElement("div");
+    face.className = "sun-light-clock-face";
+    face.setAttribute("role", "img");
+    face.setAttribute(
+      "aria-label",
+      "24-hour light rings; midnight at the top"
+    );
+
+    const ringsHost = document.createElement("div");
+    ringsHost.className = "sun-light-clock-rings";
+    const n = ringLights.length;
+    const hole = 22;
+    const gap = 1.2;
+    const usable = 100 - hole;
+    const stroke = n ? usable / n - gap : 0;
+    for (let index = 0; index < n; index += 1) {
+      const light = ringLights[index];
+      const outer = 100 - index * (stroke + gap);
+      const inner = Math.max(hole, outer - stroke);
+      const ring = document.createElement("div");
+      ring.className = "clock-ring";
+      ring.style.background = conicGradientFromSamples(light.samples || []);
+      ring.style.webkitMaskImage = `radial-gradient(farthest-side, transparent ${inner}%, #000 ${inner}%, #000 ${outer}%, transparent ${outer}%)`;
+      ring.style.maskImage = ring.style.webkitMaskImage;
+      ring.title = light.name;
+      ring.setAttribute("role", "button");
+      ring.tabIndex = 0;
+      ring.setAttribute("aria-label", `Edit ${light.name}`);
+      const openAt = (ev) => {
+        ev.stopPropagation();
+        const assigned = events.filter((item) => this._eventSceneId(item.id));
+        if (!assigned.length) {
+          return;
+        }
+        const seconds =
+          ev.clientX != null
+            ? this._secondsFromClockPointer(ev, face)
+            : this._hoverSeconds ??
+              (this._sunPath?.today ? nowSecondsSinceMidnight() : SECONDS_PER_DAY / 2);
+        const closest = this._closestEvent(assigned, seconds);
+        if (closest) {
+          this._openLightEditDialog(light, closest);
+        }
+      };
+      ring.addEventListener("click", openAt);
+      ring.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          openAt(ev);
+        }
+      });
+      ringsHost.appendChild(ring);
+    }
+    face.appendChild(ringsHost);
+
+    const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    overlay.setAttribute("class", "sun-light-clock-overlay");
+    overlay.setAttribute("viewBox", "0 0 200 200");
+    overlay.setAttribute("aria-hidden", "true");
+    const cx = 100;
+    const cy = 100;
+    const tickOuter = 86;
+    const tickInnerMinor = 82;
+    const tickInnerMajor = 78;
+    const labelR = 72;
+    for (let hour = 0; hour < 24; hour += 1) {
+      const deg = (hour / 24) * 360;
+      const rad = ((deg - 90) * Math.PI) / 180;
+      const major = hour % 6 === 0;
+      const inner = major ? tickInnerMajor : tickInnerMinor;
+      const x1 = cx + Math.cos(rad) * inner;
+      const y1 = cy + Math.sin(rad) * inner;
+      const x2 = cx + Math.cos(rad) * tickOuter;
+      const y2 = cy + Math.sin(rad) * tickOuter;
+      const tick = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      tick.setAttribute("class", major ? "clock-tick major" : "clock-tick");
+      tick.setAttribute("x1", x1.toFixed(2));
+      tick.setAttribute("y1", y1.toFixed(2));
+      tick.setAttribute("x2", x2.toFixed(2));
+      tick.setAttribute("y2", y2.toFixed(2));
+      overlay.appendChild(tick);
+      if (major) {
+        const label = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "text"
+        );
+        label.setAttribute("class", "clock-label");
+        const lx = cx + Math.cos(rad) * labelR;
+        const ly = cy + Math.sin(rad) * labelR;
+        label.setAttribute("x", lx.toFixed(2));
+        label.setAttribute("y", ly.toFixed(2));
+        label.textContent = String(hour).padStart(2, "0");
+        overlay.appendChild(label);
+      }
+    }
+    const hoverRay = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "line"
+    );
+    hoverRay.setAttribute("class", "clock-hover-ray");
+    hoverRay.setAttribute("x1", String(cx));
+    hoverRay.setAttribute("y1", String(cy));
+    hoverRay.setAttribute("x2", String(cx));
+    hoverRay.setAttribute("y2", String(cy - tickOuter));
+    overlay.appendChild(hoverRay);
+    if (this._sunPath.today) {
+      const nowSeconds = nowSecondsSinceMidnight();
+      const hand = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "line"
+      );
+      hand.setAttribute("class", "clock-hand");
+      hand.setAttribute("x1", String(cx));
+      hand.setAttribute("y1", String(cy));
+      hand.setAttribute("x2", String(cx));
+      hand.setAttribute("y2", String(cy - (tickInnerMajor - 4)));
+      hand.setAttribute(
+        "transform",
+        `rotate(${this._clockAngleDeg(nowSeconds).toFixed(2)} ${cx} ${cy})`
+      );
+      const hub = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "circle"
+      );
+      hub.setAttribute("class", "clock-hand-hub");
+      hub.setAttribute("cx", String(cx));
+      hub.setAttribute("cy", String(cy));
+      hub.setAttribute("r", "3.5");
+      overlay.append(hand, hub);
+    }
+    face.appendChild(overlay);
+
+    const editable = this._view === "edit";
+    const iconR = 48;
+    for (const event of events) {
+      const deg = this._clockAngleDeg(event.seconds);
+      const rad = ((deg - 90) * Math.PI) / 180;
+      const left = 50 + Math.cos(rad) * iconR;
+      const top = 50 + Math.sin(rad) * iconR;
+      const btn = document.createElement(editable ? "button" : "div");
+      btn.className = "clock-event";
+      if (editable) {
+        btn.type = "button";
+      }
+      btn.style.left = `${left}%`;
+      btn.style.top = `${top}%`;
+      btn.title = event.name;
+      const sceneId = this._eventSceneId(event.id);
+      const sceneName = this._sceneName(sceneId);
+      if (!sceneName) {
+        btn.classList.add("missing");
+      }
+      if (this._sidebarEventId === event.id) {
+        btn.classList.add("selected");
+      }
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", event.icon);
+      btn.appendChild(icon);
+      if (editable) {
+        btn.setAttribute(
+          "aria-label",
+          sceneName
+            ? `${event.name}: ${sceneName}`
+            : `${event.name}: choose scene`
+        );
+        btn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          this._toggleEventSceneDialog(event);
+        });
+      }
+      face.appendChild(btn);
+    }
+
+    this._bindClockHover(face, hoverRay);
+    wrap.appendChild(face);
+
+    const legend = document.createElement("div");
+    legend.className = "sun-light-clock-legend";
+    for (const light of [...ringLights, ...suggested]) {
+      legend.appendChild(this._clockLegendRow(light, events));
+    }
+    wrap.appendChild(legend);
+    return wrap;
+  }
+
+  _clockLegendRow(light, events) {
+    const suggested = Boolean(light.suggested);
+    const row = document.createElement("div");
+    row.className = "clock-legend-row";
+    if (suggested) {
+      row.classList.add("suggested");
+    }
+    if (light.in_area === false) {
+      row.classList.add("out-of-area");
+    }
+    if (!suggested) {
+      const swatch = document.createElement("span");
+      swatch.className = "clock-legend-swatch";
+      const samples = light.samples || [];
+      const mid =
+        samples[Math.floor(samples.length / 2)] || samples[0] || null;
+      swatch.style.background = mid ? darkenedRgb(mid) : "var(--divider-color)";
+      row.appendChild(swatch);
+    }
+    const name = document.createElement("span");
+    name.className = "clock-legend-name";
+    name.textContent = light.name;
+    if (light.in_area === false) {
+      name.title = "This light is not in the selected area";
+    }
+    if (!suggested) {
+      this._lightNameLabels.push({ light, el: name });
+    }
+    row.appendChild(name);
+    if (this._view === "edit" && !suggested) {
+      const remove = document.createElement("ha-icon-button");
+      remove.className = "light-remove";
+      remove.label = `Remove ${light.name} from scenes`;
+      const removeIcon = document.createElement("ha-icon");
+      removeIcon.setAttribute("icon", "mdi:close");
+      remove.appendChild(removeIcon);
+      remove.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this._removeLightFromAssignedScenes(light.entity_id);
+      });
+      row.appendChild(remove);
+    }
+    const missingScenes = this._missingSceneRows(light);
+    if (this._view === "edit" && missingScenes.length) {
+      const names = [
+        ...new Set(missingScenes.map((row) => row.scene_name).filter(Boolean)),
+      ];
+      const warn = document.createElement("button");
+      warn.type = "button";
+      warn.className = "light-warn";
+      warn.title =
+        "Add this light using the typical brightness and color of the other lights in that scene";
+      warn.setAttribute(
+        "aria-label",
+        suggested
+          ? `Add ${light.name} to scenes`
+          : `Add ${light.name} to ${names.join(", ")}`
+      );
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", "mdi:lightbulb-plus-outline");
+      const text = document.createElement("span");
+      text.textContent = suggested
+        ? "Add to scenes"
+        : `Add to ${names.join(", ")}`;
+      warn.append(icon, text);
+      warn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this._addLightToMissingScenes(light);
+      });
+      row.appendChild(warn);
+    }
+    return row;
   }
 
   _buildLightBars(xOf, events) {
@@ -6719,6 +7293,19 @@ function interpolateElevation(curve, seconds) {
 function darkenedRgb(sample) {
   const t = sample[1] / 100;
   return `rgb(${Math.round(sample[2] * t)},${Math.round(sample[3] * t)},${Math.round(sample[4] * t)})`;
+}
+
+function conicGradientFromSamples(samples) {
+  if (!samples.length) {
+    return "var(--divider-color)";
+  }
+  const stops = samples.map((sample) => {
+    const offset = (sample[0] / SECONDS_PER_DAY) * 100;
+    return `${darkenedRgb(sample)} ${offset.toFixed(2)}%`;
+  });
+  // Close dusk→dawn at midnight so the ring has no seam gap.
+  stops.push(`${darkenedRgb(samples[0])} 100%`);
+  return `conic-gradient(from 0deg, ${stops.join(", ")})`;
 }
 
 function interpolateLightSample(samples, seconds) {

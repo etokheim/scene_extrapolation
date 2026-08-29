@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unsaved editor changes persist in this browser; returning to the scene restores them with a banner and a Discard action
 - A light missing from some scenes is an Add button; it copies the typical brightness and color of the other lights already in that scene
 - Suggested rows for area lights that are not in any assigned scene; scene lights outside the selected area use the warning color
+- Toggle the light graphs between stacked bands and concentric 24-hour clock rings (midnight at the top), with a now-hand and clickable solar-event icons on the rim
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
