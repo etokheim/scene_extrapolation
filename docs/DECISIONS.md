@@ -155,6 +155,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Year scrubber under the preview date
 
 - **Date:** 2026-08-26
+- **Superseded in part:** 2026-08-29 — on landscape devices in clock view the scrubber is a vertical rail to the right of the clock face (stable sibling of `.sun-path-body` so preview redraw cannot drop pointer capture); portrait and stacked/table view keep the horizontal strip under the date row; landscape + any open scene sidebar hides the scrubber to free width and reduce clutter.
 - **Decision:** Under the date row, show a custom year timeline (month labels + draggable thumb) for the year of the selected preview day. Pointer drag/click maps to calendar days; keyboard arrows / Home / End work on the slider. Do not use `<input type="range">` — it cannot host month ticks. Keep the toolbar as a stable sibling of the chart body so `replaceChildren` on preview redraw cannot drop pointer capture or focus. While dragging, update only the thumb (not the date selector), coalesce moves to animation frames, debounce the preview websocket, serialize in-flight requests, and cache recent payloads by chart key.
 - **Why:** Jumping between solstices with chips is coarse; the calendar picker is precise but slow for seasonal comparison. A year strip is the missing middle. Re-inserting the scrubber on every preview cancelled the drag.
 - **Do not reverse without user ask.**

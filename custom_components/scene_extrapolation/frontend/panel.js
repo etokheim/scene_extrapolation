@@ -156,6 +156,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       this._flushPersistedDraft();
     };
+    this._onLandscapeChange = () => this._syncYearScrubLayout();
   }
 
   set hass(hass) {
@@ -196,6 +197,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     window.addEventListener("keydown", this._onEditorKeydown);
     window.addEventListener("pagehide", this._onPageHide);
     document.addEventListener("visibilitychange", this._onPageHide);
+    if (!this._landscapeMq) {
+      this._landscapeMq = window.matchMedia("(orientation: landscape)");
+      if (this._landscapeMq.addEventListener) {
+        this._landscapeMq.addEventListener("change", this._onLandscapeChange);
+      } else {
+        this._landscapeMq.addListener(this._onLandscapeChange);
+      }
+    }
     if (this._hass && !this._built) {
       this._build();
     }
@@ -225,6 +234,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     window.removeEventListener("keydown", this._onEditorKeydown);
     window.removeEventListener("pagehide", this._onPageHide);
     document.removeEventListener("visibilitychange", this._onPageHide);
+    if (this._landscapeMq) {
+      if (this._landscapeMq.removeEventListener) {
+        this._landscapeMq.removeEventListener("change", this._onLandscapeChange);
+      } else {
+        this._landscapeMq.removeListener(this._onLandscapeChange);
+      }
+      this._landscapeMq = undefined;
+    }
     if (this._persistTimer) {
       window.clearTimeout(this._persistTimer);
       this._persistTimer = undefined;
@@ -279,6 +296,33 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-path[hidden] {
           display: none;
+        }
+        .sun-path-stage {
+          display: block;
+        }
+        /* Landscape clock: stable scrub rail sits beside the body so preview
+           redraws (replaceChildren) cannot drop pointer capture mid-drag. */
+        .sun-path-stage.landscape-clock-scrub {
+          display: flex;
+          flex-direction: row;
+          align-items: flex-start;
+          justify-content: center;
+          gap: 10px;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .sun-path-stage.landscape-clock-scrub .sun-path-body {
+          flex: 1 1 auto;
+          min-width: 0;
+        }
+        .sun-year-scrub-rail {
+          display: none;
+          flex: 0 0 auto;
+          width: 52px;
+          box-sizing: border-box;
+        }
+        .sun-path-stage.landscape-clock-scrub .sun-year-scrub-rail {
+          display: block;
         }
         .sun-toolbar {
           display: flex;
@@ -371,6 +415,65 @@ class SceneExtrapolationPanel extends HTMLElement {
           background: var(--primary-color);
           box-shadow: 0 0 0 2px var(--card-background-color);
           pointer-events: none;
+        }
+        /* Portrait / table: horizontal under the date row (default above).
+           Landscape + clock: vertical rail to the right of the face. */
+        .sun-year-scrub.vertical {
+          display: flex;
+          flex-direction: row;
+          align-items: stretch;
+          width: 100%;
+          height: 100%;
+          margin: 0;
+          padding: 2px 0;
+          box-sizing: border-box;
+        }
+        .sun-year-scrub.vertical .sun-year-months {
+          flex: 1 1 auto;
+          width: auto;
+          height: auto;
+          margin: 0 4px 0 0;
+          align-self: stretch;
+        }
+        .sun-year-scrub.vertical .sun-year-months span {
+          left: 0;
+          top: 0;
+          font-size: 10px;
+          line-height: 1.1;
+        }
+        .sun-year-scrub.vertical .sun-year-track {
+          flex: 0 0 20px;
+          width: 20px;
+          height: auto;
+          align-self: stretch;
+        }
+        .sun-year-scrub.vertical .sun-year-bar {
+          left: 8px;
+          right: auto;
+          top: 0;
+          bottom: 0;
+          width: 4px;
+          height: auto;
+        }
+        .sun-year-scrub.vertical .sun-year-fill {
+          left: 8px;
+          right: auto;
+          top: 0;
+          width: 4px;
+          height: 0;
+        }
+        .sun-year-scrub.vertical .sun-year-thumb {
+          left: 4px;
+          top: 0;
+          margin-left: 0;
+          margin-top: -6px;
+        }
+        .sun-year-scrub.vertical .sun-year-today {
+          left: 4px;
+          top: 0;
+          width: 12px;
+          height: 2px;
+          margin-left: 0;
         }
         .sun-chip {
           background: transparent;
@@ -2062,7 +2165,10 @@ class SceneExtrapolationPanel extends HTMLElement {
             <ha-button class="draft-restore-discard" appearance="plain">Discard</ha-button>
           </div>
           <div class="sun-path" hidden>
-            <div class="sun-path-body"></div>
+            <div class="sun-path-stage">
+              <div class="sun-path-body"></div>
+              <div class="sun-year-scrub-rail" hidden></div>
+            </div>
           </div>
           <div class="content"></div>
         </div>
@@ -2074,7 +2180,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._appBar.narrow = Boolean(this._narrow);
     this._headerEl = this.shadowRoot.querySelector("[slot='title']");
     this._sunPathEl = this.shadowRoot.querySelector(".sun-path");
+    this._sunPathStage = this.shadowRoot.querySelector(".sun-path-stage");
     this._sunPathBodyEl = this.shadowRoot.querySelector(".sun-path-body");
+    this._clockScrubRail = this.shadowRoot.querySelector(".sun-year-scrub-rail");
     this._contentEl = this.shadowRoot.querySelector(".content");
     this._fabEl = this.shadowRoot.querySelector(".fab");
     this._draftBanner = this.shadowRoot.querySelector(".draft-restore");
@@ -2448,6 +2556,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._syncLightViewButtons();
     if (this._sunPath) {
       this._drawSunPath();
+    } else {
+      this._syncYearScrubLayout();
     }
   }
 
@@ -3315,6 +3425,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         ? "calc(var(--scene-sidebar-width, 375px) + 32px)"
         : "0px";
     this.style.setProperty("--scene-sidebar-gutter", gutter);
+    this._syncYearScrubLayout();
   }
 
   _fillSidebarHeader(header, { title, subtitle, actionItems, host }) {
@@ -3599,10 +3710,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (!host._committed && this.isConnected) {
         host._onDismiss?.();
       }
+      this._syncYearScrubLayout();
     });
     this.shadowRoot.appendChild(host);
     if (useSheet) {
       host.open = true;
+      this._syncYearScrubLayout();
     } else {
       host.focus({ preventScroll: true });
       requestAnimationFrame(() => {
@@ -5663,8 +5776,14 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const dateFromEvent = (ev) => {
       const rect = track.getBoundingClientRect();
-      const clientX = ev.clientX;
-      const t = rect.width ? (clientX - rect.left) / rect.width : 0;
+      const vertical = scrub.classList.contains("vertical");
+      const t = vertical
+        ? rect.height
+          ? (ev.clientY - rect.top) / rect.height
+          : 0
+        : rect.width
+          ? (ev.clientX - rect.left) / rect.width
+          : 0;
       const year = isoYear(this._previewDate);
       const days = daysInYear(year);
       const dayIndex = Math.max(0, Math.min(days - 1, Math.floor(t * days)));
@@ -5688,16 +5807,16 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (!scrub.hasPointerCapture(ev.pointerId)) {
         return;
       }
-      this._pendingScrubX = ev.clientX;
+      this._pendingScrubPoint = { clientX: ev.clientX, clientY: ev.clientY };
       if (this._scrubRaf) {
         return;
       }
       this._scrubRaf = window.requestAnimationFrame(() => {
         this._scrubRaf = undefined;
-        if (!this._yearScrubbing || this._pendingScrubX == null) {
+        if (!this._yearScrubbing || !this._pendingScrubPoint) {
           return;
         }
-        applyPointer({ clientX: this._pendingScrubX });
+        applyPointer(this._pendingScrubPoint);
       });
     });
     const endScrub = (ev) => {
@@ -5709,14 +5828,15 @@ class SceneExtrapolationPanel extends HTMLElement {
         window.cancelAnimationFrame(this._scrubRaf);
         this._scrubRaf = undefined;
       }
-      if (this._pendingScrubX != null) {
-        applyPointer({ clientX: this._pendingScrubX });
-        this._pendingScrubX = undefined;
+      if (this._pendingScrubPoint) {
+        applyPointer(this._pendingScrubPoint);
+        this._pendingScrubPoint = undefined;
       }
       if (ev?.pointerId != null && scrub.hasPointerCapture(ev.pointerId)) {
         scrub.releasePointerCapture(ev.pointerId);
       }
       this._syncDateToolbar();
+      this._syncYearScrubLayout();
       this._ensureSunPath();
     };
     scrub.addEventListener("pointerup", endScrub);
@@ -5780,26 +5900,48 @@ class SceneExtrapolationPanel extends HTMLElement {
     const days = daysInYear(year);
     const dayIndex = dayOfYear(iso);
     const thumbT = ((dayIndex + 0.5) / days) * 100;
-    this._yearThumb.style.left = `${thumbT}%`;
-    this._yearFill.style.width = `${thumbT}%`;
+    const vertical = this._yearScrub.classList.contains("vertical");
+    if (vertical) {
+      this._yearThumb.style.left = "";
+      this._yearThumb.style.top = `${thumbT}%`;
+      this._yearFill.style.width = "";
+      this._yearFill.style.height = `${thumbT}%`;
+    } else {
+      this._yearThumb.style.top = "";
+      this._yearThumb.style.left = `${thumbT}%`;
+      this._yearFill.style.height = "";
+      this._yearFill.style.width = `${thumbT}%`;
+    }
     this._yearScrub.setAttribute("aria-valuemin", "1");
     this._yearScrub.setAttribute("aria-valuemax", String(days));
     this._yearScrub.setAttribute("aria-valuenow", String(dayIndex + 1));
     this._yearScrub.setAttribute("aria-valuetext", iso);
+    this._yearScrub.setAttribute(
+      "aria-orientation",
+      vertical ? "vertical" : "horizontal"
+    );
     this._yearScrub.title = iso;
 
     const today = todayIso();
     if (isoYear(today) === year) {
       this._yearTodayMark.hidden = false;
-      this._yearTodayMark.style.left = `${((dayOfYear(today) + 0.5) / days) * 100}%`;
+      const todayT = ((dayOfYear(today) + 0.5) / days) * 100;
+      if (vertical) {
+        this._yearTodayMark.style.left = "";
+        this._yearTodayMark.style.top = `${todayT}%`;
+      } else {
+        this._yearTodayMark.style.top = "";
+        this._yearTodayMark.style.left = `${todayT}%`;
+      }
     } else {
       this._yearTodayMark.hidden = true;
     }
 
-    if (this._yearMonthsYear === year) {
+    if (this._yearMonthsYear === year && this._yearMonthsVertical === vertical) {
       return;
     }
     this._yearMonthsYear = year;
+    this._yearMonthsVertical = vertical;
     const locale = this._hass?.locale?.language || this._hass?.language || "en";
     this._yearMonths.replaceChildren();
     for (let month = 0; month < 12; month += 1) {
@@ -5808,17 +5950,114 @@ class SceneExtrapolationPanel extends HTMLElement {
         month: "short",
       });
       const startDay = dayOfYear(`${year}-${String(month + 1).padStart(2, "0")}-01`);
-      const left = (startDay / days) * 100;
-      label.style.left = `${left}%`;
-      if (month === 0) {
-        label.style.transform = "none";
-      } else if (month === 11) {
-        label.style.transform = "translateX(-100%)";
+      const pos = (startDay / days) * 100;
+      if (vertical) {
+        label.style.left = "0";
+        label.style.top = `${pos}%`;
+        if (month === 0) {
+          label.style.transform = "none";
+        } else if (month === 11) {
+          label.style.transform = "translateY(-100%)";
+        } else {
+          label.style.transform = "translateY(-50%)";
+        }
       } else {
-        label.style.transform = "translateX(-50%)";
+        label.style.top = "";
+        label.style.left = `${pos}%`;
+        if (month === 0) {
+          label.style.transform = "none";
+        } else if (month === 11) {
+          label.style.transform = "translateX(-100%)";
+        } else {
+          label.style.transform = "translateX(-50%)";
+        }
       }
       this._yearMonths.appendChild(label);
     }
+  }
+
+  _isLandscape() {
+    return Boolean(this._landscapeMq?.matches) ||
+      window.matchMedia("(orientation: landscape)").matches;
+  }
+
+  _sceneSidebarIsOpen() {
+    const el = this.shadowRoot?.querySelector(".scene-sidebar");
+    if (!el || el._closing) {
+      return false;
+    }
+    if (el.localName === "ha-bottom-sheet") {
+      return Boolean(el.open);
+    }
+    return el.classList.contains("open");
+  }
+
+  _syncYearScrubLayout() {
+    if (!this._yearScrub || !this._dateToolbar) {
+      return;
+    }
+    // Keep the scrub node where it is while dragging so pointer capture and
+    // axis stay stable across preview redraws.
+    if (this._yearScrubbing) {
+      return;
+    }
+    const landscape = this._isLandscape();
+    const clock =
+      this._view === "edit" &&
+      this._lightView === "clock" &&
+      Boolean(this._clockScrubRail) &&
+      Boolean(this.shadowRoot?.querySelector(".sun-light-clock-face"));
+    const hide = landscape && this._sceneSidebarIsOpen();
+    const vertical = landscape && clock && !hide;
+
+    this._yearScrub.hidden = hide;
+    this._yearScrub.classList.toggle("vertical", vertical);
+    this._sunPathStage?.classList.toggle("landscape-clock-scrub", vertical);
+
+    if (vertical) {
+      this._clockScrubRail.hidden = false;
+      if (this._yearScrub.parentNode !== this._clockScrubRail) {
+        this._clockScrubRail.appendChild(this._yearScrub);
+      }
+    } else {
+      if (this._clockScrubRail) {
+        this._clockScrubRail.hidden = true;
+        this._clockScrubRail.style.height = "";
+        this._clockScrubRail.style.marginTop = "";
+      }
+      if (this._yearScrub.parentNode !== this._dateToolbar) {
+        this._dateToolbar.appendChild(this._yearScrub);
+      }
+    }
+    this._syncYearScrub();
+    if (vertical) {
+      requestAnimationFrame(() => this._alignYearScrubRail());
+    }
+  }
+
+  _alignYearScrubRail() {
+    if (
+      !this._clockScrubRail ||
+      this._clockScrubRail.hidden ||
+      !this._yearScrub?.classList.contains("vertical")
+    ) {
+      return;
+    }
+    const face = this.shadowRoot?.querySelector(".sun-light-clock-face");
+    const body = this._sunPathBodyEl;
+    if (!face || !body) {
+      return;
+    }
+    const faceRect = face.getBoundingClientRect();
+    const bodyRect = body.getBoundingClientRect();
+    if (!faceRect.height) {
+      return;
+    }
+    this._clockScrubRail.style.height = `${faceRect.height}px`;
+    this._clockScrubRail.style.marginTop = `${Math.max(
+      0,
+      faceRect.top - bodyRect.top
+    )}px`;
   }
 
   _drawSunPath() {
@@ -6032,7 +6271,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._dateToolbar = this._buildDateToolbar();
       }
       if (this._dateToolbar.parentNode !== this._sunPathEl) {
-        this._sunPathEl.insertBefore(this._dateToolbar, this._sunPathBodyEl);
+        const before = this._sunPathStage || this._sunPathBodyEl;
+        this._sunPathEl.insertBefore(this._dateToolbar, before);
       }
       if (this._yearScrubbing) {
         this._syncYearScrub();
@@ -6060,6 +6300,9 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     this._sunPathEl.hidden = false;
     this._sunPathBodyEl.replaceChildren(...children);
+    if (this._view === "edit") {
+      this._syncYearScrubLayout();
+    }
     this._fillHoverReadout(
       this._sunPath.today ? nowSecondsSinceMidnight() : null,
       { hovering: false }
