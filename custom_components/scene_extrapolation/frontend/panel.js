@@ -307,9 +307,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-direction: row;
           align-items: flex-start;
           justify-content: center;
-          gap: 10px;
+          /* 3× the original 10px clock↔timeline gap. */
+          gap: 30px;
           width: 100%;
           box-sizing: border-box;
+          transition: gap ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .sun-path-stage.landscape-clock-scrub.scrub-collapsed {
+          gap: 0;
         }
         .sun-path-stage.landscape-clock-scrub .sun-path-body {
           flex: 1 1 auto;
@@ -319,10 +324,22 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: none;
           flex: 0 0 auto;
           width: 52px;
+          min-width: 0;
+          overflow: hidden;
+          opacity: 1;
           box-sizing: border-box;
+          /* Match sidebar dock so collapsing the rail does not jag the open. */
+          transition:
+            width ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
+            opacity ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         }
         .sun-path-stage.landscape-clock-scrub .sun-year-scrub-rail {
           display: block;
+        }
+        .sun-path-stage.landscape-clock-scrub.scrub-collapsed .sun-year-scrub-rail {
+          width: 0;
+          opacity: 0;
+          pointer-events: none;
         }
         .sun-toolbar {
           display: flex;
@@ -6010,19 +6027,27 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._lightView === "clock" &&
       Boolean(this._clockScrubRail) &&
       Boolean(this.shadowRoot?.querySelector(".sun-light-clock-face"));
-    const hide = landscape && this._sceneSidebarIsOpen();
-    const vertical = landscape && clock && !hide;
+    const sidebarOpen = this._sceneSidebarIsOpen();
+    const landscapeClock = landscape && clock;
+    // Collapse the rail (animated width) instead of yanking it out — that
+    // fought the sidebar/page-gutter transition and looked jagged.
+    const collapse = landscapeClock && sidebarOpen;
+    const hideToolbarScrub = landscape && sidebarOpen && !clock;
 
-    this._yearScrub.hidden = hide;
-    this._yearScrub.classList.toggle("vertical", vertical);
-    this._sunPathStage?.classList.toggle("landscape-clock-scrub", vertical);
+    this._yearScrub.classList.toggle("vertical", landscapeClock);
+    this._sunPathStage?.classList.toggle("landscape-clock-scrub", landscapeClock);
+    this._sunPathStage?.classList.toggle("scrub-collapsed", collapse);
+    this._yearScrub.setAttribute("aria-hidden", collapse || hideToolbarScrub ? "true" : "false");
 
-    if (vertical) {
+    if (landscapeClock) {
       this._clockScrubRail.hidden = false;
+      // Stay in the rail while collapsed so width can animate; do not use hidden.
+      this._yearScrub.hidden = false;
       if (this._yearScrub.parentNode !== this._clockScrubRail) {
         this._clockScrubRail.appendChild(this._yearScrub);
       }
     } else {
+      this._sunPathStage?.classList.remove("scrub-collapsed");
       if (this._clockScrubRail) {
         this._clockScrubRail.hidden = true;
         this._clockScrubRail.style.height = "";
@@ -6031,9 +6056,11 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (this._yearScrub.parentNode !== this._dateToolbar) {
         this._dateToolbar.appendChild(this._yearScrub);
       }
+      this._yearScrub.hidden = hideToolbarScrub;
+      this._yearScrub.classList.remove("vertical");
     }
     this._syncYearScrub();
-    if (vertical) {
+    if (landscapeClock) {
       requestAnimationFrame(() => this._alignYearScrubRail());
     }
   }
@@ -6042,7 +6069,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (
       !this._clockScrubRail ||
       this._clockScrubRail.hidden ||
-      !this._yearScrub?.classList.contains("vertical")
+      !this._sunPathStage?.classList.contains("landscape-clock-scrub")
     ) {
       return;
     }

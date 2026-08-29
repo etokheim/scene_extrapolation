@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light-edit sidebar uses a Huemane-style hue/temperature wheel: pin for the selected scene, dots for the others, and a sampled line for the extrapolation path between them
 - Search in the preview-location dialog jumps the map pin
 - Year-long scrubber under the preview date to drag between days
-- On landscape devices the year scrubber sits vertically beside the clock (portrait keeps it under the date row); it hides while a sidebar is open in landscape
+- On landscape devices the year scrubber sits vertically beside the clock (30px gap; portrait keeps it under the date row); opening a sidebar collapses the rail with a width animation matched to the dock
 - Hover a sun or light graph to inspect time and sun elevation in a fixed readout (cursor line; today’s “now” line stays)
 - Preview another latitude/longitude on create/edit (quiet map pin until active, then a banner)
 - Create / rename / delete a native scene from the solar-event picker; an X clears the assignment. Create fills the area’s lights with brightness and color for that event
