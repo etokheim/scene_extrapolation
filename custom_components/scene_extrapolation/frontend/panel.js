@@ -14,9 +14,12 @@ const CLOCK_CX = 100;
 const CLOCK_CY = 100;
 const CLOCK_RINGS_OUTER = 72;
 const CLOCK_SUN_HORIZON = CLOCK_RINGS_OUTER;
-const CLOCK_SUN_DAY_MAX = 94;
+/* Day height is exaggerated so noon sits clearly outside the planet rim
+   (not a linear °→px map). Night stays inside the face. */
+const CLOCK_SUN_DAY_EMPHASIS = 2;
+const CLOCK_SUN_DAY_BASE_SPAN = 22;
 const CLOCK_SUN_NIGHT_MIN = 40;
-const CLOCK_EVENT_ICON_R = 52;
+const CLOCK_EVENT_ICON_R = 56;
 const SIDEBAR_ANIMATION_MS = 200;
 const SIDEBAR_SWAP_MS = 160;
 const LIGHT_BAR_HEIGHT = 108;
@@ -471,18 +474,27 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
           stroke: ${SUN_LINE_DAY};
-          stroke-width: 2.25;
+          stroke-width: 3;
           stroke-linejoin: round;
           stroke-linecap: round;
         }
         .sun-light-clock-overlay .clock-sun-night {
           fill: none;
           stroke: color-mix(in srgb, ${SUN_LINE_NIGHT} 55%, white);
-          stroke-width: 1.75;
+          stroke-width: 2;
           stroke-dasharray: 3.5 3;
           stroke-linejoin: round;
           stroke-linecap: round;
           opacity: 0.9;
+        }
+        .clock-sun-marker {
+          position: absolute;
+          transform: translate(-50%, -50%);
+          --mdc-icon-size: 22px;
+          color: ${SUN_LINE_DAY};
+          filter: drop-shadow(0 0 3px color-mix(in srgb, ${SUN_LINE_DAY} 80%, transparent));
+          pointer-events: none;
+          z-index: 6;
         }
         .sun-light-clock-overlay .clock-tick {
           stroke: var(--divider-color);
@@ -5999,7 +6011,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     return null;
   }
 
-  _paintClockSunPath(overlay, cx, cy) {
+  _paintClockSunPath(overlay, face, cx, cy) {
     const curve = this._sunPath?.curve;
     if (!curve?.length) {
       return;
@@ -6011,7 +6023,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (elevation >= 0) {
         return (
           CLOCK_SUN_HORIZON +
-          Math.min(1, t) * (CLOCK_SUN_DAY_MAX - CLOCK_SUN_HORIZON)
+          Math.min(1, t) * CLOCK_SUN_DAY_BASE_SPAN * CLOCK_SUN_DAY_EMPHASIS
         );
       }
       return (
@@ -6019,14 +6031,20 @@ class SceneExtrapolationPanel extends HTMLElement {
         Math.max(-1, t) * (CLOCK_SUN_HORIZON - CLOCK_SUN_NIGHT_MIN)
       );
     };
-    const point = (seconds, elevation) => {
+    const xyOf = (seconds, elevation) => {
       const deg = this._clockAngleDeg(seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
       const r = rOf(elevation);
-      return `${(cx + Math.cos(rad) * r).toFixed(2)},${(
-        cy +
-        Math.sin(rad) * r
-      ).toFixed(2)}`;
+      return {
+        x: cx + Math.cos(rad) * r,
+        y: cy + Math.sin(rad) * r,
+        r,
+        rad,
+      };
+    };
+    const point = (seconds, elevation) => {
+      const { x, y } = xyOf(seconds, elevation);
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
     };
 
     const horizon = document.createElementNS(
@@ -6053,6 +6071,22 @@ class SceneExtrapolationPanel extends HTMLElement {
       path.setAttribute("d", segment.d);
       overlay.appendChild(path);
     }
+
+    // Sun marker at “this time of day” on the preview date’s curve.
+    const nowSeconds = nowSecondsSinceMidnight();
+    const elev = interpolateElevation(curve, nowSeconds);
+    const pos = xyOf(nowSeconds, elev);
+    const marker = document.createElement("ha-icon");
+    marker.className = "clock-sun-marker";
+    marker.setAttribute("icon", "mdi:weather-sunny");
+    marker.setAttribute(
+      "aria-label",
+      `Sun ${elev >= 0 ? "above" : "below"} horizon`
+    );
+    // viewBox units → % of face (half of viewBox = 50%).
+    marker.style.left = `${(pos.x / CLOCK_VIEW) * 100}%`;
+    marker.style.top = `${(pos.y / CLOCK_VIEW) * 100}%`;
+    face.appendChild(marker);
   }
 
   _bindClockHover(face, hoverRay) {
@@ -6242,7 +6276,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         overlay.appendChild(label);
       }
     }
-    this._paintClockSunPath(overlay, cx, cy);
+    this._paintClockSunPath(overlay, face, cx, cy);
     const hoverRay = document.createElementNS(
       "http://www.w3.org/2000/svg",
       "line"

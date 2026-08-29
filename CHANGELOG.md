@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clock ring seams overlap more when blurred so gaps stay lit instead of dark
 - Soft glow behind the light clock: blurred outer-ring conic (not a copy of every ring)
 - Clock view wraps sun elevation around the rim (solid above the horizon, dashed over the face below); the linear sun chart is hidden in that mode
+- Clock sun path exaggerates daytime height, uses 3px day / 2px night strokes, and marks the current sun position with a sunny icon
 - Clock view hides the top solar-event chips (rim icons replace them); unassigned rim controls are wide warning pills labeled “Choose scene”
 - Light-edit sidebar brightness graph above the color wheel: drag a solar-event point to change that scene’s brightness; events where the lamp is missing show `+` to add it
 
