@@ -29,13 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unsaved editor changes persist in this browser; returning to the scene restores them with a banner and a Discard action
 - A light missing from some scenes is an Add button; it copies the typical brightness and color of the other lights already in that scene
 - Suggested rows for area lights that are not in any assigned scene; scene lights outside the selected area use the warning color
-- Toggle the light graphs between stacked bands and concentric 24-hour clock rings (midnight at the top), with a now-hand and clickable solar-event icons on the rim
+- Toggle the light graphs between stacked bands and concentric 24-hour clock rings (midnight at the top), with clickable solar-event icons on the rim
 - Clock face fills the editor width up to 80vh, soft ring seams sharpen on hover, and the open light-edit lamp is highlighted
 - Clock ring seams overlap more when blurred so gaps stay lit instead of dark
 - Soft glow behind the light clock: blurred sky disc from solar elevation (not lamp conics)
 - Clock view wraps sun elevation around the rim (solid above the horizon, dashed over the face below; no dashed horizon circle); the linear sun chart is hidden in that mode
 - Clock sun path exaggerates daytime height, uses 0.5px day / 0.25px night strokes (`non-scaling-stroke`), and marks the sun with a CSS disc+flare (behind the planet below the horizon) that follows hover time
 - Clock hour labels sit outside the tick marks at 8px
+- Clock has no now-hand or hover ray; hover eases the sun to the pointer then tracks it
 - Clock view hides the top solar-event chips (rim icons replace them); unassigned rim controls are wide warning pills labeled “Choose scene”
 - Light-edit sidebar brightness graph above the color wheel: drag a solar-event point to change that scene’s brightness; events where the lamp is missing show `+` to add it
 
