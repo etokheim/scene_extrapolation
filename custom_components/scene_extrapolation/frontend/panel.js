@@ -485,7 +485,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* CSS sun + lens flare; --sun-* set from elevation.
            z-index below rings so night sits behind the planet; day sits
-           outside the rings host and stays visible (rim clips at sunrise). */
+           outside the rings host and stays visible (rim clips at sunrise).
+           left/top ease on hover enter/leave; .clock-sun-live drops that
+           so scrubbing tracks the pointer without lag. */
         .clock-sun {
           position: absolute;
           width: 52px;
@@ -499,6 +501,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           --sun-streak-opacity: 0.85;
           --sun-ray-opacity: 0.55;
           --sun-ghost-opacity: 0.35;
+          transition:
+            left 320ms cubic-bezier(0.2, 0, 0, 1),
+            top 320ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .clock-sun.clock-sun-live {
+          transition: none;
         }
         .clock-sun > span {
           position: absolute;
@@ -581,23 +589,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-variant-numeric: tabular-nums;
           text-anchor: middle;
           dominant-baseline: middle;
-        }
-        .sun-light-clock-overlay .clock-hand {
-          stroke: var(--primary-color);
-          stroke-width: 2.5;
-          stroke-linecap: round;
-        }
-        .sun-light-clock-overlay .clock-hand-hub {
-          fill: var(--primary-color);
-        }
-        .sun-light-clock-overlay .clock-hover-ray {
-          stroke: var(--primary-text-color);
-          stroke-width: 1.5;
-          stroke-opacity: 0.55;
-          display: none;
-        }
-        .sun-light-clock-face[data-hovering] .clock-hover-ray {
-          display: block;
         }
         .clock-event {
           position: absolute;
@@ -6187,14 +6178,26 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._applyClockSunAppearance(nowSecondsSinceMidnight());
   }
 
-  _bindClockHover(face, hoverRay) {
+  _bindClockHover(face) {
+    const SUN_INTRO_MS = 320;
     const apply = (seconds) => {
+      const starting = !face.hasAttribute("data-hovering");
       this._hoverSeconds = seconds;
-      const deg = this._clockAngleDeg(seconds);
-      hoverRay.setAttribute("transform", `rotate(${deg.toFixed(2)} 100 100)`);
       face.setAttribute("data-hovering", "");
       if (this._hoverLine) {
         this._hoverLine.style.display = "none";
+      }
+      const sun = this._clockSunEl;
+      if (starting && sun) {
+        // Animate from “now” to the pointer, then track live without lag.
+        sun.classList.remove("clock-sun-live");
+        if (this._clockSunLiveTimer) {
+          window.clearTimeout(this._clockSunLiveTimer);
+        }
+        this._clockSunLiveTimer = window.setTimeout(() => {
+          this._clockSunLiveTimer = undefined;
+          sun.classList.add("clock-sun-live");
+        }, SUN_INTRO_MS);
       }
       this._applyClockSunAppearance(seconds);
       this._fillHoverReadout(seconds, { hovering: true });
@@ -6205,6 +6208,11 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (this._hoverLine) {
         this._hoverLine.style.display = "";
       }
+      if (this._clockSunLiveTimer) {
+        window.clearTimeout(this._clockSunLiveTimer);
+        this._clockSunLiveTimer = undefined;
+      }
+      this._clockSunEl?.classList.remove("clock-sun-live");
       this._applyClockSunAppearance(nowSecondsSinceMidnight());
       this._fillHoverReadout(
         this._sunPath?.today ? nowSecondsSinceMidnight() : null,
@@ -6372,41 +6380,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     }
     this._paintClockSunPath(overlay, face, cx, cy);
-    const hoverRay = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "line"
-    );
-    hoverRay.setAttribute("class", "clock-hover-ray");
-    hoverRay.setAttribute("x1", String(cx));
-    hoverRay.setAttribute("y1", String(cy));
-    hoverRay.setAttribute("x2", String(cx));
-    hoverRay.setAttribute("y2", String(cy - tickOuter));
-    overlay.appendChild(hoverRay);
-    if (this._sunPath.today) {
-      const nowSeconds = nowSecondsSinceMidnight();
-      const hand = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "line"
-      );
-      hand.setAttribute("class", "clock-hand");
-      hand.setAttribute("x1", String(cx));
-      hand.setAttribute("y1", String(cy));
-      hand.setAttribute("x2", String(cx));
-      hand.setAttribute("y2", String(cy - (tickInnerMajor - 4)));
-      hand.setAttribute(
-        "transform",
-        `rotate(${this._clockAngleDeg(nowSeconds).toFixed(2)} ${cx} ${cy})`
-      );
-      const hub = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle"
-      );
-      hub.setAttribute("class", "clock-hand-hub");
-      hub.setAttribute("cx", String(cx));
-      hub.setAttribute("cy", String(cy));
-      hub.setAttribute("r", "3.5");
-      overlay.append(hand, hub);
-    }
     face.appendChild(overlay);
 
     const editable = this._view === "edit";
@@ -6459,7 +6432,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       face.appendChild(btn);
     }
 
-    this._bindClockHover(face, hoverRay);
+    this._bindClockHover(face);
     wrap.appendChild(face);
 
     const legend = document.createElement("div");
