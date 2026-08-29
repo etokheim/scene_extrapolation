@@ -8,23 +8,24 @@ const PLOT_LEFT = 16;
 const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
-/* Solar Dial viewBox 200×200: path near the face edge (10% inset), ticks and
-   hour labels inside the path, floating rings opposite the handle. */
+/* Solar Dial viewBox 200×200: outer watch-face container, sun path inside it,
+   ticks/labels on the container, floating rings opposite the handle. */
 const CLOCK_VIEW = 200;
 const CLOCK_CX = 100;
 const CLOCK_CY = 100;
-/* Face fills the viewBox; path is 10% smaller so event icons can sit on it. */
-const CLOCK_FACE_R = 100;
-const CLOCK_SUN_PATH_R = CLOCK_FACE_R * 0.9;
-/* Ticks grow inward from the path; labels sit just inside the major strokes. */
-const CLOCK_TICK_OUTER = CLOCK_SUN_PATH_R;
-const CLOCK_TICK_INNER_MAJOR = CLOCK_SUN_PATH_R - 9;
-const CLOCK_TICK_INNER_MINOR = CLOCK_SUN_PATH_R - 5;
+/* Container fills the square (inset so the stroke stays on-canvas). */
+const CLOCK_FACE_R = 96;
+/* Sun path is 25% smaller than the watch-face container. */
+const CLOCK_SUN_PATH_R = CLOCK_FACE_R * 0.75;
+/* Ticks grow inward from the container; labels sit inside those strokes. */
+const CLOCK_TICK_OUTER = CLOCK_FACE_R;
+const CLOCK_TICK_INNER_MAJOR = CLOCK_FACE_R - 9;
+const CLOCK_TICK_INNER_MINOR = CLOCK_FACE_R - 5;
 const CLOCK_LABEL_R = CLOCK_TICK_INNER_MAJOR - 5;
 /* Floating rings stay strictly inside the path: offset+radius+gap < path R. */
-const CLOCK_FLOAT_OFFSET = 36;
-const CLOCK_FLOAT_R = 28;
-const CLOCK_FLOAT_GAP = 16; // 36+28+16 = 80 < 90
+const CLOCK_FLOAT_OFFSET = 28;
+const CLOCK_FLOAT_R = 22;
+const CLOCK_FLOAT_GAP = 12; // 28+22+12 = 62 < 72
 const CLOCK_SCRUB_RAIL_PX = 88;
 /* Sun disc size as % of the face (≈52px on a 500px face); 2× near horizon. */
 const CLOCK_SUN_SIZE_PCT = 8.5;
@@ -749,8 +750,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: absolute;
           left: 50%;
           top: 50%;
-          width: ${((CLOCK_SUN_PATH_R * 2) / CLOCK_VIEW) * 100}%;
-          height: ${((CLOCK_SUN_PATH_R * 2) / CLOCK_VIEW) * 100}%;
+          width: ${((CLOCK_FACE_R * 2) / CLOCK_VIEW) * 100}%;
+          height: ${((CLOCK_FACE_R * 2) / CLOCK_VIEW) * 100}%;
           transform: translate(-50%, -50%) scale(1.2);
           border-radius: 50%;
           pointer-events: none;
@@ -929,6 +930,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           stroke-width: 1px;
           vector-effect: non-scaling-stroke;
           opacity: 0.45;
+        }
+        .sun-light-clock-overlay .clock-face-ring {
+          fill: none;
+          stroke: var(--secondary-text-color);
+          stroke-width: 1.75px;
+          vector-effect: non-scaling-stroke;
+          opacity: 0.55;
         }
         .sun-light-clock-overlay .clock-sun-path {
           fill: none;
@@ -7093,7 +7101,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
   }
 
-  _clockWedgePath(fromSeconds, toSeconds, radius = CLOCK_SUN_PATH_R) {
+  _clockWedgePath(fromSeconds, toSeconds, radius = CLOCK_FACE_R) {
     let span =
       (((toSeconds - fromSeconds) % SECONDS_PER_DAY) + SECONDS_PER_DAY) %
       SECONDS_PER_DAY;
@@ -7232,7 +7240,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     day.setAttribute("class", "clock-sky-day");
     day.setAttribute("cx", String(CLOCK_CX));
     day.setAttribute("cy", String(CLOCK_CY));
-    day.setAttribute("r", String(CLOCK_SUN_PATH_R));
+    day.setAttribute("r", String(CLOCK_FACE_R));
     overlay.appendChild(day);
 
     const sunrise = this._clockEventSeconds(events, "sunrise");
@@ -7275,6 +7283,16 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _paintClockSunPath(overlay, host) {
+    const faceRing = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle"
+    );
+    faceRing.setAttribute("class", "clock-face-ring");
+    faceRing.setAttribute("cx", String(CLOCK_CX));
+    faceRing.setAttribute("cy", String(CLOCK_CY));
+    faceRing.setAttribute("r", String(CLOCK_FACE_R));
+    overlay.appendChild(faceRing);
+
     const path = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     path.setAttribute("class", "clock-sun-path");
     path.setAttribute("cx", String(CLOCK_CX));
