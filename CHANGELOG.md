@@ -33,10 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Toggle the light graphs between stacked bands and concentric 24-hour clock rings (midnight at the top), with a now-hand and clickable solar-event icons on the rim
 - Clock face fills the editor width up to 80vh, soft ring seams sharpen on hover, and the open light-edit lamp is highlighted
 - Clock ring seams overlap more when blurred so gaps stay lit instead of dark
+- Soft glow behind the light clock (same treatment as the color wheel)
 - Light-edit sidebar brightness graph above the color wheel: drag a solar-event point to change that scene’s brightness; events where the lamp is missing show `+` to add it
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
+- Stacked light bands brighten on hover and glow when selected; each band’s opaque strip is its own click target
+- Light graph view mode is read from localStorage before the first paint so refresh keeps the matching layout
 - Panel uses Home Assistant’s `ha-top-app-bar-fixed` (header outside the scroll container)
 - Light preview draws one color band per lamp (not a strip of bars); names sit on the chart
 - Create/save use a sticky native HA button (New extrapolation scene / Save) instead of inline form actions
@@ -65,6 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🚨 `scene_extrapolation.turn_on` replaces `transition_modifier` (−100…100 time shift) with `transition_percent` (0–100 along the day: dawn 0, sunrise 25, noon 50, sunset 75, dusk 100). Scene entities expose `transition_percent` and `transition_percent_manual` instead of `transition_modifier`
 
 ### Fixed
+- Stacked light band clicks always opened the first lamp (pass-through hit the top row); opaque hit layers fix it
+- After refresh, the light view toggle showed clock while the stacked table still rendered
 - Clicking a light row did not open the closest scene (SVG painted-hit testing ate the click; 44px dot hitboxes covered the band)
 - First hover on a light-edit dot used a smaller hit than later ones (the next row’s overlap sat on the lower half)
 - Transition progress went negative at exact solar event times, which broke winter-date previews

@@ -372,18 +372,37 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex: 0 0 auto;
           touch-action: none;
           cursor: crosshair;
+          overflow: visible;
         }
         @property --clock-feather {
           syntax: "<percentage>";
           inherits: true;
           initial-value: ${CLOCK_FEATHER_PCT}%;
         }
+        /* Same idea as .hue-wheel-glow: blurred, scaled copy behind the face. */
+        .sun-light-clock-glow {
+          position: absolute;
+          inset: 14%;
+          border-radius: 50%;
+          pointer-events: none;
+          z-index: 0;
+          transform: scale(1.1);
+          transform-origin: center center;
+          filter: blur(54px) saturate(1.45);
+          opacity: 0.55;
+        }
+        .sun-light-clock-glow .clock-ring {
+          pointer-events: none;
+          cursor: default;
+        }
         .sun-light-clock-rings {
           position: absolute;
           inset: 14%;
           border-radius: 50%;
+          z-index: 1;
           --clock-feather: ${CLOCK_FEATHER_PCT}%;
           transition: --clock-feather 220ms cubic-bezier(0.2, 0, 0, 1);
+          cursor: pointer;
         }
         .sun-light-clock-rings:hover {
           --clock-feather: 0.2%;
@@ -392,8 +411,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: absolute;
           inset: 0;
           border-radius: 50%;
-          pointer-events: auto;
-          cursor: pointer;
+          /* Masked rings still fill the square for hit-testing; open via
+             radial pick on the host instead of per-ring clicks. */
+          pointer-events: none;
           transition: filter 180ms cubic-bezier(0.2, 0, 0, 1);
         }
         .clock-ring.selected {
@@ -637,51 +657,70 @@ class SceneExtrapolationPanel extends HTMLElement {
         .light-row:first-child {
           margin-top: 0;
         }
-        /* Hovered row paints above the next row’s fade. Hits no longer
-           need this: the incoming edge does not capture pointers. */
+        /* Hovered / selected row paints above the next row’s fade. */
         .light-row:hover {
           z-index: 2;
+        }
+        .light-row.selected {
+          z-index: 3;
         }
         .light-bar {
           position: relative;
           height: ${LIGHT_BAR_HEIGHT}px;
           cursor: pointer;
-          /* Overlap strip is pointer-events none so the row below keeps
-             its full 40px dot hit. A later sibling used to cover the
-             bottom half until this row was already :hover. */
+          /* Bar itself does not capture: the feathered top must stay
+             pass-through so the previous row’s pencil hit stays usable.
+             .light-bar-hit covers only the opaque strip. */
           pointer-events: none;
+          transition: filter 180ms cubic-bezier(0.2, 0, 0, 1);
         }
-        .light-bar::after {
-          content: "";
+        .light-bar-hit {
           position: absolute;
           left: 0;
           right: 0;
+          top: ${LIGHT_FEATHER_PX}px;
           bottom: 0;
-          height: ${LIGHT_BAR_EDGE_HEIGHT}px;
+          z-index: 1;
           pointer-events: auto;
+          cursor: pointer;
         }
         /* First row has no incoming overlap to hide, so it is one feather
            shorter. Last row stays full height so its visible band matches
            the others. */
         .light-row:first-child .light-bar {
           height: ${LIGHT_BAR_EDGE_HEIGHT}px;
-          pointer-events: auto;
         }
-        .light-row:first-child .light-bar::after,
-        .light-row:only-child .light-bar::after {
-          display: none;
+        .light-row:first-child .light-bar-hit,
+        .light-row:only-child .light-bar-hit {
+          top: 0;
         }
         .light-row:only-child .light-bar {
           height: ${LIGHT_BAR_HEIGHT}px;
-          pointer-events: auto;
+        }
+        .light-row:not(.suggested):hover .light-bar {
+          filter: brightness(1.12);
+        }
+        .light-row.selected:not(.suggested) .light-bar {
+          filter: brightness(1.06)
+            drop-shadow(0 0 2px var(--primary-color))
+            drop-shadow(
+              0 0 8px color-mix(in srgb, var(--primary-color) 55%, transparent)
+            );
+        }
+        .light-row.selected:not(.suggested):hover .light-bar {
+          filter: brightness(1.12)
+            drop-shadow(0 0 2px var(--primary-color))
+            drop-shadow(
+              0 0 8px color-mix(in srgb, var(--primary-color) 55%, transparent)
+            );
         }
         .light-bar svg {
           display: block;
           width: 100%;
           height: 100%;
           /* SVG default pointer-events is visiblePainted, so the masked
-             incoming edge and unpainted gutters ate row clicks. The bar
-             is the hit target. */
+             incoming edge and unpainted gutters ate row clicks. The hit
+             layer is the band target. */
           pointer-events: none;
           /* Fade only the incoming top over an opaque previous row. Hover
              shortens the fade; the opaque start stays at 36px so the
@@ -757,7 +796,7 @@ class SceneExtrapolationPanel extends HTMLElement {
             var(--card-background-color)
           );
         }
-        .light-row.suggested .light-bar::after {
+        .light-row.suggested .light-bar-hit {
           display: none;
         }
         .light-row.suggested .light-name {
@@ -3097,6 +3136,15 @@ class SceneExtrapolationPanel extends HTMLElement {
       ".clock-legend-row[data-entity-id]"
     )) {
       row.classList.toggle("selected", row.dataset.entityId === selected);
+    }
+    for (const row of root.querySelectorAll(".light-row[data-entity-id]")) {
+      const on = row.dataset.entityId === selected;
+      row.classList.toggle("selected", on);
+      if (on) {
+        row.setAttribute("aria-current", "true");
+      } else {
+        row.removeAttribute("aria-current");
+      }
     }
   }
 
@@ -5666,6 +5714,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     hoverLine.className = "sun-hover-line";
     this._hoverLine = hoverLine;
     plots.append(chart, hours);
+    // Read before painting lights: toolbar build (below) also syncs the
+    // toggle, but the graphs must use storage on the first paint or the
+    // highlight and the rendered view disagree after refresh.
+    if (this._view === "edit" && !this._dateToolbar) {
+      this._lightView = this._readLightView();
+    }
     const useClock = this._view === "edit" && this._lightView === "clock";
     let clockEl = null;
     if (this._view === "edit") {
@@ -5834,6 +5888,34 @@ class SceneExtrapolationPanel extends HTMLElement {
     return (seconds / SECONDS_PER_DAY) * 360;
   }
 
+  _lightAtClockPointer(ev, face, ringLights) {
+    if (!ringLights.length) {
+      return null;
+    }
+    const rect = face.getBoundingClientRect();
+    const size = Math.min(rect.width, rect.height);
+    // ringsHost is inset 14% on the face → radius is 36% of the face.
+    const ringsRadius = size * 0.36;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const r = Math.hypot(ev.clientX - cx, ev.clientY - cy);
+    if (r > ringsRadius || ringsRadius <= 0) {
+      return null;
+    }
+    const pct = (r / ringsRadius) * 100;
+    const n = ringLights.length;
+    const hole = 20;
+    const stroke = (100 - hole) / n;
+    for (let index = 0; index < n; index += 1) {
+      const midOuter = 100 - index * stroke;
+      const midInner = Math.max(hole, midOuter - stroke);
+      if (pct <= midOuter && pct >= midInner) {
+        return ringLights[index];
+      }
+    }
+    return null;
+  }
+
   _bindClockHover(face, hoverRay) {
     const apply = (seconds) => {
       this._hoverSeconds = seconds;
@@ -5898,6 +5980,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       "24-hour light rings; midnight at the top"
     );
 
+    const glowHost = document.createElement("div");
+    glowHost.className = "sun-light-clock-glow";
+    glowHost.setAttribute("aria-hidden", "true");
     const ringsHost = document.createElement("div");
     ringsHost.className = "sun-light-clock-rings";
     const n = ringLights.length;
@@ -5913,6 +5998,16 @@ class SceneExtrapolationPanel extends HTMLElement {
       const midInner = Math.max(hole, midOuter - stroke);
       const outer = Math.min(100, midOuter + overlap);
       const inner = Math.max(0, midInner - overlap);
+      const mask = `radial-gradient(farthest-side, transparent calc(${inner}% - var(--clock-feather)), #000 calc(${inner}% + var(--clock-feather)), #000 calc(${outer}% - var(--clock-feather)), transparent calc(${outer}% + var(--clock-feather)))`;
+      const bg = conicGradientFromSamples(light.samples || []);
+
+      const glowRing = document.createElement("div");
+      glowRing.className = "clock-ring";
+      glowRing.style.background = bg;
+      glowRing.style.webkitMaskImage = mask;
+      glowRing.style.maskImage = mask;
+      glowHost.appendChild(glowRing);
+
       const ring = document.createElement("div");
       ring.className = "clock-ring";
       ring.dataset.entityId = light.entity_id;
@@ -5920,41 +6015,52 @@ class SceneExtrapolationPanel extends HTMLElement {
         ring.classList.add("selected");
         ring.setAttribute("aria-current", "true");
       }
-      ring.style.background = conicGradientFromSamples(light.samples || []);
+      ring.style.background = bg;
       // Soft radial edges so rings blend like the stacked table; --clock-feather
       // shrinks on hover to sharpen the seams.
-      ring.style.webkitMaskImage = `radial-gradient(farthest-side, transparent calc(${inner}% - var(--clock-feather)), #000 calc(${inner}% + var(--clock-feather)), #000 calc(${outer}% - var(--clock-feather)), transparent calc(${outer}% + var(--clock-feather)))`;
-      ring.style.maskImage = ring.style.webkitMaskImage;
+      ring.style.webkitMaskImage = mask;
+      ring.style.maskImage = mask;
       ring.title = light.name;
-      ring.setAttribute("role", "button");
-      ring.tabIndex = 0;
-      ring.setAttribute("aria-label", `Edit ${light.name}`);
-      const openAt = (ev) => {
-        ev.stopPropagation();
-        const assigned = events.filter((item) => this._eventSceneId(item.id));
-        if (!assigned.length) {
-          return;
-        }
-        const seconds =
-          ev.clientX != null
-            ? this._secondsFromClockPointer(ev, face)
-            : this._hoverSeconds ??
-              (this._sunPath?.today ? nowSecondsSinceMidnight() : SECONDS_PER_DAY / 2);
-        const closest = this._closestEvent(assigned, seconds);
-        if (closest) {
-          this._openLightEditDialog(light, closest);
-        }
-      };
-      ring.addEventListener("click", openAt);
-      ring.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter" || ev.key === " ") {
-          ev.preventDefault();
-          openAt(ev);
-        }
-      });
       ringsHost.appendChild(ring);
     }
-    face.appendChild(ringsHost);
+    const openRingAt = (ev, light) => {
+      if (!light) {
+        return;
+      }
+      ev.stopPropagation();
+      const assigned = events.filter((item) => this._eventSceneId(item.id));
+      if (!assigned.length) {
+        return;
+      }
+      const seconds =
+        ev.clientX != null
+          ? this._secondsFromClockPointer(ev, face)
+          : this._hoverSeconds ??
+            (this._sunPath?.today
+              ? nowSecondsSinceMidnight()
+              : SECONDS_PER_DAY / 2);
+      const closest = this._closestEvent(assigned, seconds);
+      if (closest) {
+        this._openLightEditDialog(light, closest);
+      }
+    };
+    ringsHost.addEventListener("click", (ev) => {
+      openRingAt(ev, this._lightAtClockPointer(ev, face, ringLights));
+    });
+    ringsHost.tabIndex = 0;
+    ringsHost.setAttribute("role", "listbox");
+    ringsHost.setAttribute("aria-label", "Light rings");
+    ringsHost.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" && ev.key !== " ") {
+        return;
+      }
+      ev.preventDefault();
+      const selected =
+        ringLights.find((light) => light.entity_id === this._sidebarLightId) ||
+        ringLights[0];
+      openRingAt(ev, selected);
+    });
+    face.append(glowHost, ringsHost);
 
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("class", "sun-light-clock-overlay");
@@ -6182,11 +6288,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     const suggested = Boolean(light.suggested);
     const row = document.createElement("div");
     row.className = "light-row";
+    row.dataset.entityId = light.entity_id;
     if (suggested) {
       row.classList.add("suggested");
     }
     if (light.in_area === false) {
       row.classList.add("out-of-area");
+    }
+    if (!suggested && light.entity_id === this._sidebarLightId) {
+      row.classList.add("selected");
+      row.setAttribute("aria-current", "true");
     }
 
     const bar = document.createElement("div");
@@ -6223,15 +6334,46 @@ class SceneExtrapolationPanel extends HTMLElement {
     bar.appendChild(name);
     if (this._view === "edit" && !suggested) {
       const assigned = events.filter((item) => this._eventSceneId(item.id));
+      const hit = document.createElement("div");
+      hit.className = "light-bar-hit";
+      hit.setAttribute("role", "button");
+      hit.tabIndex = 0;
+      hit.setAttribute("aria-label", `Edit ${light.name}`);
+      const openClosest = (ev) => {
+        ev.stopPropagation();
+        const seconds = this._secondsFromElementPointer(ev, bar);
+        const closest = this._closestEvent(assigned, seconds);
+        if (closest) {
+          this._openLightEditDialog(light, closest);
+        }
+      };
+      hit.addEventListener("click", openClosest);
+      hit.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter" && ev.key !== " ") {
+          return;
+        }
+        ev.preventDefault();
+        ev.stopPropagation();
+        const seconds =
+          this._hoverSeconds ??
+          (this._sunPath?.today
+            ? nowSecondsSinceMidnight()
+            : SECONDS_PER_DAY / 2);
+        const closest = this._closestEvent(assigned, seconds);
+        if (closest) {
+          this._openLightEditDialog(light, closest);
+        }
+      });
+      bar.appendChild(hit);
       const edits = document.createElement("div");
       edits.className = "light-edits";
       for (const event of assigned) {
-        const hit = document.createElement("div");
-        hit.className = "light-edit";
-        hit.style.left = `${(xOf(event.seconds) / CHART_WIDTH) * 100}%`;
-        hit.setAttribute("role", "button");
-        hit.tabIndex = 0;
-        hit.setAttribute("aria-label", `Edit ${light.name} at ${event.name}`);
+        const editHit = document.createElement("div");
+        editHit.className = "light-edit";
+        editHit.style.left = `${(xOf(event.seconds) / CHART_WIDTH) * 100}%`;
+        editHit.setAttribute("role", "button");
+        editHit.tabIndex = 0;
+        editHit.setAttribute("aria-label", `Edit ${light.name} at ${event.name}`);
         const dot = document.createElement("span");
         dot.className = "light-edit-dot";
         const icon = document.createElement("ha-icon");
@@ -6242,16 +6384,16 @@ class SceneExtrapolationPanel extends HTMLElement {
         const setExpanded = (on) => {
           /* Class on each node: :hover descendant rules do not restyle
              children inside this shadow tree. */
-          hit.classList.toggle("expanded", on);
+          editHit.classList.toggle("expanded", on);
           dot.classList.toggle("expanded", on);
           action.classList.toggle("expanded", on);
         };
-        hit.addEventListener("pointerenter", () => setExpanded(true));
-        hit.addEventListener("pointerleave", () => setExpanded(false));
-        hit.addEventListener("focusin", () => setExpanded(true));
-        hit.addEventListener("focusout", () => {
+        editHit.addEventListener("pointerenter", () => setExpanded(true));
+        editHit.addEventListener("pointerleave", () => setExpanded(false));
+        editHit.addEventListener("focusin", () => setExpanded(true));
+        editHit.addEventListener("focusout", () => {
           window.requestAnimationFrame(() => {
-            if (!hit.contains(hit.getRootNode().activeElement)) {
+            if (!editHit.contains(editHit.getRootNode().activeElement)) {
               setExpanded(false);
             }
           });
@@ -6260,15 +6402,15 @@ class SceneExtrapolationPanel extends HTMLElement {
           ev.stopPropagation();
           this._openLightEditDialog(light, event);
         };
-        hit.addEventListener("click", open);
-        hit.addEventListener("keydown", (ev) => {
+        editHit.addEventListener("click", open);
+        editHit.addEventListener("keydown", (ev) => {
           if (ev.key === "Enter" || ev.key === " ") {
             ev.preventDefault();
             open(ev);
           }
         });
-        hit.append(dot, action);
-        edits.appendChild(hit);
+        editHit.append(dot, action);
+        edits.appendChild(editHit);
       }
       bar.appendChild(edits);
       const remove = document.createElement("ha-icon-button");
@@ -6282,18 +6424,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._removeLightFromAssignedScenes(light.entity_id);
       });
       bar.appendChild(remove);
-      bar.addEventListener("click", (ev) => {
-        if (ev.target.closest(".light-edit, .light-remove, .light-warn")) {
-          return;
-        }
-        const closest = this._closestEvent(
-          assigned,
-          this._secondsFromElementPointer(ev, bar)
-        );
-        if (closest) {
-          this._openLightEditDialog(light, closest);
-        }
-      });
     }
     const missingScenes = this._missingSceneRows(light);
     if (this._view === "edit" && missingScenes.length) {
