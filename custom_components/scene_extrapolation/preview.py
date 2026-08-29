@@ -170,15 +170,26 @@ def _light_series(
     for event in events:
         entity_id = scene_ids.get(SCENE_KEYS[event["id"]])
         scene = native.get(entity_id) if entity_id else None
-        if not scene:
-            # Unassigned events are skipped so graphs fill in as scenes are picked.
-            continue
-        bound.append({**event, "scene": scene})
-    if not bound:
+        # Unassigned solar events are off-knots: every lamp is off at that
+        # point so graphs go dark instead of interpolating across the gap.
+        bound.append(
+            {
+                **event,
+                "scene": scene
+                or {
+                    "id": None,
+                    "name": None,
+                    "entity_id": None,
+                    "entities": {},
+                },
+            }
+        )
+    assigned = [item for item in bound if item["scene"].get("entity_id")]
+    if not assigned:
         return [], []
 
     light_ids: set[str] = set()
-    for item in bound:
+    for item in assigned:
         for entity_id in item["scene"]["entities"]:
             if entity_id.startswith("light."):
                 light_ids.add(entity_id)
@@ -233,13 +244,17 @@ def _event_states_for_light(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for item in bound:
-        stored = item["scene"]["entities"].get(entity_id)
+        scene = item["scene"]
+        scene_entity_id = scene.get("entity_id")
+        stored = (
+            scene["entities"].get(entity_id) if scene_entity_id else None
+        )
         rows.append(
             {
                 "event": item["id"],
-                "scene_entity_id": item["scene"]["entity_id"],
-                "scene_id": item["scene"]["id"],
-                "scene_name": item["scene"]["name"],
+                "scene_entity_id": scene_entity_id,
+                "scene_id": scene.get("id"),
+                "scene_name": scene.get("name"),
                 "present": stored is not None,
                 "state": scene_entity_payload(stored),
             }
@@ -255,6 +270,11 @@ def _gap_warnings(
     count = len(bound)
     for index, current in enumerate(bound):
         nxt = bound[(index + 1) % count]
+        # Unassigned events are off-knots, not native scenes — skip gap UI.
+        if not current["scene"].get("entity_id") or not nxt["scene"].get(
+            "entity_id"
+        ):
+            continue
         current_ids = {
             entity_id
             for entity_id in current["scene"]["entities"]

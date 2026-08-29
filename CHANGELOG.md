@@ -33,11 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clock face fills the editor width up to 80vh, soft ring seams sharpen on hover, and the open light-edit lamp is highlighted
 - Clock ring seams overlap more when blurred so gaps stay lit instead of dark
 - Soft glow behind the light clock: one blurred disc from the outer ring’s color (not a full ring copy)
-- Clock view hides the top solar-event chips (rim icons replace them); unassigned rim buttons are larger with the warning treatment
+- Clock view hides the top solar-event chips (rim icons replace them); unassigned rim controls are wide warning pills labeled “Choose scene”
 - Light-edit sidebar brightness graph above the color wheel: drag a solar-event point to change that scene’s brightness; events where the lamp is missing show `+` to add it
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
+- Unassigned solar events are off-knots in the light preview (graphs go dark there) instead of being skipped
 - Feather sharpen-on-hover animates via document-registered `--light-feather` / `--clock-feather` (shadow `@property` did not transition)
 - Stacked light bands brighten on hover and glow when selected; each band’s opaque strip is its own click target
 - Light graph view mode is read from localStorage before the first paint so refresh keeps the matching layout
@@ -64,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sun and light graphs no longer draw static vertical hour/event lines
 - Sun-path height is scaled to the location’s annual max elevation; the curve is darker below the horizon
 - Event scene picks apply immediately; the sidebar has Close (no Done). Light-edit closes without a nested Save; Live edit still restores the lamp
-- Light graphs interpolate from whatever solar events already have a scene
+- Light graphs interpolate through unassigned solar events as off (not across the gap)
 - Hover brightness % is appended to each light name on its graph; the readout no longer lists lamps or color swatches
 - 🚨 `scene_extrapolation.turn_on` replaces `transition_modifier` (−100…100 time shift) with `transition_percent` (0–100 along the day: dawn 0, sunrise 25, noon 50, sunset 75, dusk 100). Scene entities expose `transition_percent` and `transition_percent_manual` instead of `transition_modifier`
 

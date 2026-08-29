@@ -488,7 +488,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: absolute;
           width: 32px;
           height: 32px;
-          margin: -16px 0 0 -16px;
+          /* Center on the rim point (variable-width missing pills too). */
+          transform: translate(-50%, -50%);
           display: grid;
           place-items: center;
           border-radius: 50%;
@@ -503,18 +504,23 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 6;
           transition:
             width 160ms cubic-bezier(0.2, 0, 0, 1),
-            height 160ms cubic-bezier(0.2, 0, 0, 1),
-            margin 160ms cubic-bezier(0.2, 0, 0, 1),
+            padding 160ms cubic-bezier(0.2, 0, 0, 1),
+            border-radius 160ms cubic-bezier(0.2, 0, 0, 1),
             box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
         }
         .clock-event ha-icon {
           --mdc-icon-size: 18px;
         }
-        /* Emphasize unassigned events — same job as the card-row warning. */
+        /* Wider pill, same height — room for “Choose scene”. */
         .clock-event.missing {
-          width: 48px;
-          height: 48px;
-          margin: -24px 0 0 -24px;
+          width: auto;
+          height: 32px;
+          padding: 0 10px 0 8px;
+          border-radius: 16px;
+          display: inline-flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 5px;
           color: var(--warning-color, var(--error-color));
           border: 2px solid var(--warning-color, var(--error-color));
           background: color-mix(
@@ -532,8 +538,11 @@ class SceneExtrapolationPanel extends HTMLElement {
             0 2px 8px rgba(0, 0, 0, 0.22);
           z-index: 7;
         }
-        .clock-event.missing ha-icon {
-          --mdc-icon-size: 26px;
+        .clock-event.missing .clock-event-label {
+          font-size: 11px;
+          font-weight: 600;
+          line-height: 1;
+          white-space: nowrap;
         }
         .clock-event.selected {
           border-color: var(--primary-color);
@@ -6197,6 +6206,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       const icon = document.createElement("ha-icon");
       icon.setAttribute("icon", event.icon);
       btn.appendChild(icon);
+      if (!sceneName) {
+        const label = document.createElement("span");
+        label.className = "clock-event-label";
+        // Same wording as the solar-event chips above the sun chart.
+        label.textContent = "Choose scene";
+        btn.appendChild(label);
+      }
       if (editable) {
         btn.setAttribute(
           "aria-label",
