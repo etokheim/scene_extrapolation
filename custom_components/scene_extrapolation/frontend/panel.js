@@ -20,7 +20,7 @@ const UNDO_STACK_LIMIT = 75;
 const DRAFT_STORAGE_VERSION = 1;
 const DRAFT_PERSIST_MS = 200;
 const LIGHT_VIEW_STORAGE_VERSION = 1;
-const CLOCK_FEATHER_PCT = 2.8;
+const CLOCK_FEATHER_PCT = 5.5;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
 // Same circadian seeds as native_scene.EVENT_LIGHT_DEFAULTS (0–255, kelvin).
 const EVENT_LIGHT_DEFAULTS = {
@@ -5805,10 +5805,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     const hole = 20;
     const usable = 100 - hole;
     const stroke = n ? usable / n : 0;
+    // Expand each ring into its neighbors so soft edges blend over lamp
+    // color, not the dark card (same idea as the table’s negative margin).
+    const overlap = CLOCK_FEATHER_PCT;
     for (let index = 0; index < n; index += 1) {
       const light = ringLights[index];
-      const outer = 100 - index * stroke;
-      const inner = Math.max(hole, outer - stroke);
+      const midOuter = 100 - index * stroke;
+      const midInner = Math.max(hole, midOuter - stroke);
+      const outer = Math.min(100, midOuter + overlap);
+      const inner = Math.max(0, midInner - overlap);
       const ring = document.createElement("div");
       ring.className = "clock-ring";
       ring.dataset.entityId = light.entity_id;

@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Suggested rows for area lights that are not in any assigned scene; scene lights outside the selected area use the warning color
 - Toggle the light graphs between stacked bands and concentric 24-hour clock rings (midnight at the top), with a now-hand and clickable solar-event icons on the rim
 - Clock face fills the editor width up to 80vh, soft ring seams sharpen on hover, and the open light-edit lamp is highlighted
+- Clock ring seams overlap more when blurred so gaps stay lit instead of dark
 - Light-edit sidebar brightness graph above the color wheel: drag a solar-event point to change that scene’s brightness
 
 ### Changed
