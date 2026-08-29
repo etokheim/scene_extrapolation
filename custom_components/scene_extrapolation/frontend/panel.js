@@ -408,6 +408,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           width: 100%;
           padding: 8px 16px 16px;
           box-sizing: border-box;
+          overflow: visible;
         }
         .sun-light-clock-face {
           position: relative;
@@ -597,9 +598,19 @@ class SceneExtrapolationPanel extends HTMLElement {
           stroke-linecap: round;
           opacity: 0.4;
         }
+        .clock-event-anchor {
+          position: absolute;
+          width: 32px;
+          height: 32px;
+          transform: translate(-50%, -50%);
+          z-index: 6;
+          pointer-events: none;
+        }
         .clock-event-meta {
           position: absolute;
-          transform: translate(-50%, -50%);
+          left: 50%;
+          bottom: calc(100% + 4px);
+          transform: translateX(-50%);
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -608,20 +619,18 @@ class SceneExtrapolationPanel extends HTMLElement {
           padding: 0 2px;
           text-align: center;
           pointer-events: none;
-          z-index: 6;
+          white-space: nowrap;
         }
         .clock-event-meta .clock-event-heading {
           font-size: 10px;
           font-weight: 600;
           line-height: 1.15;
           color: var(--primary-text-color);
-          white-space: nowrap;
         }
         .clock-event-meta .clock-event-scene {
           font-size: 9px;
           line-height: 1.15;
           color: var(--secondary-text-color);
-          white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
           max-width: 7.5rem;
@@ -632,10 +641,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .clock-event {
           position: absolute;
+          inset: 0;
           width: 32px;
           height: 32px;
-          /* Center on the rim point (variable-width missing pills too). */
-          transform: translate(-50%, -50%);
           display: grid;
           place-items: center;
           border-radius: 50%;
@@ -647,24 +655,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           cursor: pointer;
           padding: 0;
           font: inherit;
-          z-index: 6;
-          transition:
-            width 160ms cubic-bezier(0.2, 0, 0, 1),
-            padding 160ms cubic-bezier(0.2, 0, 0, 1),
-            border-radius 160ms cubic-bezier(0.2, 0, 0, 1),
-            box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
+          transition: box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
         }
         .clock-event ha-icon {
           --mdc-icon-size: 18px;
         }
-        /* Wider hit when missing — icon only; scene cue lives in the meta. */
+        /* Missing — icon only; scene cue lives in the meta above. */
         .clock-event.missing {
-          width: 32px;
-          height: 32px;
-          padding: 0;
-          border-radius: 50%;
-          display: grid;
-          place-items: center;
           color: var(--warning-color, var(--error-color));
           border: 2px solid var(--warning-color, var(--error-color));
           background: color-mix(
@@ -680,7 +677,6 @@ class SceneExtrapolationPanel extends HTMLElement {
                 transparent
               ),
             0 2px 8px rgba(0, 0, 0, 0.22);
-          z-index: 7;
         }
         .clock-event.selected {
           border-color: var(--primary-color);
@@ -6550,8 +6546,6 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const editable = this._view === "edit";
     const iconR = CLOCK_EVENT_ICON_R;
-    // Labels sit radially outside the icon (readable, upright).
-    const metaR = iconR + 16;
     for (const event of events) {
       const deg = this._clockAngleDeg(event.seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
@@ -6563,10 +6557,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       const sceneName = this._sceneName(sceneId);
       const timeText = event.fallback ? `${event.time}*` : event.time;
 
+      const anchor = document.createElement("div");
+      anchor.className = "clock-event-anchor";
+      anchor.style.left = `${left}%`;
+      anchor.style.top = `${top}%`;
+
       const meta = document.createElement("div");
       meta.className = "clock-event-meta";
-      meta.style.left = `${50 + cos * metaR}%`;
-      meta.style.top = `${50 + sin * metaR}%`;
       meta.setAttribute("aria-hidden", "true");
       const heading = document.createElement("span");
       heading.className = "clock-event-heading";
@@ -6580,7 +6577,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         sceneEl.classList.add("empty");
       }
       meta.append(heading, sceneEl);
-      face.appendChild(meta);
 
       const btn = document.createElement(editable ? "button" : "div");
       btn.className = "clock-event";
@@ -6588,8 +6584,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         btn.type = "button";
         btn.dataset.eventId = event.id;
       }
-      btn.style.left = `${left}%`;
-      btn.style.top = `${top}%`;
       btn.title = sceneName
         ? `${event.name} · ${timeText} · ${sceneName}`
         : `${event.name} · ${timeText}`;
@@ -6615,7 +6609,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           this._toggleEventSceneDialog(event);
         });
       }
-      face.appendChild(btn);
+      anchor.append(meta, btn);
+      face.appendChild(anchor);
     }
 
     this._bindClockHover(face);
