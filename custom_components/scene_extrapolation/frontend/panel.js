@@ -160,6 +160,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._redoStack = [];
     this._sessionBaseline = null;
     this._draftRestore = null;
+    this._draftBannerDismissed = false;
     this._persistTimer = undefined;
     this._previewInFlight = false;
     this._previewQueued = false;
@@ -406,10 +407,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           align-items: center;
           gap: 8px;
         }
-        /* Dial: chips under the day/month control. Table: same row, date first. */
+        /* Dial: chips left of day/month. Table: same row, date first.
+           Landscape rail is narrow — chips stack above the date instead. */
         .sun-path.dial-view .sun-date-tools {
+          flex-direction: row;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px;
+        }
+        .sun-year-scrub-rail .sun-date-tools {
           flex-direction: column;
-          align-items: flex-start;
+          align-items: stretch;
           gap: 6px;
         }
         .sun-chip-row {
@@ -2384,6 +2392,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           line-height: 1.35;
           color: var(--secondary-text-color);
         }
+        .draft-restore-dismiss {
+          flex-shrink: 0;
+          margin-inline-end: -4px;
+        }
         .content {
           padding: var(--ha-space-3) 0 88px;
         }
@@ -2495,6 +2507,9 @@ class SceneExtrapolationPanel extends HTMLElement {
               <div class="detail"></div>
             </div>
             <ha-button class="draft-restore-discard" appearance="plain">Discard</ha-button>
+            <ha-icon-button class="draft-restore-dismiss" label="Dismiss">
+              <ha-icon icon="mdi:close"></ha-icon>
+            </ha-icon-button>
           </div>
           <div class="sun-path" hidden>
             <div class="sun-path-stage">
@@ -2521,6 +2536,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._draftBanner
       ?.querySelector(".draft-restore-discard")
       ?.addEventListener("click", () => this._discardRestoredDraft());
+    this._draftBanner
+      ?.querySelector(".draft-restore-dismiss")
+      ?.addEventListener("click", () => {
+        this._draftBannerDismissed = true;
+        this._syncDraftBanner();
+      });
     this._syncHash();
   }
 
@@ -2577,6 +2598,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._error = null;
       this._resetSession();
       this._draftRestore = pending ? null : this._restorePersistedDraft();
+      this._draftBannerDismissed = false;
       this._render();
       if (!this._formData.area) {
         this._openAreaDialog({ context: "new" });
@@ -2622,6 +2644,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._resetSession();
     this._draftRestore = this._restorePersistedDraft();
+    this._draftBannerDismissed = false;
     this._render();
   }
 
@@ -3127,7 +3150,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     const show =
       this._view === "edit" &&
       Boolean(this._draftRestore) &&
-      this._sessionIsDirty();
+      this._sessionIsDirty() &&
+      !this._draftBannerDismissed;
     el.hidden = !show;
     if (!show) {
       return;
@@ -6461,6 +6485,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._chipRow) {
       this._chipRow.hidden = collapse || hideToolbarScrub;
     }
+    // Dial: chips left of (or above, in the rail) the date; table: date first.
+    if (this._dateTools && this._chipRow && this._scrubDateBtn) {
+      if (clock) {
+        this._dateTools.append(this._chipRow, this._scrubDateBtn);
+      } else {
+        this._dateTools.append(this._scrubDateBtn, this._chipRow);
+      }
+    }
 
     if (landscapeClock) {
       this._clockScrubRail.hidden = false;
@@ -6474,6 +6506,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (this._clockScrubRail) {
         this._clockScrubRail.hidden = true;
         this._clockScrubRail.style.height = "";
+        this._clockScrubRail.style.paddingBottom = "";
         this._clockScrubRail.style.marginTop = "";
         this._clockScrubRail.style.top = "";
         this._clockScrubRail.style.left = "";
@@ -6507,7 +6540,23 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     // Match the dial height; grid columns handle horizontal centering.
+    // Pad the bottom so the Save FAB does not cover the year scrub track.
+    let padBottom = 0;
+    const fab = this._fabEl;
+    if (fab && !fab.hidden) {
+      const fabRect = fab.getBoundingClientRect();
+      const railRect = this._clockScrubRail.getBoundingClientRect();
+      if (
+        fabRect.height > 0 &&
+        fabRect.left < railRect.right &&
+        fabRect.right > railRect.left &&
+        fabRect.top < faceRect.bottom
+      ) {
+        padBottom = Math.max(0, faceRect.bottom - fabRect.top + 12);
+      }
+    }
     this._clockScrubRail.style.height = `${faceRect.height}px`;
+    this._clockScrubRail.style.paddingBottom = padBottom ? `${padBottom}px` : "";
     this._clockScrubRail.style.top = "";
     this._clockScrubRail.style.left = "";
     this._clockScrubRail.style.marginTop = "";
