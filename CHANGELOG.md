@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hover a sun or light graph to inspect time and sun elevation in a fixed readout (cursor line; today’s “now” line stays)
 - Preview another latitude/longitude on create/edit (quiet map pin until active, then a banner)
 - Create / rename / delete a native scene from the solar-event picker; an X clears the assignment. Create fills the area’s lights with brightness and color for that event
+- X on each light row removes that lamp from every assigned native scene
+- Undo / redo in the editor toolbar (Ctrl/Cmd+Z, Shift+Z, Y), matching the automation editor
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
@@ -39,7 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light-row hover sharpens the feathered seam with an animated mask; visible band height stays the same
 - Light-row names, dots, and warnings sit on the visible band; edit dots stay 5px with a 40px hit and expand from center
 - Editor graphs and form use a 1024px column (12px padding) instead of Home Assistant’s 1540px automation-editor canvas
-- Light-edit Save writes every changed native scene for that lamp; switching scenes keeps drafts without a prompt
+- Light-edit Save commits lamp drafts for every scene you changed; switching scenes keeps drafts without a prompt
+- Native scene create / rename / delete, light-edit Save, and removing a lamp stay in the editor session until the extrapolation Save
 - Light-edit save hint sits in the footer (info icon + text) above Cancel / Save
 - Color-wheel presets stay on one row and scroll sideways; a right-edge fade marks leftover swatches
 - Solar-event scene buttons look like controls, warn when empty, and no longer outline linked events

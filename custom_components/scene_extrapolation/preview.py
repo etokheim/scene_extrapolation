@@ -110,23 +110,50 @@ def _overlay_native_scenes(
     native: dict[str, dict[str, Any]],
     overlay: dict[str, Any] | list[dict[str, Any]] | None,
 ) -> dict[str, dict[str, Any]]:
-    """Patch one light into loaded native scenes without writing YAML."""
+    """Apply session drafts onto loaded native scenes without writing YAML."""
     patches = _overlay_patches(overlay)
     if not patches:
         return native
     result = native
     for patch in patches:
         scene_id = patch.get("scene_entity_id")
-        entity_id = patch.get("entity_id")
-        entity_state = patch.get("entity_state")
-        if not scene_id or not entity_id or not isinstance(entity_state, dict):
+        if not scene_id:
+            continue
+        if patch.get("deleted"):
+            result = {key: value for key, value in result.items() if key != scene_id}
+            continue
+        created = patch.get("create_scene")
+        if isinstance(created, dict):
+            entities = {
+                entity_id: scene_entity_payload(state)
+                for entity_id, state in (created.get("entities") or {}).items()
+                if isinstance(state, dict)
+            }
+            result = {
+                **result,
+                scene_id: {
+                    "id": created.get("id") or scene_id,
+                    "name": created.get("name") or scene_id,
+                    "entity_id": scene_id,
+                    "entities": entities,
+                },
+            }
             continue
         scene = result.get(scene_id)
         if not scene:
             continue
         patched = copy.deepcopy(scene)
-        patched["entities"][entity_id] = scene_entity_payload(entity_state)
-        result = {**result, scene_id: patched}
+        if patch.get("name"):
+            patched["name"] = patch["name"]
+        entity_id = patch.get("entity_id")
+        if entity_id and patch.get("remove"):
+            patched["entities"].pop(entity_id, None)
+            result = {**result, scene_id: patched}
+            continue
+        entity_state = patch.get("entity_state")
+        if entity_id and isinstance(entity_state, dict):
+            patched["entities"][entity_id] = scene_entity_payload(entity_state)
+            result = {**result, scene_id: patched}
     return result
 
 

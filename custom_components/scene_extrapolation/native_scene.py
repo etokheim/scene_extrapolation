@@ -270,10 +270,10 @@ def _native_scene_entity_id(hass: HomeAssistant, config_id: str) -> str | None:
     return None
 
 
-async def async_create_native_scene(
+async def async_plan_native_scene(
     hass: HomeAssistant, area_id: str, event_id: str, *, linked: bool = False
 ) -> dict[str, Any]:
-    """Create a YAML scene for an area's lights at one solar event."""
+    """Build a native scene for an area without writing YAML."""
     if event_id not in EVENT_ORDER:
         raise HomeAssistantError(f"Unknown solar event {event_id}")
     area = ar.async_get(hass).async_get_area(area_id)
@@ -292,41 +292,160 @@ async def async_create_native_scene(
     else:
         base_name = f"{area.name} {_EVENT_LABEL[event_id]}"
         icon = _EVENT_ICON[event_id]
-    config_id = str(int(time.time() * 1000))
+    path = hass.config.path(SCENE_CONFIG_PATH)
+    current = await hass.async_add_executor_job(_read_scenes, path)
+    name = _unique_scene_name(current, base_name)
+    stamp = str(int(time.time() * 1000))
+    return {
+        "entity_id": f"scene.__se_draft_{stamp}",
+        "name": name,
+        "icon": icon,
+        "id": stamp,
+        "entities": entities,
+        "light_count": len(lights),
+        "area_id": area_id,
+    }
+
+
+async def async_create_native_scene(
+    hass: HomeAssistant,
+    area_id: str,
+    event_id: str,
+    *,
+    linked: bool = False,
+    write: bool = True,
+) -> dict[str, Any]:
+    """Create or plan a YAML scene for an area's lights at one solar event."""
+    planned = await async_plan_native_scene(
+        hass, area_id, event_id, linked=linked
+    )
+    if not write:
+        return planned
     path = hass.config.path(SCENE_CONFIG_PATH)
     async with _WRITE_LOCK:
         current = await hass.async_add_executor_job(_read_scenes, path)
-        name = _unique_scene_name(current, base_name)
+        name = _unique_scene_name(current, planned["name"])
         current.append(
             {
-                CONF_ID: config_id,
+                CONF_ID: planned["id"],
                 "name": name,
-                "icon": icon,
-                "entities": entities,
+                "icon": planned["icon"],
+                "entities": planned["entities"],
             }
         )
         await hass.async_add_executor_job(_write_scenes, path, current)
 
     await hass.services.async_call(SCENE_DOMAIN, SERVICE_RELOAD, blocking=True)
-    entity_id = _native_scene_entity_id(hass, config_id)
+    entity_id = _native_scene_entity_id(hass, planned["id"])
     if not entity_id:
         raise HomeAssistantError(
             f"Created scene {name!r} but Home Assistant did not register it"
         )
     er.async_get(hass).async_update_entity(entity_id, area_id=area_id)
-    _LOGGER.debug(
-        "Created native scene %s (%s) with %s lights in %s",
-        entity_id,
-        name,
-        len(lights),
-        area_id,
-    )
     return {
+        **planned,
         "entity_id": entity_id,
         "name": name,
-        "id": config_id,
-        "light_count": len(lights),
     }
+
+
+async def async_apply_native_drafts(
+    hass: HomeAssistant, drafts: dict[str, Any]
+) -> dict[str, Any]:
+    """Write buffered create/rename/delete/entity edits in one YAML reload."""
+    creates = list(drafts.get("creates") or [])
+    renames = list(drafts.get("renames") or [])
+    deletes = list(drafts.get("deletes") or [])
+    updates = list(drafts.get("updates") or [])
+    removes = list(drafts.get("removes") or [])
+    if not (creates or renames or deletes or updates or removes):
+        return {"created": {}}
+
+    delete_keys: set[str] = set()
+    rename_by_key: dict[str, str] = {}
+    entity_ops: dict[str, list[tuple[str, dict[str, Any] | None]]] = {}
+
+    def yaml_key(scene_entity_id: str) -> str:
+        scene = native_scene_by_entity_id(hass, scene_entity_id)
+        if scene is None or not scene.get("id"):
+            raise HomeAssistantError(
+                f"{scene_entity_id} is not a native Home Assistant scene"
+            )
+        return str(scene["id"])
+
+    for scene_entity_id in deletes:
+        delete_keys.add(yaml_key(scene_entity_id))
+    for item in renames:
+        key = yaml_key(item["scene_entity_id"])
+        if key not in delete_keys:
+            rename_by_key[key] = str(item["name"]).strip()
+    for item in updates:
+        key = yaml_key(item["scene_entity_id"])
+        if key in delete_keys:
+            continue
+        entity_ops.setdefault(key, []).append(
+            (item["entity_id"], scene_entity_payload(item["entity_state"]))
+        )
+    for item in removes:
+        key = yaml_key(item["scene_entity_id"])
+        if key in delete_keys:
+            continue
+        entity_ops.setdefault(key, []).append((item["entity_id"], None))
+
+    path = hass.config.path(SCENE_CONFIG_PATH)
+    created_ids: list[tuple[str, str, str]] = []
+    async with _WRITE_LOCK:
+        current = await hass.async_add_executor_job(_read_scenes, path)
+        next_scenes: list[dict[str, Any]] = []
+        for item in current:
+            key = str(item.get(CONF_ID))
+            if key in delete_keys:
+                continue
+            updated = dict(item)
+            if key in rename_by_key:
+                updated["name"] = rename_by_key[key]
+            if key in entity_ops:
+                entities = dict(updated.get("entities") or {})
+                for entity_id, payload in entity_ops[key]:
+                    if payload is None:
+                        entities.pop(entity_id, None)
+                    else:
+                        entities[entity_id] = payload
+                updated["entities"] = entities
+            next_scenes.append(updated)
+        for create in creates:
+            name = _unique_scene_name(next_scenes, str(create["name"]).strip())
+            config_id = str(create.get("id") or int(time.time() * 1000))
+            entities = {
+                entity_id: scene_entity_payload(state)
+                for entity_id, state in (create.get("entities") or {}).items()
+            }
+            item = {
+                CONF_ID: config_id,
+                "name": name,
+                "entities": entities,
+            }
+            if create.get("icon"):
+                item["icon"] = create["icon"]
+            next_scenes.append(item)
+            created_ids.append(
+                (str(create["draft_id"]), config_id, str(create.get("area_id") or ""))
+            )
+        await hass.async_add_executor_job(_write_scenes, path, next_scenes)
+
+    await hass.services.async_call(SCENE_DOMAIN, SERVICE_RELOAD, blocking=True)
+    created: dict[str, str] = {}
+    entity_reg = er.async_get(hass)
+    for draft_id, config_id, area_id in created_ids:
+        entity_id = _native_scene_entity_id(hass, config_id)
+        if not entity_id:
+            raise HomeAssistantError(
+                f"Created scene {draft_id} but Home Assistant did not register it"
+            )
+        if area_id:
+            entity_reg.async_update_entity(entity_id, area_id=area_id)
+        created[draft_id] = entity_id
+    return {"created": created}
 
 
 async def async_rename_native_scene(

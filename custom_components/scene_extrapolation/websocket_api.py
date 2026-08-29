@@ -20,6 +20,7 @@ from .const import (
     DOMAIN,
 )
 from .native_scene import (
+    async_apply_native_drafts,
     async_create_native_scene,
     async_delete_native_scene,
     async_rename_native_scene,
@@ -47,6 +48,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_create_native_scene)
     websocket_api.async_register_command(hass, ws_rename_native_scene)
     websocket_api.async_register_command(hass, ws_delete_native_scene)
+    websocket_api.async_register_command(hass, ws_apply_native_drafts)
 
 
 def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
@@ -222,8 +224,12 @@ async def ws_sun_path(
 
 _OVERLAY_PATCH = {
     vol.Required("scene_entity_id"): str,
-    vol.Required("entity_id"): str,
-    vol.Required("entity_state"): dict,
+    vol.Optional("entity_id"): str,
+    vol.Optional("entity_state"): dict,
+    vol.Optional("remove"): bool,
+    vol.Optional("deleted"): bool,
+    vol.Optional("name"): str,
+    vol.Optional("create_scene"): dict,
 }
 
 
@@ -334,6 +340,7 @@ async def ws_update_native_scenes(
         vol.Required("area_id"): str,
         vol.Required("event"): vol.In(list(EVENT_ORDER)),
         vol.Optional("linked"): bool,
+        vol.Optional("write"): bool,
     }
 )
 @websocket_api.require_admin
@@ -350,6 +357,7 @@ async def ws_create_native_scene(
             msg["area_id"],
             msg["event"],
             linked=bool(msg.get("linked")),
+            write=bool(msg.get("write", False)),
         )
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "create_failed", str(err))
@@ -400,5 +408,65 @@ async def ws_delete_native_scene(
         payload = await async_delete_native_scene(hass, msg["scene_entity_id"])
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "delete_failed", str(err))
+        return
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/apply_native_drafts",
+        vol.Optional("creates"): [
+            {
+                vol.Required("draft_id"): str,
+                vol.Required("name"): str,
+                vol.Optional("icon"): str,
+                vol.Optional("area_id"): str,
+                vol.Optional("id"): str,
+                vol.Optional("entities"): dict,
+            }
+        ],
+        vol.Optional("renames"): [
+            {
+                vol.Required("scene_entity_id"): str,
+                vol.Required("name"): str,
+            }
+        ],
+        vol.Optional("deletes"): [str],
+        vol.Optional("updates"): [
+            {
+                vol.Required("scene_entity_id"): str,
+                vol.Required("entity_id"): str,
+                vol.Required("entity_state"): dict,
+            }
+        ],
+        vol.Optional("removes"): [
+            {
+                vol.Required("scene_entity_id"): str,
+                vol.Required("entity_id"): str,
+            }
+        ],
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_apply_native_drafts(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Write buffered native scene drafts in one YAML reload."""
+    try:
+        payload = await async_apply_native_drafts(
+            hass,
+            {
+                "creates": msg.get("creates") or [],
+                "renames": msg.get("renames") or [],
+                "deletes": msg.get("deletes") or [],
+                "updates": msg.get("updates") or [],
+                "removes": msg.get("removes") or [],
+            },
+        )
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "apply_failed", str(err))
         return
     connection.send_result(msg["id"], payload)
