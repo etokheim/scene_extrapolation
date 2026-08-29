@@ -219,6 +219,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Earliest dusk time lives on the dusk event dialog
 
 - **Date:** 2026-08-26
+- **Superseded in part:** 2026-08-29 — earliest dusk only delays a same-day solar dusk; if solar dusk is already past midnight of that calendar day, keep end-of-day (24:00) and do not pull back to the floor (shared `dusk_start_seconds` in preview and activation).
 - **Decision:** `scene_dusk_minimum_time_of_day` is edited in the dusk solar-event dialog, next to that event’s scene picker. It is not on `ha-form`.
 - **Why:** The override only applies to dusk. Putting it on the main form made it look like a global setting.
 - **Do not reverse without user ask.**

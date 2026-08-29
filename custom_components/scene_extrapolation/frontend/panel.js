@@ -6303,10 +6303,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._view === "edit") {
       this._syncYearScrubLayout();
     }
-    this._fillHoverReadout(
-      this._sunPath.today ? nowSecondsSinceMidnight() : null,
-      { hovering: false }
-    );
+    this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
   }
 
   _secondsFromPlotPointer(ev, plots) {
@@ -6365,9 +6362,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     readout.replaceChildren();
     if (seconds == null) {
-      readout.removeAttribute("data-active");
-      readout.textContent = "Hover a graph to inspect time";
-      return;
+      seconds = nowSecondsSinceMidnight();
     }
     if (hovering) {
       readout.setAttribute("data-active", "");
@@ -6472,7 +6467,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         return event.seconds;
       }
     }
-    return this._sunPath?.today ? nowSecondsSinceMidnight() : null;
+    // Wall-clock “now” on any preview date — sun elev comes from that day’s curve.
+    return nowSecondsSinceMidnight();
   }
 
   /** Shortest signed seconds delta on the 24h circle (for arc lerps). */

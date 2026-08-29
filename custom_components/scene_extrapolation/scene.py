@@ -73,7 +73,7 @@ from .const import (
     SCENE_SUNRISE,
     SCENE_SUNSET,
 )
-from .solar import EVENT_ORDER, resolve_solar_events
+from .solar import EVENT_ORDER, dusk_start_seconds, resolve_solar_events
 
 DAY_PERCENT_STEP = 100.0 / (len(EVENT_ORDER) - 1)
 
@@ -541,6 +541,16 @@ class ExtrapolationScene(Scene):
             scene_dusk_minimum_time_of_day, numbers.Number
         ), "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
 
+        day_start = target_date_time.replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        dusk_seconds, dusk_was_overridden, dusk_solar_seconds = dusk_start_seconds(
+            solar_events["dusk"],
+            day_start,
+            scene_dusk_minimum_time_of_day,
+        )
+        dusk_original_time = dusk_solar_seconds if dusk_was_overridden else None
+
         sun_events = {
             "dawn": SunEvent(
                 name="Dawn",
@@ -593,20 +603,9 @@ class ExtrapolationScene(Scene):
                     scenes,
                     self._cfg(SCENE_DUSK),
                 ),
-                start_time=max(
-                    self.datetime_to_seconds_since_midnight(solar_events["dusk"]),
-                    scene_dusk_minimum_time_of_day,
-                ),
+                start_time=dusk_seconds,
             ),
         }
-
-        # Check if dusk was overridden by minimum time
-        dusk_calculated_time = self.datetime_to_seconds_since_midnight(
-            solar_events["dusk"]
-        )
-        dusk_final_time = sun_events["dusk"].start_time
-        dusk_was_overridden = dusk_final_time > dusk_calculated_time
-        dusk_original_time = dusk_calculated_time if dusk_was_overridden else None
 
         current_seconds = self.seconds_since_midnight(0)
         final_time = self.seconds_since_midnight(transition)
@@ -803,13 +802,15 @@ class ExtrapolationScene(Scene):
         assert isinstance(
             dusk_minimum, numbers.Number
         ), "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
+        day_start = target.replace(hour=0, minute=0, second=0, microsecond=0)
         starts = {
             key: self.datetime_to_seconds_since_midnight(solar_events[key])
             for key in EVENT_ORDER
             if key != "dusk"
         }
-        starts["dusk"] = max(
-            self.datetime_to_seconds_since_midnight(solar_events["dusk"]),
+        starts["dusk"], _overridden, _solar = dusk_start_seconds(
+            solar_events["dusk"],
+            day_start,
             dusk_minimum,
         )
         seconds = self.seconds_since_midnight(0)

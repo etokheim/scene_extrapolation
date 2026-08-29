@@ -79,6 +79,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🚨 `scene_extrapolation.turn_on` replaces `transition_modifier` (−100…100 time shift) with `transition_percent` (0–100 along the day: dawn 0, sunrise 25, noon 50, sunset 75, dusk 100). Scene entities expose `transition_percent` and `transition_percent_manual` instead of `transition_modifier`
 
 ### Fixed
+- Earliest dusk no longer snaps back to the floor when solar dusk is after midnight; it stays at end of day
+- Idle graph readout always shows current clock time and sun elevation on the selected date (not “Hover a graph…”)
 - Stacked light band clicks always opened the first lamp (pass-through hit the top row); opaque hit layers fix it
 - After refresh, the light view toggle showed clock while the stacked table still rendered
 - Clicking a light row did not open the closest scene (SVG painted-hit testing ate the click; 44px dot hitboxes covered the band)

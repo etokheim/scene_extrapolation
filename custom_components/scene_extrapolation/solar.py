@@ -57,6 +57,38 @@ def _seconds_since_midnight(value: datetime) -> int:
     return int((value - midnight).total_seconds())
 
 
+def dusk_start_seconds(
+    dusk_time: datetime,
+    day_start: datetime,
+    dusk_minimum: int | None,
+) -> tuple[int, bool, int | None]:
+    """Return dusk seconds since ``day_start``, applying earliest-dusk only that day.
+
+    Earliest dusk delays a same-day solar dusk that falls before the floor.
+    If solar dusk is already on the next calendar day (>= 24:00), keep end of
+    day — do not pull back to the floor (that looked like “clamp to 22:00”).
+
+    Returns ``(seconds, overridden, solar_seconds_if_overridden)``.
+    ``seconds`` is in ``[0, SECONDS_PER_DAY]``.
+    """
+    dusk_aware = dusk_time
+    if day_start.tzinfo is not None:
+        if dusk_time.tzinfo is None:
+            dusk_aware = dusk_time.replace(tzinfo=day_start.tzinfo)
+        else:
+            dusk_aware = dusk_time.astimezone(day_start.tzinfo)
+
+    solar_seconds = int((dusk_aware - day_start).total_seconds())
+
+    if solar_seconds >= SECONDS_PER_DAY:
+        return SECONDS_PER_DAY, False, None
+
+    solar_seconds = max(0, solar_seconds)
+    if dusk_minimum is not None and int(dusk_minimum) > solar_seconds:
+        return int(dusk_minimum), True, solar_seconds
+    return solar_seconds, False, None
+
+
 def _format_time(seconds: int) -> str:
     seconds = max(0, min(int(seconds), SECONDS_PER_DAY))
     hours, remainder = divmod(seconds, 3600)
@@ -209,14 +241,17 @@ def build_sun_path(
     events: list[dict[str, Any]] = []
     for event_id, label, icon in EVENT_META:
         event_time = events_by_name[event_id]
-        seconds = _seconds_since_midnight(event_time)
         overridden = False
         solar_time = None
-        if event_id == "dusk" and dusk_minimum is not None and dusk_minimum > seconds:
-            solar_time = _format_time(seconds)
-            seconds = int(dusk_minimum)
-            overridden = True
+        if event_id == "dusk":
+            seconds, overridden, solar_raw = dusk_start_seconds(
+                event_time, start, dusk_minimum
+            )
+            if overridden and solar_raw is not None:
+                solar_time = _format_time(solar_raw)
             event_time = start + timedelta(seconds=seconds)
+        else:
+            seconds = _seconds_since_midnight(event_time)
         events.append(
             {
                 "id": event_id,
