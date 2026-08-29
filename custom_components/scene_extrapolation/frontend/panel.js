@@ -2350,6 +2350,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           align-items: center;
           gap: 8px;
           margin-top: var(--ha-space-3);
+          /* Dial view zeroes .page padding; keep the banner inset either way.
+             Sidebar gutter clears the drawer only (no extra left gap) so this
+             margin is not doubled when the drawer is open. */
+          margin-inline: 12px;
           padding: 10px 12px;
           border-radius: var(--ha-border-radius-lg, 12px);
           border: 1px solid var(--info-color, var(--primary-color));
@@ -3825,9 +3829,11 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _setSidebarDocked(docked) {
+    // Width + drawer’s right inset only — no extra “left margin” gap; banners
+    // and page content keep their own inline spacing.
     const gutter =
       docked && !this._isEditorNarrow()
-        ? "calc(var(--scene-sidebar-width, 375px) + 32px)"
+        ? "calc(var(--scene-sidebar-width, 375px) + 16px)"
         : "0px";
     this.style.setProperty("--scene-sidebar-gutter", gutter);
     this._syncYearScrubLayout();
@@ -6847,16 +6853,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     const cy = rect.top + rect.height / 2;
     const dx = ev.clientX - cx;
     const dy = ev.clientY - cy;
-    // 0° at midnight (top), clockwise — matches conic-gradient(from 0deg).
-    let deg = (Math.atan2(dx, -dy) * 180) / Math.PI;
-    if (deg < 0) {
-      deg += 360;
-    }
+    // 0° at midnight (bottom), clockwise — matches conic-gradient(from 180deg).
+    let deg = (Math.atan2(dx, -dy) * 180) / Math.PI + 180;
+    deg = ((deg % 360) + 360) % 360;
     return (deg / 360) * SECONDS_PER_DAY;
   }
 
   _clockAngleDeg(seconds) {
-    return (seconds / SECONDS_PER_DAY) * 360;
+    // Noon at top, midnight at bottom (180° offset from CSS 12-o'clock).
+    return (seconds / SECONDS_PER_DAY) * 360 + 180;
   }
 
   _lightAtClockPointer(ev, ringsHost, ringLights) {
@@ -7278,7 +7283,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     face.setAttribute("role", "img");
     face.setAttribute(
       "aria-label",
-      "24-hour light rings with sun elevation around the rim; midnight at the top"
+      "24-hour light rings with sun elevation around the rim; midnight at the bottom"
     );
     const core = document.createElement("div");
     core.className = "sun-light-clock-core";
@@ -7393,7 +7398,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Labels just outside the tick marks.
     const labelR = 94;
     for (let hour = 0; hour < 24; hour += 1) {
-      const deg = (hour / 24) * 360;
+      const deg = this._clockAngleDeg(hour * 3600);
       const rad = ((deg - 90) * Math.PI) / 180;
       const major = hour % 6 === 0;
       const inner = major ? tickInnerMajor : tickInnerMinor;
@@ -9701,7 +9706,8 @@ function conicGradientFromSamples(samples) {
   });
   // Close dusk→dawn at midnight so the ring has no seam gap.
   stops.push(`${darkenedRgb(samples[0])} 100%`);
-  return `conic-gradient(from 0deg, ${stops.join(", ")})`;
+  // from 180deg: midnight (0%) at bottom, noon at top — matches _clockAngleDeg.
+  return `conic-gradient(from 180deg, ${stops.join(", ")})`;
 }
 
 function interpolateLightSample(samples, seconds) {

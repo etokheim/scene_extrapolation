@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unsaved editor changes persist in this browser; returning to the scene restores them with a banner and a Discard action
 - A light missing from some scenes is an Add button; it copies the typical brightness and color of the other lights already in that scene
 - Suggested rows for area lights that are not in any assigned scene; scene lights outside the selected area use the warning color
-- Toggle the light graphs between stacked bands and concentric 24-hour clock rings from a single header button (`Table view` / `Dial view`); location pin is in the header too; midnight at the top on the dial, with clickable solar-event icons on the rim
+- Toggle the light graphs between stacked bands and concentric 24-hour clock rings from a single header button (`Table view` / `Dial view`); location pin is in the header too; midnight at the bottom on the dial (noon at the top), with clickable solar-event icons on the rim
 - Clock face fills the editor width up to 80vh, soft ring seams sharpen on hover, and the open light-edit lamp is highlighted
 - Clock ring seams overlap more when blurred so gaps stay lit instead of dark
 - Soft glow behind the light clock: blurred sky disc from solar elevation (not lamp conics)
@@ -59,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview day uses HA’s date selector instead of a raw browser date input
 - Light graphs encode brightness by darkening each lamp’s color band; adjacent rows overlap and the incoming edge feathers over an opaque neighbor
 - Scene light and event editors use Home Assistant’s automation-style right sidebar (bottom sheet on narrow screens)
-- Desktop sidebar open/close is a 200ms slide; the editor column and Save button move aside (padding / right, not max-width)
+- Desktop sidebar open/close is a 200ms slide; the editor column and Save button move aside (padding / right, not max-width); gutter is sidebar width + 16px (drawer right inset only); draft-restore banner uses 12px inline margin
 - Opening a second sidebar reuses the open drawer and fades its body instead of closing and re-sliding
 - The solar-event row highlights the event whose sidebar is open; clicking that event again closes the drawer
 - Leaving the editor keeps session drafts in this browser instead of prompting to discard them
