@@ -6388,6 +6388,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         return;
       }
       face.classList.remove("clock-face-enter");
+      face.removeEventListener("animationend", clearEnter);
     };
     face.addEventListener("animationend", clearEnter);
     this._animateClockSunArc(from, idle, 1500, { forward: true });
