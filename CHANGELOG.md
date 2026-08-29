@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Create / rename / delete a native scene from the solar-event picker; an X clears the assignment. Create fills the area’s lights with brightness and color for that event
 - X on each light row removes that lamp from every assigned native scene
 - Undo / redo in the editor toolbar (Ctrl/Cmd+Z, Shift+Z, Y), matching the automation editor
+- Unsaved editor changes persist in this browser; returning to the scene restores them with a banner and a Discard action
 
 ### Changed
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
@@ -39,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Desktop sidebar open/close is a 200ms slide; the editor column and Save button move aside (padding / right, not max-width)
 - Opening a second sidebar reuses the open drawer and fades its body instead of closing and re-sliding
 - The solar-event row highlights the event whose sidebar is open; clicking that event again closes the drawer
+- Leaving the editor keeps session drafts in this browser instead of prompting to discard them
 - Light-row hover sharpens the feathered seam with an animated mask; visible band height stays the same
 - Light-row names, dots, and warnings sit on the visible band; edit dots stay 5px with a 40px hit and expand from center
 - Editor graphs and form use a 1024px column (12px padding) instead of Home Assistant’s 1540px automation-editor canvas

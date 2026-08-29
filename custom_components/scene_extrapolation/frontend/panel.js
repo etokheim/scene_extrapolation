@@ -17,6 +17,8 @@ const LIGHT_EDIT_HIT_PX = 40;
 const LIGHT_EDIT_DOT_PX = 5;
 const LIGHT_EDIT_ACTION_PX = 40;
 const UNDO_STACK_LIMIT = 75;
+const DRAFT_STORAGE_VERSION = 1;
+const DRAFT_PERSIST_MS = 200;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
 const EVENT_SCENE_KEYS = {
   dawn: "scene_dawn",
@@ -79,6 +81,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._undoStack = [];
     this._redoStack = [];
     this._sessionBaseline = null;
+    this._draftRestore = null;
+    this._persistTimer = undefined;
     this._previewInFlight = false;
     this._previewQueued = false;
     this._yearScrubbing = false;
@@ -86,6 +90,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._hashConfirming = false;
     this._onHashChange = () => this._syncHash();
     this._onEditorKeydown = (ev) => this._handleEditorShortcut(ev);
+    this._onPageHide = (ev) => {
+      if (ev?.type === "visibilitychange" && document.visibilityState === "visible") {
+        return;
+      }
+      this._flushPersistedDraft();
+    };
   }
 
   set hass(hass) {
@@ -124,6 +134,8 @@ class SceneExtrapolationPanel extends HTMLElement {
   connectedCallback() {
     window.addEventListener("hashchange", this._onHashChange);
     window.addEventListener("keydown", this._onEditorKeydown);
+    window.addEventListener("pagehide", this._onPageHide);
+    document.addEventListener("visibilitychange", this._onPageHide);
     if (this._hass && !this._built) {
       this._build();
     }
@@ -147,9 +159,16 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._flushPersistedDraft();
     this._closeSceneSidebar();
     window.removeEventListener("hashchange", this._onHashChange);
     window.removeEventListener("keydown", this._onEditorKeydown);
+    window.removeEventListener("pagehide", this._onPageHide);
+    document.removeEventListener("visibilitychange", this._onPageHide);
+    if (this._persistTimer) {
+      window.clearTimeout(this._persistTimer);
+      this._persistTimer = undefined;
+    }
     if (this._previewTimer) {
       window.clearTimeout(this._previewTimer);
       this._previewTimer = undefined;
@@ -1282,6 +1301,41 @@ class SceneExtrapolationPanel extends HTMLElement {
           padding-inline: 12px;
           box-sizing: border-box;
         }
+        .draft-restore {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: var(--ha-space-3);
+          padding: 10px 12px;
+          border-radius: var(--ha-border-radius-lg, 12px);
+          border: 1px solid var(--info-color, var(--primary-color));
+          background: color-mix(
+            in srgb,
+            var(--info-color, var(--primary-color)) 14%,
+            var(--card-background-color)
+          );
+        }
+        .draft-restore[hidden] {
+          display: none;
+        }
+        .draft-restore ha-icon {
+          --mdc-icon-size: 22px;
+          color: var(--info-color, var(--primary-color));
+          flex-shrink: 0;
+        }
+        .draft-restore-copy {
+          flex: 1 1 auto;
+          min-width: 0;
+        }
+        .draft-restore-copy .title {
+          font-size: 13px;
+          font-weight: 600;
+        }
+        .draft-restore-copy .detail {
+          font-size: 12px;
+          line-height: 1.35;
+          color: var(--secondary-text-color);
+        }
         .content {
           padding: var(--ha-space-3) 0 88px;
         }
@@ -1386,6 +1440,14 @@ class SceneExtrapolationPanel extends HTMLElement {
         <div slot="title"></div>
         <div class="page-shell">
         <div class="page">
+          <div class="draft-restore" hidden>
+            <ha-icon icon="mdi:history"></ha-icon>
+            <div class="draft-restore-copy">
+              <div class="title"></div>
+              <div class="detail"></div>
+            </div>
+            <ha-button class="draft-restore-discard" appearance="plain">Discard</ha-button>
+          </div>
           <div class="sun-path" hidden>
             <div class="sun-path-body"></div>
           </div>
@@ -1402,6 +1464,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sunPathBodyEl = this.shadowRoot.querySelector(".sun-path-body");
     this._contentEl = this.shadowRoot.querySelector(".content");
     this._fabEl = this.shadowRoot.querySelector(".fab");
+    this._draftBanner = this.shadowRoot.querySelector(".draft-restore");
+    this._draftBanner
+      ?.querySelector(".draft-restore-discard")
+      ?.addEventListener("click", () => this._discardRestoredDraft());
     this._syncHash();
   }
 
@@ -1431,10 +1497,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const hash = (window.location.hash || "#").replace(/^#/, "");
     const current = this._currentHash();
-    if (hash !== current && this._editorIsDirty()) {
+    if (hash !== current && this._lightEditIsDirty()) {
       this._hashConfirming = true;
       history.replaceState(null, "", this._hashHref(current));
-      const leave = await this._confirmLeaveEditor();
+      const leave = await this._confirmLeaveLightEdit();
       this._hashConfirming = false;
       if (!leave) {
         return;
@@ -1442,6 +1508,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._forceCloseSceneSidebar();
       window.location.hash = hash;
       return;
+    }
+    if (this._view === "edit" && hash !== current) {
+      this._flushPersistedDraft();
     }
     if (hash === "new") {
       const pending = this._pendingNewForm;
@@ -1454,6 +1523,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         : emptyFormData();
       this._error = null;
       this._resetSession();
+      this._draftRestore = pending ? null : this._restorePersistedDraft();
       this._render();
       if (!this._formData.area) {
         this._openAreaDialog({ context: "new" });
@@ -1498,6 +1568,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._formData = emptyFormData();
     }
     this._resetSession();
+    this._draftRestore = this._restorePersistedDraft();
     this._render();
   }
 
@@ -1520,9 +1591,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._view === "edit") {
       this._renderEditor();
     } else {
+      this._draftRestore = null;
       this._renderList();
     }
     this._ensureSunPath();
+    this._syncDraftBanner();
   }
 
   _renderList() {
@@ -1585,9 +1658,13 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _addButton() {
-    return this._fabButton("New extrapolation scene", "mdi:plus", () =>
-      this._openAreaDialog({ context: "list" })
-    );
+    return this._fabButton("New extrapolation scene", "mdi:plus", () => {
+      if (this._hasPersistedDraft("new")) {
+        this._go("new");
+        return;
+      }
+      this._openAreaDialog({ context: "list" });
+    });
   }
 
   _setFab(node) {
@@ -1720,13 +1797,187 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._lightEditIsDirty() && !(await this._confirmLeaveLightEdit())) {
       return false;
     }
-    if (!this._sessionIsDirty()) {
-      return true;
+    this._flushPersistedDraft();
+    return true;
+  }
+
+  _draftStorageKey(sceneKey = this._editId || "new") {
+    const user = this._hass?.user?.id || "anon";
+    return `scene_extrapolation.draft.v1.${user}.${sceneKey}`;
+  }
+
+  _readPersistedDraft(sceneKey) {
+    try {
+      const raw = window.localStorage.getItem(this._draftStorageKey(sceneKey));
+      if (!raw) {
+        return null;
+      }
+      const payload = JSON.parse(raw);
+      if (
+        payload?.v !== DRAFT_STORAGE_VERSION ||
+        !payload.session ||
+        !payload.baseline
+      ) {
+        return null;
+      }
+      return payload;
+    } catch (_err) {
+      return null;
     }
-    return this._confirmDiscard({
-      title: "Discard unsaved changes?",
-      text: "You have unsaved edits. Leaving discards them.",
-    });
+  }
+
+  _hasPersistedDraft(sceneKey) {
+    const payload = this._readPersistedDraft(sceneKey);
+    if (!payload) {
+      return false;
+    }
+    return !this._sessionEqual(payload.session, payload.baseline);
+  }
+
+  _restorePersistedDraft() {
+    const payload = this._readPersistedDraft(this._editId || "new");
+    if (!payload) {
+      return null;
+    }
+    const server = this._snapshotSession();
+    if (!this._sessionEqual(payload.baseline, server)) {
+      // Server copy moved on; the local draft was based on an older save.
+      this._clearPersistedDraft();
+      return null;
+    }
+    if (this._sessionEqual(payload.session, server)) {
+      this._clearPersistedDraft();
+      return null;
+    }
+    this._formData = structuredClone(payload.session.form);
+    this._nativeDrafts = structuredClone(payload.session.nativeDrafts);
+    this._syncPreviewOverlay();
+    this._clearPreviewCache();
+    return { savedAt: payload.savedAt };
+  }
+
+  _persistDraftSoon() {
+    if (this._persistTimer) {
+      window.clearTimeout(this._persistTimer);
+    }
+    this._persistTimer = window.setTimeout(() => {
+      this._persistTimer = undefined;
+      this._flushPersistedDraft();
+    }, DRAFT_PERSIST_MS);
+  }
+
+  _flushPersistedDraft() {
+    if (this._persistTimer) {
+      window.clearTimeout(this._persistTimer);
+      this._persistTimer = undefined;
+    }
+    if (this._view !== "edit") {
+      return;
+    }
+    if (!this._sessionIsDirty() || !this._sessionBaseline) {
+      this._clearPersistedDraft();
+      if (this._draftRestore) {
+        this._draftRestore = null;
+        this._syncDraftBanner();
+      }
+      return;
+    }
+    const payload = {
+      v: DRAFT_STORAGE_VERSION,
+      savedAt: Date.now(),
+      baseline: this._sessionBaseline,
+      session: this._snapshotSession(),
+    };
+    try {
+      window.localStorage.setItem(this._draftStorageKey(), JSON.stringify(payload));
+    } catch (_err) {
+      // Private mode / quota: keep the in-memory session only.
+    }
+  }
+
+  _clearPersistedDraft(sceneKey) {
+    try {
+      window.localStorage.removeItem(this._draftStorageKey(sceneKey));
+    } catch (_err) {
+      // Ignore storage failures.
+    }
+  }
+
+  _formatDraftAge(savedAt) {
+    const ms = Date.now() - savedAt;
+    if (!Number.isFinite(ms) || ms < 0) {
+      return "a moment ago";
+    }
+    const sec = Math.round(ms / 1000);
+    if (sec < 45) {
+      return "a moment ago";
+    }
+    const min = Math.round(sec / 60);
+    if (min === 1) {
+      return "a minute ago";
+    }
+    if (min < 45) {
+      return `${min} minutes ago`;
+    }
+    const hr = Math.round(min / 60);
+    if (hr === 1) {
+      return "an hour ago";
+    }
+    if (hr < 22) {
+      return `${hr} hours ago`;
+    }
+    const day = Math.round(hr / 24);
+    if (day === 1) {
+      return "yesterday";
+    }
+    if (day < 7) {
+      return `${day} days ago`;
+    }
+    try {
+      return new Date(savedAt).toLocaleDateString();
+    } catch (_err) {
+      return "earlier";
+    }
+  }
+
+  _syncDraftBanner() {
+    const el = this._draftBanner;
+    if (!el) {
+      return;
+    }
+    const show =
+      this._view === "edit" &&
+      Boolean(this._draftRestore) &&
+      this._sessionIsDirty();
+    el.hidden = !show;
+    if (!show) {
+      return;
+    }
+    const age = this._formatDraftAge(this._draftRestore.savedAt);
+    el.querySelector(".title").textContent = "Picked up where you left off";
+    el.querySelector(".detail").textContent =
+      `Unsaved edits from ${age}. This browser only — save the scene to keep them.`;
+  }
+
+  async _discardRestoredDraft() {
+    if (
+      !(await this._confirmDiscard({
+        title: "Discard local edits?",
+        text: "This returns the scene to the last saved version and forgets the copy on this browser.",
+      }))
+    ) {
+      return;
+    }
+    this._applySession(this._sessionBaseline);
+    this._undoStack = [];
+    this._redoStack = [];
+    this._syncUndoButtons();
+    this._clearPersistedDraft();
+    this._draftRestore = null;
+    this._render();
+    if (!this._editId && !this._formData.area) {
+      this._openAreaDialog({ context: "new" });
+    }
   }
 
   _commitUndo() {
@@ -1736,6 +1987,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._redoStack = [];
     this._syncUndoButtons();
+    queueMicrotask(() => this._persistDraftSoon());
   }
 
   _applySession(snapshot) {
@@ -1750,6 +2002,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._clearPreviewCache();
     this._ensureSunPath();
     this._syncUndoButtons();
+    this._persistDraftSoon();
   }
 
   _undo() {
@@ -3631,6 +3884,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         data: this._formData,
       });
       this._resetSession();
+      this._draftRestore = null;
+      this._clearPersistedDraft();
+      this._clearPersistedDraft("new");
       this._clearPreviewCache();
       this._go(`edit/${saved.id}`);
     } catch (err) {
@@ -3650,6 +3906,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         type: `${DOMAIN}/delete`,
         scene_id: this._editId,
       });
+      this._clearPersistedDraft();
+      this._draftRestore = null;
       this._go("");
     } catch (err) {
       this._error = err.message || String(err);
