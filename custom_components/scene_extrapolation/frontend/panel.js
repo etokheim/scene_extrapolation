@@ -6664,6 +6664,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       );
     };
 
+    let dashOffset = 0;
     for (const segment of sunStrokeSegments(curve)) {
       const p0 = this._clockSunXy(segment.s0, segment.e0);
       const p1 = this._clockSunXy(segment.s1, segment.e1);
@@ -6681,6 +6682,11 @@ class SceneExtrapolationPanel extends HTMLElement {
       line.setAttribute("y2", p1.y.toFixed(2));
       const midElev = (segment.e0 + segment.e1) / 2;
       line.style.strokeWidth = `${strokeOf(midElev)}px`;
+      // Keep dash phase continuous across short segments (avoids a second
+      // “sparkle” stroke from every segment restarting the pattern).
+      const len = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+      line.style.strokeDashoffset = `${-dashOffset}`;
+      dashOffset += len;
       if (!segment.night) {
         // Daytime path follows the sky/sun palette at that elevation.
         line.style.stroke = skyLookFromElevation(midElev).pathColor;
@@ -6866,11 +6872,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     overlay.setAttribute("aria-hidden", "true");
     const cx = CLOCK_CX;
     const cy = CLOCK_CY;
-    const tickOuter = 86;
-    const tickInnerMinor = 82;
-    const tickInnerMajor = 78;
-    // Hour labels sit just outside the tick marks (not inside the planet).
-    const labelR = 94;
+    // Ticks sit on the planet (inside the horizon). The daytime sun path grows
+    // outward from the rim — ticks outside the rim doubled that stroke.
+    const tickOuter = CLOCK_SUN_HORIZON - 2;
+    const tickInnerMinor = tickOuter - 4;
+    const tickInnerMajor = tickOuter - 8;
+    // Labels outside the exaggerated noon arc.
+    const labelR =
+      CLOCK_SUN_HORIZON +
+      CLOCK_SUN_DAY_BASE_SPAN * CLOCK_SUN_DAY_EMPHASIS +
+      6;
     for (let hour = 0; hour < 24; hour += 1) {
       const deg = (hour / 24) * 360;
       const rad = ((deg - 90) * Math.PI) / 180;
