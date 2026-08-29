@@ -3884,11 +3884,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       host._eventId = this._sidebarEventId;
     }
     this._syncEventSelection();
-    // Idle sun follows the selected solar event (or “now” when none).
-    if (this._hoverSeconds == null && this._clockSunEl) {
+    // Selected solar event pins the sun (hover must not move it).
+    if (this._clockSunEl) {
       this._clockSunLive = false;
-      this._setClockSunArcTarget(this._clockSunIdleSeconds());
-      this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
+      this._cancelClockSunArc();
+      this._applyClockSunAppearance(this._clockSunIdleSeconds());
+      if (this._hoverSeconds == null) {
+        this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
+      }
     }
   }
 
@@ -7180,14 +7183,17 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (this._hoverLine) {
         this._hoverLine.style.display = "none";
       }
-      if (starting) {
-        this._clockSunLive = false;
-      }
-      if (this._clockSunLive) {
-        this._applyClockSunAppearance(seconds);
-      } else {
-        // Follow the sun-path arc; retarget if the pointer moves mid-intro.
-        this._setClockSunArcTarget(seconds, { thenLive: true });
+      // Selected solar event pins the sun; hover only updates the readout.
+      if (!this._sidebarEventId) {
+        if (starting) {
+          this._clockSunLive = false;
+        }
+        if (this._clockSunLive) {
+          this._applyClockSunAppearance(seconds);
+        } else {
+          // Follow the sun-path arc; retarget if the pointer moves mid-intro.
+          this._setClockSunArcTarget(seconds, { thenLive: true });
+        }
       }
       this._fillHoverReadout(seconds, { hovering: true });
     };
@@ -7198,9 +7204,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._hoverLine.style.display = "";
       }
       this._clockSunLive = false;
-      this._setClockSunArcTarget(this._clockSunIdleSeconds(), {
-        thenLive: false,
-      });
+      if (!this._sidebarEventId) {
+        this._setClockSunArcTarget(this._clockSunIdleSeconds(), {
+          thenLive: false,
+        });
+      }
       this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
     };
     face.addEventListener("pointermove", (ev) => {
