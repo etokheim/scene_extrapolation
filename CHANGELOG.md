@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light-edit sidebar brightness graph above the color wheel (titled, full-bleed, 0–100% in the subtext): drag a solar-event point to change brightness; release works outside the graph; missing-lamp events show `+` to add
 
 ### Changed
+- Dial view is a Solar Dial: outer 24h scale (`24` at midnight), fixed circular sun path with event icons on it, radial time handle, draggable sun (sticky preview; drag clears an open event pin), solar-event sky wedges (night sunset→sunrise, darker dusk→dawn), and full-day light rings in a floating circle opposite the handle
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
 - Unassigned solar events are off-knots in the light preview (graphs go dark there) instead of being skipped
 - Feather sharpen-on-hover animates via document-registered `--light-feather` / `--clock-feather` (shadow `@property` did not transition)
