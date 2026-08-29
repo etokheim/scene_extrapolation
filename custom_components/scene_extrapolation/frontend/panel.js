@@ -328,24 +328,87 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-year-scrub-rail {
           display: none;
           position: absolute;
-          width: 52px;
+          /* Pin to the page’s right edge so the dial stays optically centered. */
+          right: 0;
+          width: 72px;
           min-width: 0;
           overflow: hidden;
           opacity: 1;
           box-sizing: border-box;
           z-index: 2;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 6px;
           /* Match sidebar dock so collapsing the rail does not jag the open. */
           transition:
             width ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
             opacity ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         }
         .sun-path-stage.landscape-clock-scrub .sun-year-scrub-rail {
-          display: block;
+          display: flex;
         }
         .sun-path-stage.landscape-clock-scrub.scrub-collapsed .sun-year-scrub-rail {
           width: 0;
           opacity: 0;
           pointer-events: none;
+        }
+        .sun-scrub-block {
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 4px;
+          width: 100%;
+        }
+        .sun-year-scrub-rail .sun-scrub-block {
+          flex: 1 1 auto;
+          min-height: 0;
+          height: 100%;
+        }
+        .sun-scrub-date {
+          appearance: none;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          margin: 0;
+          padding: 2px 4px;
+          border: 0;
+          border-radius: 8px;
+          background: transparent;
+          color: var(--primary-text-color);
+          font: inherit;
+          font-size: 13px;
+          font-weight: 600;
+          line-height: 1.2;
+          white-space: nowrap;
+          cursor: pointer;
+        }
+        .sun-scrub-date:hover {
+          background: color-mix(
+            in srgb,
+            var(--primary-color) 12%,
+            transparent
+          );
+        }
+        .sun-scrub-date:focus-visible {
+          outline: 2px solid var(--primary-color);
+          outline-offset: 2px;
+        }
+        .sun-scrub-date ha-icon {
+          --mdc-icon-size: 16px;
+          color: var(--secondary-text-color);
+          flex-shrink: 0;
+        }
+        .sun-date-picker-host {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          padding: 0;
+          margin: -1px;
+          overflow: hidden;
+          clip: rect(0, 0, 0, 0);
+          white-space: nowrap;
+          border: 0;
         }
         .sun-toolbar {
           display: flex;
@@ -359,15 +422,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-wrap: wrap;
           align-items: center;
           gap: 8px;
-        }
-        .sun-date-nav {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          min-width: 0;
-        }
-        .sun-date-nav ha-selector {
-          min-width: 168px;
         }
         .sun-year-scrub {
           position: relative;
@@ -445,8 +499,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: flex;
           flex-direction: row;
           align-items: stretch;
+          flex: 1 1 auto;
           width: 100%;
-          height: 100%;
+          min-height: 0;
+          height: auto;
           margin: 0;
           padding: 2px 0;
           box-sizing: border-box;
@@ -514,20 +570,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-color: var(--primary-color);
         }
         .sun-location-btn {
-          margin-inline-start: auto;
           color: var(--secondary-text-color);
         }
         .sun-location-btn[hidden] {
           display: none;
         }
-        .light-view-toggle {
-          display: inline-flex;
-          align-items: center;
-          gap: 0;
-          color: var(--secondary-text-color);
-        }
-        .light-view-toggle ha-icon-button[aria-pressed="true"] {
-          color: var(--primary-color);
+        .light-view-toggle-btn {
+          --ha-button-height: 40px;
+          color: var(--primary-text-color);
         }
         .sun-light-clock {
           display: flex;
@@ -619,7 +669,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           transition: --clock-feather 220ms cubic-bezier(0.2, 0, 0, 1);
           cursor: pointer;
         }
-        .sun-light-clock-rings:hover {
+        /* Sharpen on hover, and keep sharp while a lamp is selected (sidebar). */
+        .sun-light-clock-rings:hover,
+        .sun-light-clock-rings:has(.clock-ring.selected) {
           --clock-feather: 0.2%;
         }
         .clock-ring {
@@ -636,6 +688,13 @@ class SceneExtrapolationPanel extends HTMLElement {
             --ring-expand 180ms cubic-bezier(0.2, 0, 0, 1),
             --ring-border-w 180ms cubic-bezier(0.2, 0, 0, 1),
             filter 180ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        /* Fill lives on a child so the ring mask does not clip ::after borders. */
+        .clock-ring-fill {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          pointer-events: none;
         }
         /* Inner + outer rim strokes; mask grows with --ring-expand. */
         .clock-ring::after {
@@ -2154,7 +2213,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           transition: padding-right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         }
         .page {
-          --page-max-width: 1024px;
+          --page-max-width: 1920px;
           max-width: var(--page-max-width);
           width: 100%;
           margin-inline: auto;
@@ -2577,16 +2636,37 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _setEditorActions() {
+    this._lightView = this._readLightView();
+    const locationBtn = document.createElement("ha-icon-button");
+    locationBtn.className = "sun-location-btn";
+    locationBtn.label = "Preview another location";
+    const locationIcon = document.createElement("ha-icon");
+    locationIcon.setAttribute("icon", "mdi:map-marker-outline");
+    locationBtn.appendChild(locationIcon);
+    locationBtn.addEventListener("click", () => this._openLocationDialog());
+    this._locationBtn = locationBtn;
+
+    const viewBtn = document.createElement("ha-button");
+    viewBtn.className = "light-view-toggle-btn";
+    viewBtn.appearance = "plain";
+    viewBtn.addEventListener("click", () => {
+      this._setLightView(this._lightView === "clock" ? "table" : "clock");
+    });
+    this._lightViewToggleBtn = viewBtn;
+    this._syncLightViewButtons();
+
     const undo = this._undoRedoButton("undo");
     const redo = this._undoRedoButton("redo");
     this._undoBtn = undo;
     this._redoBtn = redo;
     if (this._narrow) {
-      this._setActionItems(this._overflowMenu());
+      this._setActionItems(locationBtn, viewBtn, this._overflowMenu());
+      this._syncLocationToolbar();
       return;
     }
-    this._setActionItems(undo, redo, this._overflowMenu());
+    this._setActionItems(locationBtn, viewBtn, undo, redo, this._overflowMenu());
     this._syncUndoButtons();
+    this._syncLocationToolbar();
   }
 
   _undoRedoButton(kind) {
@@ -2709,18 +2789,16 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _syncLightViewButtons() {
-    if (this._lightViewTableBtn) {
-      this._lightViewTableBtn.setAttribute(
-        "aria-pressed",
-        this._lightView === "table" ? "true" : "false"
-      );
+    if (!this._lightViewToggleBtn) {
+      return;
     }
-    if (this._lightViewClockBtn) {
-      this._lightViewClockBtn.setAttribute(
-        "aria-pressed",
-        this._lightView === "clock" ? "true" : "false"
-      );
-    }
+    // Label is the destination view (single toggle in the app bar).
+    this._lightViewToggleBtn.textContent =
+      this._lightView === "clock" ? "Table view" : "Dial view";
+    this._lightViewToggleBtn.setAttribute(
+      "aria-label",
+      this._lightView === "clock" ? "Switch to table view" : "Switch to dial view"
+    );
   }
 
   _readPersistedDraft(sceneKey) {
@@ -5537,6 +5615,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._previewDate = iso;
     if (this._yearScrubbing) {
       this._syncYearScrub();
+      this._syncScrubDateLabel();
     } else {
       this._syncDateToolbar();
     }
@@ -5556,55 +5635,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     toolbar.className = "sun-toolbar";
     const row = document.createElement("div");
     row.className = "sun-toolbar-row";
-    const nav = document.createElement("div");
-    nav.className = "sun-date-nav";
 
-    const prev = customElements.get("ha-icon-button-prev")
-      ? document.createElement("ha-icon-button-prev")
-      : document.createElement("ha-icon-button");
-    prev.label = "Previous day";
-    if (prev.localName === "ha-icon-button") {
-      const prevIcon = document.createElement("ha-icon");
-      prevIcon.setAttribute("icon", "mdi:chevron-left");
-      prev.appendChild(prevIcon);
-    }
-    prev.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      this._shiftPreviewDate(-1);
-    });
-
-    // Activity uses ha-date-range-picker (a range). A single calendar day is
-    // ha-selector { date: {} }, which lazy-loads ha-date-input from HA's bundle.
-    const picker = document.createElement("ha-selector");
-    picker.hass = this._hass;
-    picker.label = "Date";
-    picker.required = true;
-    picker.selector = { date: {} };
-    picker.value = this._previewDate;
-    picker.addEventListener("value-changed", (ev) => {
-      const value = ev.detail?.value;
-      if (!value || value === this._previewDate) {
-        return;
-      }
-      this._setPreviewDate(value);
-    });
-
-    const next = customElements.get("ha-icon-button-next")
-      ? document.createElement("ha-icon-button-next")
-      : document.createElement("ha-icon-button");
-    next.label = "Next day";
-    if (next.localName === "ha-icon-button") {
-      const nextIcon = document.createElement("ha-icon");
-      nextIcon.setAttribute("icon", "mdi:chevron-right");
-      next.appendChild(nextIcon);
-    }
-    next.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      this._shiftPreviewDate(1);
-    });
-
-    nav.append(prev, picker, next);
-    row.appendChild(nav);
     const year = new Date().getFullYear();
     const presets = [
       ["Today", todayIso()],
@@ -5622,39 +5653,24 @@ class SceneExtrapolationPanel extends HTMLElement {
       row.appendChild(chip);
     }
 
-    const locationBtn = document.createElement("ha-icon-button");
-    locationBtn.className = "sun-location-btn";
-    locationBtn.label = "Preview another location";
-    const locationIcon = document.createElement("ha-icon");
-    locationIcon.setAttribute("icon", "mdi:map-marker-outline");
-    locationBtn.appendChild(locationIcon);
-    locationBtn.addEventListener("click", () => this._openLocationDialog());
-    row.appendChild(locationBtn);
-
-    this._lightView = this._readLightView();
-    const viewToggle = document.createElement("div");
-    viewToggle.className = "light-view-toggle";
-    viewToggle.setAttribute("role", "group");
-    viewToggle.setAttribute("aria-label", "Light graph layout");
-    const tableBtn = document.createElement("ha-icon-button");
-    tableBtn.label = "Stacked light bands";
-    tableBtn.setAttribute("aria-pressed", "false");
-    const tableIcon = document.createElement("ha-icon");
-    tableIcon.setAttribute("icon", "mdi:view-sequential");
-    tableBtn.appendChild(tableIcon);
-    tableBtn.addEventListener("click", () => this._setLightView("table"));
-    const clockBtn = document.createElement("ha-icon-button");
-    clockBtn.label = "Clock light rings";
-    clockBtn.setAttribute("aria-pressed", "false");
-    const clockIcon = document.createElement("ha-icon");
-    clockIcon.setAttribute("icon", "mdi:clock-outline");
-    clockBtn.appendChild(clockIcon);
-    clockBtn.addEventListener("click", () => this._setLightView("clock"));
-    viewToggle.append(tableBtn, clockBtn);
-    row.appendChild(viewToggle);
-    this._lightViewTableBtn = tableBtn;
-    this._lightViewClockBtn = clockBtn;
-    this._syncLightViewButtons();
+    // Hidden HA date field — opened from the scrub date label click.
+    const pickerHost = document.createElement("div");
+    pickerHost.className = "sun-date-picker-host";
+    pickerHost.setAttribute("aria-hidden", "true");
+    const picker = document.createElement("ha-selector");
+    picker.hass = this._hass;
+    picker.label = "Date";
+    picker.required = true;
+    picker.selector = { date: {} };
+    picker.value = this._previewDate;
+    picker.addEventListener("value-changed", (ev) => {
+      const value = ev.detail?.value;
+      if (!value || value === this._previewDate) {
+        return;
+      }
+      this._setPreviewDate(value);
+    });
+    pickerHost.appendChild(picker);
 
     const banner = document.createElement("div");
     banner.className = "sun-location-override";
@@ -5681,14 +5697,78 @@ class SceneExtrapolationPanel extends HTMLElement {
     reset.addEventListener("click", () => this._setPreviewLocation(null));
     banner.append(bannerIcon, copy, change, reset);
 
+    const scrubBlock = document.createElement("div");
+    scrubBlock.className = "sun-scrub-block";
+    const dateBtn = document.createElement("button");
+    dateBtn.type = "button";
+    dateBtn.className = "sun-scrub-date";
+    dateBtn.setAttribute("aria-label", "Choose preview date");
+    const dateLabel = document.createElement("span");
+    dateLabel.className = "sun-scrub-date-label";
+    const dateIcon = document.createElement("ha-icon");
+    dateIcon.setAttribute("icon", "mdi:calendar-month-outline");
+    dateBtn.append(dateLabel, dateIcon);
+    dateBtn.addEventListener("click", () => this._openPreviewDatePicker());
+    scrubBlock.append(dateBtn, this._buildYearScrub());
+
     this._datePicker = picker;
     this._dateChips = row.querySelectorAll(".sun-chip");
-    this._locationBtn = locationBtn;
+    this._scrubDateBtn = dateBtn;
+    this._scrubDateLabel = dateLabel;
+    this._scrubBlock = scrubBlock;
     this._locationBanner = banner;
     this._locationCoords = coords;
-    toolbar.append(row, banner, this._buildYearScrub());
+    toolbar.append(row, banner, scrubBlock, pickerHost);
     this._syncLocationToolbar();
+    this._syncScrubDateLabel();
     return toolbar;
+  }
+
+  _syncScrubDateLabel() {
+    if (!this._scrubDateLabel) {
+      return;
+    }
+    this._scrubDateLabel.textContent = formatPreviewDayMonth(this._previewDate);
+    if (this._scrubDateBtn) {
+      this._scrubDateBtn.title = this._previewDate;
+    }
+  }
+
+  _openPreviewDatePicker() {
+    const picker = this._datePicker;
+    if (!picker) {
+      return;
+    }
+    const clickDeep = (el, depth = 0) => {
+      if (!el || depth > 6) {
+        return false;
+      }
+      const root = el.shadowRoot;
+      if (!root) {
+        el.click?.();
+        return true;
+      }
+      const next =
+        root.querySelector("ha-date-input") ||
+        root.querySelector("ha-textfield") ||
+        root.querySelector("ha-control-textfield") ||
+        root.querySelector("input") ||
+        root.querySelector("button") ||
+        root.querySelector("[role='button']");
+      if (next) {
+        return clickDeep(next, depth + 1);
+      }
+      el.click?.();
+      return true;
+    };
+    // Wait a tick if the selector has not upgraded yet.
+    if (!picker.shadowRoot) {
+      customElements.whenDefined("ha-selector").then(() => {
+        requestAnimationFrame(() => clickDeep(picker));
+      });
+      return;
+    }
+    clickDeep(picker);
   }
 
   _homeLocation() {
@@ -6034,6 +6114,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         chip.removeAttribute("selected");
       }
     });
+    this._syncScrubDateLabel();
     this._syncLocationToolbar();
     this._syncYearScrub();
   }
@@ -6140,7 +6221,7 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _syncYearScrubLayout() {
-    if (!this._yearScrub || !this._dateToolbar) {
+    if (!this._yearScrub || !this._dateToolbar || !this._scrubBlock) {
       return;
     }
     // Keep the scrub node where it is while dragging so pointer capture and
@@ -6165,13 +6246,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sunPathStage?.classList.toggle("landscape-clock-scrub", landscapeClock);
     this._sunPathStage?.classList.toggle("scrub-collapsed", collapse);
     this._yearScrub.setAttribute("aria-hidden", collapse || hideToolbarScrub ? "true" : "false");
+    if (this._scrubDateBtn) {
+      this._scrubDateBtn.hidden = collapse || hideToolbarScrub;
+    }
 
     if (landscapeClock) {
       this._clockScrubRail.hidden = false;
       // Stay in the rail while collapsed so width can animate; do not use hidden.
-      this._yearScrub.hidden = false;
-      if (this._yearScrub.parentNode !== this._clockScrubRail) {
-        this._clockScrubRail.appendChild(this._yearScrub);
+      this._scrubBlock.hidden = false;
+      if (this._scrubBlock.parentNode !== this._clockScrubRail) {
+        this._clockScrubRail.appendChild(this._scrubBlock);
       }
     } else {
       this._sunPathStage?.classList.remove("scrub-collapsed");
@@ -6182,10 +6266,16 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._clockScrubRail.style.top = "";
         this._clockScrubRail.style.left = "";
       }
-      if (this._yearScrub.parentNode !== this._dateToolbar) {
-        this._dateToolbar.appendChild(this._yearScrub);
+      if (this._scrubBlock.parentNode !== this._dateToolbar) {
+        // Keep chips + banner first; insert scrub before the hidden picker host.
+        const pickerHost = this._dateToolbar.querySelector(".sun-date-picker-host");
+        if (pickerHost) {
+          this._dateToolbar.insertBefore(this._scrubBlock, pickerHost);
+        } else {
+          this._dateToolbar.appendChild(this._scrubBlock);
+        }
       }
-      this._yearScrub.hidden = hideToolbarScrub;
+      this._scrubBlock.hidden = hideToolbarScrub;
       this._yearScrub.classList.remove("vertical");
     }
     this._syncYearScrub();
@@ -6212,13 +6302,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!faceRect.height) {
       return;
     }
-    // 3× the original 10px gap between clock face and timeline.
-    const gap = 30;
+    // Absolute right edge of the stage — dial stays centered in the column.
     this._clockScrubRail.style.height = `${faceRect.height}px`;
     this._clockScrubRail.style.top = `${faceRect.top - stageRect.top}px`;
-    this._clockScrubRail.style.left = `${
-      faceRect.right - stageRect.left + gap
-    }px`;
+    this._clockScrubRail.style.left = "";
     this._clockScrubRail.style.marginTop = "";
   }
 
@@ -6999,9 +7086,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         ring.classList.add("selected");
         ring.setAttribute("aria-current", "true");
       }
-      ring.style.background = bg;
-      ring.style.webkitMaskImage = mask;
-      ring.style.maskImage = mask;
+      const fill = document.createElement("div");
+      fill.className = "clock-ring-fill";
+      fill.style.background = bg;
+      fill.style.webkitMaskImage = mask;
+      fill.style.maskImage = mask;
+      ring.appendChild(fill);
       ring.title = light.name;
       ringsHost.appendChild(ring);
     }
@@ -8928,6 +9018,12 @@ function todayIso() {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatPreviewDayMonth(iso) {
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 function shiftIsoDate(iso, days) {

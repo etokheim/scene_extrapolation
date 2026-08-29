@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light-edit sidebar uses a Huemane-style hue/temperature wheel: pin for the selected scene, dots for the others, and a sampled line for the extrapolation path between them
 - Search in the preview-location dialog jumps the map pin
 - Year-long scrubber under the preview date to drag between days
-- On landscape devices the year scrubber sits vertically beside the clock (30px gap; portrait keeps it under the date row); opening a sidebar collapses the rail with a width animation matched to the dock
+- On landscape dial view the year scrubber is a vertical rail pinned to the absolute right of the stage (portrait/table keep it under the chips); day/month above the scrub opens the date picker; opening a sidebar collapses the rail with a width animation matched to the dock
 - Hover a sun or light graph to inspect time and sun elevation in a fixed readout (cursor line; today’s “now” line stays)
 - Preview another latitude/longitude on create/edit (quiet map pin until active, then a banner)
 - Create / rename / delete a native scene from the solar-event picker; an X clears the assignment. Create fills the area’s lights with brightness and color for that event
@@ -30,14 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unsaved editor changes persist in this browser; returning to the scene restores them with a banner and a Discard action
 - A light missing from some scenes is an Add button; it copies the typical brightness and color of the other lights already in that scene
 - Suggested rows for area lights that are not in any assigned scene; scene lights outside the selected area use the warning color
-- Toggle the light graphs between stacked bands and concentric 24-hour clock rings (midnight at the top), with clickable solar-event icons on the rim
+- Toggle the light graphs between stacked bands and concentric 24-hour clock rings from a single header button (`Table view` / `Dial view`); location pin is in the header too; midnight at the top on the dial, with clickable solar-event icons on the rim
 - Clock face fills the editor width up to 80vh, soft ring seams sharpen on hover, and the open light-edit lamp is highlighted
 - Clock ring seams overlap more when blurred so gaps stay lit instead of dark
 - Soft glow behind the light clock: blurred sky disc from solar elevation (not lamp conics)
-- Hovered clock light ring grows radially with inner/outer borders and overlaps neighbors; the open sidebar’s lamp keeps that size with a wider border
+- Hovered clock light ring grows radially with inner/outer borders and overlaps neighbors; the open sidebar’s lamp keeps that size with a wider border (borders paint outside the fill mask; selected stays sharp)
 - Clock view wraps sun elevation around the rim (dashed above and below the horizon; day path at 50% opacity; no dashed horizon circle); the linear sun chart is hidden in that mode
 - Clock sun path stroke is minimum below the horizon, maximum at the horizon, and tapers toward noon; daytime tint follows the sky palette; round dashes at 50% opacity on continuous path runs
 - Clock hour labels sit outside the tick marks at 8px
+- Editor page max-width is 1920px; landscape dial timeline pins to the absolute right with day/month above it (opens the date picker); location and Table/Dial view live in the header
 - Clock has no now-hand or hover ray; hover eases the sun along the path arc then tracks it
 - Clock sun stays at max scale (2×) below and at the horizon, then shrinks toward 1× as daytime elevation rises; marker follows the same path as the drawn curve
 - Clock enter (once per editor visit): face fades 750ms and scales 1.5s; overlay rotates 12° over 1.5s; event buttons + sun sweep finish at 2.25s; list → edit plays it again (date redraws still skip)
