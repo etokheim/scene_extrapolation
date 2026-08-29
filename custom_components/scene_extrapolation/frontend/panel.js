@@ -301,33 +301,27 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: block;
         }
         /* Landscape clock: stable scrub rail sits beside the body so preview
-           redraws (replaceChildren) cannot drop pointer capture mid-drag. */
+           redraws (replaceChildren) cannot drop pointer capture mid-drag.
+           Absolute rail keeps the clock optically centered (flex would shift it). */
         .sun-path-stage.landscape-clock-scrub {
-          display: flex;
-          flex-direction: row;
-          align-items: flex-start;
-          justify-content: center;
-          /* 3× the original 10px clock↔timeline gap. */
-          gap: 30px;
+          display: block;
+          position: relative;
           width: 100%;
           box-sizing: border-box;
-          transition: gap ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
-        }
-        .sun-path-stage.landscape-clock-scrub.scrub-collapsed {
-          gap: 0;
+          overflow: visible;
         }
         .sun-path-stage.landscape-clock-scrub .sun-path-body {
-          flex: 1 1 auto;
-          min-width: 0;
+          width: 100%;
         }
         .sun-year-scrub-rail {
           display: none;
-          flex: 0 0 auto;
+          position: absolute;
           width: 52px;
           min-width: 0;
           overflow: hidden;
           opacity: 1;
           box-sizing: border-box;
+          z-index: 2;
           /* Match sidebar dock so collapsing the rail does not jag the open. */
           transition:
             width ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
@@ -6074,20 +6068,23 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     const face = this.shadowRoot?.querySelector(".sun-light-clock-face");
-    const body = this._sunPathBodyEl;
-    if (!face || !body) {
+    const stage = this._sunPathStage;
+    if (!face || !stage) {
       return;
     }
     const faceRect = face.getBoundingClientRect();
-    const bodyRect = body.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
     if (!faceRect.height) {
       return;
     }
+    // 3× the original 10px gap between clock face and timeline.
+    const gap = 30;
     this._clockScrubRail.style.height = `${faceRect.height}px`;
-    this._clockScrubRail.style.marginTop = `${Math.max(
-      0,
-      faceRect.top - bodyRect.top
-    )}px`;
+    this._clockScrubRail.style.top = `${faceRect.top - stageRect.top}px`;
+    this._clockScrubRail.style.left = `${
+      faceRect.right - stageRect.left + gap
+    }px`;
+    this._clockScrubRail.style.marginTop = "";
   }
 
   _drawSunPath() {
@@ -6134,14 +6131,19 @@ class SceneExtrapolationPanel extends HTMLElement {
     const svg = `
       <svg viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
         <line x1="${PLOT_LEFT}" x2="${PLOT_RIGHT}" y1="${horizonY}" y2="${horizonY}" stroke="var(--divider-color)" stroke-dasharray="4 4" stroke-width="1"/>
-        ${sunStrokeSegments(curve)
-          .map(({ s0, e0, s1, e1, night }) => {
-            const midElev = (e0 + e1) / 2;
-            const w = strokeOf(midElev);
-            const stroke = night
+        ${sunStrokePathRuns(curve, strokeOf)
+          .map((run) => {
+            const stroke = run.night
               ? "var(--secondary-text-color)"
-              : skyLookFromElevation(midElev).pathColor;
-            return `<line x1="${xOf(s0).toFixed(1)}" y1="${yOf(e0).toFixed(1)}" x2="${xOf(s1).toFixed(1)}" y2="${yOf(e1).toFixed(1)}" fill="none" stroke="${stroke}" stroke-width="${w}px" stroke-opacity="0.5" stroke-dasharray="8 7" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></line>`;
+              : skyLookFromElevation(run.midElev).pathColor;
+            const d = run.points
+              .map(([seconds, elev], index) => {
+                const x = xOf(seconds).toFixed(1);
+                const y = yOf(elev).toFixed(1);
+                return `${index === 0 ? "M" : "L"}${x} ${y}`;
+              })
+              .join("");
+            return `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${run.width}px" stroke-opacity="0.5" stroke-dasharray="8 7" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>`;
           })
           .join("")}
       </svg>
@@ -6696,33 +6698,40 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
 
     let dashOffset = 0;
-    for (const segment of sunStrokeSegments(curve)) {
-      const p0 = this._clockSunXy(segment.s0, segment.e0);
-      const p1 = this._clockSunXy(segment.s1, segment.e1);
-      const line = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "line"
+    // Continuous <path> runs (not per-segment <line>s): round caps on short
+    // lines stack into a double spine; one path keeps rounded dashes clean.
+    for (const run of sunStrokePathRuns(curve, strokeOf)) {
+      const coords = run.points.map(([seconds, elev]) =>
+        this._clockSunXy(seconds, elev)
       );
-      line.setAttribute(
-        "class",
-        segment.night ? "clock-sun-night" : "clock-sun-day"
-      );
-      line.setAttribute("x1", p0.x.toFixed(2));
-      line.setAttribute("y1", p0.y.toFixed(2));
-      line.setAttribute("x2", p1.x.toFixed(2));
-      line.setAttribute("y2", p1.y.toFixed(2));
-      const midElev = (segment.e0 + segment.e1) / 2;
-      line.style.strokeWidth = `${strokeOf(midElev)}px`;
-      // Keep dash phase continuous across short segments (avoids a second
-      // “sparkle” stroke from every segment restarting the pattern).
-      const len = Math.hypot(p1.x - p0.x, p1.y - p0.y);
-      line.style.strokeDashoffset = `${-dashOffset}`;
-      dashOffset += len;
-      if (!segment.night) {
-        // Daytime path follows the sky/sun palette at that elevation.
-        line.style.stroke = skyLookFromElevation(midElev).pathColor;
+      let d = "";
+      let len = 0;
+      for (let i = 0; i < coords.length; i += 1) {
+        const p = coords[i];
+        d += `${i === 0 ? "M" : "L"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+        if (i > 0) {
+          len += Math.hypot(
+            p.x - coords[i - 1].x,
+            p.y - coords[i - 1].y
+          );
+        }
       }
-      overlay.appendChild(line);
+      const path = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path"
+      );
+      path.setAttribute(
+        "class",
+        run.night ? "clock-sun-night" : "clock-sun-day"
+      );
+      path.setAttribute("d", d);
+      path.style.strokeWidth = `${run.width}px`;
+      path.style.strokeDashoffset = `${-dashOffset}`;
+      dashOffset += len;
+      if (!run.night) {
+        path.style.stroke = skyLookFromElevation(run.midElev).pathColor;
+      }
+      overlay.appendChild(path);
     }
 
     // CSS sun+flare at “this time of day” on the preview date’s curve.
@@ -6903,16 +6912,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     overlay.setAttribute("aria-hidden", "true");
     const cx = CLOCK_CX;
     const cy = CLOCK_CY;
-    // Ticks sit on the planet (inside the horizon). The daytime sun path grows
-    // outward from the rim — ticks outside the rim doubled that stroke.
-    const tickOuter = CLOCK_SUN_HORIZON - 2;
-    const tickInnerMinor = tickOuter - 4;
-    const tickInnerMajor = tickOuter - 8;
-    // Labels outside the exaggerated noon arc.
-    const labelR =
-      CLOCK_SUN_HORIZON +
-      CLOCK_SUN_DAY_BASE_SPAN * CLOCK_SUN_DAY_EMPHASIS +
-      6;
+    // Hour ticks sit just outside the planet rim (rings outer = horizon).
+    // Keep them outside the light rings — not inset onto the visualization.
+    const tickOuter = 86;
+    const tickInnerMinor = 82;
+    const tickInnerMajor = 78;
+    // Labels just outside the tick marks.
+    const labelR = 94;
     for (let hour = 0; hour < 24; hour += 1) {
       const deg = (hour / 24) * 360;
       const rad = ((deg - 90) * Math.PI) / 180;
@@ -8928,6 +8934,46 @@ function sunStrokeSegments(curve) {
     });
   }
   return segments;
+}
+
+/**
+ * Coalesce horizon-split segments into continuous path runs so round dashed
+ * strokes do not stack overlapping caps (the “double path” look).
+ * Splits when night/day flips or stroke width drifts by more than ~1.25px.
+ */
+function sunStrokePathRuns(curve, strokeOf) {
+  const runs = [];
+  for (const segment of sunStrokeSegments(curve)) {
+    const midElev = (segment.e0 + segment.e1) / 2;
+    const width = strokeOf(midElev);
+    const last = runs[runs.length - 1];
+    if (
+      last &&
+      last.night === segment.night &&
+      Math.abs(last.width - width) < 1.25
+    ) {
+      last.points.push([segment.s1, segment.e1]);
+      last.widthSum += width;
+      last.elevSum += midElev;
+      last.count += 1;
+      last.width = last.widthSum / last.count;
+      last.midElev = last.elevSum / last.count;
+      continue;
+    }
+    runs.push({
+      night: segment.night,
+      width,
+      widthSum: width,
+      elevSum: midElev,
+      midElev,
+      count: 1,
+      points: [
+        [segment.s0, segment.e0],
+        [segment.s1, segment.e1],
+      ],
+    });
+  }
+  return runs;
 }
 
 function interpolateElevation(curve, seconds) {
