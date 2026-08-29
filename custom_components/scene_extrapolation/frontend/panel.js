@@ -463,13 +463,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: visible;
           z-index: 5;
         }
-        .sun-light-clock-overlay .clock-horizon {
-          fill: none;
-          stroke: var(--divider-color);
-          stroke-width: 1;
-          stroke-dasharray: 2 3;
-          opacity: 0.65;
-        }
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
           stroke: ${SUN_LINE_DAY};
@@ -6152,16 +6145,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       const { x, y } = this._clockSunXy(seconds, elevation);
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     };
-
-    const horizon = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "circle"
-    );
-    horizon.setAttribute("class", "clock-horizon");
-    horizon.setAttribute("cx", String(cx));
-    horizon.setAttribute("cy", String(cy));
-    horizon.setAttribute("r", String(CLOCK_SUN_HORIZON));
-    overlay.appendChild(horizon);
 
     for (const segment of sunStrokePaths(curve, null, null, {
       point,
