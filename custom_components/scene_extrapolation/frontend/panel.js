@@ -20,6 +20,9 @@ const CLOCK_SUN_DAY_EMPHASIS = 2;
 const CLOCK_SUN_DAY_BASE_SPAN = 22;
 const CLOCK_SUN_NIGHT_MIN = 40;
 const CLOCK_EVENT_ICON_R = 56;
+/* Fixed px band around the dial for event buttons + labels (do not scale). */
+const CLOCK_CHROME_PX = 56;
+const CLOCK_SCRUB_RAIL_PX = 88;
 /* Far from horizon (day high) = 52px; at/near horizon and all night = 2×.
    Below the horizon the disc stays at max scale (no shrink until daytime rise). */
 const CLOCK_SUN_SIZE_PX = 52;
@@ -160,6 +163,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sidebarLightId = null;
     this._hashConfirming = false;
     this._lightView = "table";
+    this._liveEdit = false;
+    this._liveEditSidebarHandler = null;
     this._onHashChange = () => this._syncHash();
     this._onEditorKeydown = (ev) => this._handleEditorShortcut(ev);
     this._onPageHide = (ev) => {
@@ -312,25 +317,39 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-path-stage {
           display: block;
         }
-        /* Landscape clock: stable scrub rail sits beside the body so preview
-           redraws (replaceChildren) cannot drop pointer capture mid-drag.
-           Absolute rail keeps the clock optically centered (flex would shift it). */
+        /* Landscape clock: timeline in the right column; matching empty left
+           column keeps the dial optically centered in the full stage while
+           the rail still reduces the width available for the dial. */
         .sun-path-stage.landscape-clock-scrub {
-          display: block;
-          position: relative;
+          --scrub-rail-width: ${CLOCK_SCRUB_RAIL_PX}px;
+          display: grid;
+          grid-template-columns:
+            var(--scrub-rail-width)
+            minmax(0, 1fr)
+            var(--scrub-rail-width);
+          align-items: start;
           width: 100%;
           box-sizing: border-box;
           overflow: visible;
+          transition: grid-template-columns ${SIDEBAR_ANIMATION_MS}ms
+            cubic-bezier(0.2, 0, 0, 1);
+        }
+        .sun-path-stage.landscape-clock-scrub.scrub-collapsed {
+          --scrub-rail-width: 0px;
         }
         .sun-path-stage.landscape-clock-scrub .sun-path-body {
+          grid-column: 2;
           width: 100%;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
         }
         .sun-year-scrub-rail {
           display: none;
-          position: absolute;
-          /* Pin to the page’s right edge so the dial stays optically centered. */
-          right: 0;
-          width: 88px;
+          grid-column: 3;
+          position: relative;
+          width: 100%;
           min-width: 0;
           overflow: hidden;
           opacity: 1;
@@ -339,16 +358,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-direction: column;
           align-items: stretch;
           gap: 6px;
-          /* Match sidebar dock so collapsing the rail does not jag the open. */
-          transition:
-            width ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
-            opacity ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
+          transition: opacity ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         }
         .sun-path-stage.landscape-clock-scrub .sun-year-scrub-rail {
           display: flex;
         }
         .sun-path-stage.landscape-clock-scrub.scrub-collapsed .sun-year-scrub-rail {
-          width: 0;
           opacity: 0;
           pointer-events: none;
         }
@@ -638,8 +653,21 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex: 0 0 auto;
           touch-action: none;
           cursor: crosshair;
-          overflow: visible;
+          /* Clip labels/buttons to the face; chrome padding keeps them readable. */
+          overflow: hidden;
           transform-origin: center center;
+          --clock-chrome: ${CLOCK_CHROME_PX}px;
+        }
+        /* Planet / path / glow live in the inset core; event chips stay on the
+           face so their px size does not shrink with the dial. */
+        .sun-light-clock-core {
+          position: absolute;
+          inset: var(--clock-chrome);
+          border-radius: 50%;
+          pointer-events: none;
+        }
+        .sun-light-clock-core .sun-light-clock-rings {
+          pointer-events: auto;
         }
         .sun-light-clock-face.clock-face-enter {
           animation:
@@ -992,7 +1020,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-direction: column;
           align-items: center;
           gap: 1px;
-          max-width: 7.5rem;
+          max-width: min(7.5rem, calc(var(--clock-chrome) * 2 - 8px));
           padding: 0 2px;
           text-align: center;
           pointer-events: none;
@@ -1016,7 +1044,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           color: var(--secondary-text-color);
           overflow: hidden;
           text-overflow: ellipsis;
-          max-width: 7.5rem;
+          max-width: min(7.5rem, calc(var(--clock-chrome) * 2 - 8px));
         }
         .clock-event-meta .clock-event-scene.empty {
           color: var(--warning-color, var(--error-color));
@@ -1958,6 +1986,21 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-top: 1px solid var(--divider-color);
           background: var(--card-background-color);
         }
+        .live-edit-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          margin: 0;
+          padding: 0 4px;
+          color: var(--primary-text-color);
+          font: inherit;
+          font-size: 14px;
+          cursor: pointer;
+          user-select: none;
+        }
+        .live-edit-toggle ha-switch {
+          --mdc-switch-track-width: 36px;
+        }
         .dialog-row {
           display: flex;
           align-items: center;
@@ -2584,6 +2627,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._closeSceneSidebar();
     // Allow clock enter again the next time an editor opens.
     this._clockEnterPlayed = false;
+    this._liveEdit = false;
+    this._liveEditSidebarHandler = null;
     this._cancelClockSunArc();
     this._form = undefined;
     this._headerEl.textContent = "Scene Extrapolation";
@@ -2714,18 +2759,61 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._lightViewToggleBtn = viewBtn;
     this._syncLightViewButtons();
 
+    const liveToggle = document.createElement("label");
+    liveToggle.className = "live-edit-toggle";
+    const liveLabel = document.createElement("span");
+    liveLabel.textContent = "Live edit";
+    const liveSwitch = document.createElement("ha-switch");
+    liveSwitch.checked = Boolean(this._liveEdit);
+    liveSwitch.addEventListener("change", () => {
+      this._setLiveEdit(Boolean(liveSwitch.checked));
+    });
+    liveToggle.append(liveLabel, liveSwitch);
+    this._liveEditSwitch = liveSwitch;
+
     const undo = this._undoRedoButton("undo");
     const redo = this._undoRedoButton("redo");
     this._undoBtn = undo;
     this._redoBtn = redo;
     if (this._narrow) {
-      this._setActionItems(locationBtn, viewBtn, this._overflowMenu());
+      this._setActionItems(
+        liveToggle,
+        locationBtn,
+        viewBtn,
+        this._overflowMenu()
+      );
       this._syncLocationToolbar();
       return;
     }
-    this._setActionItems(locationBtn, viewBtn, undo, redo, this._overflowMenu());
+    this._setActionItems(
+      liveToggle,
+      locationBtn,
+      viewBtn,
+      undo,
+      redo,
+      this._overflowMenu()
+    );
     this._syncUndoButtons();
     this._syncLocationToolbar();
+  }
+
+  _syncLiveEditControl() {
+    if (this._liveEditSwitch) {
+      this._liveEditSwitch.checked = Boolean(this._liveEdit);
+    }
+  }
+
+  async _setLiveEdit(on) {
+    const next = Boolean(on);
+    if (this._liveEdit === next) {
+      this._syncLiveEditControl();
+      return;
+    }
+    this._liveEdit = next;
+    this._syncLiveEditControl();
+    if (typeof this._liveEditSidebarHandler === "function") {
+      await this._liveEditSidebarHandler(next);
+    }
   }
 
   _undoRedoButton(kind) {
@@ -4715,7 +4803,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       });
     }
     let currentEvent = event;
-    let liveEdit = false;
     let liveApplied = false;
     let wheelCtl = null;
     let brightnessGraphCtl = null;
@@ -4761,7 +4848,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     };
     const applyLive = async () => {
-      if (!liveEdit) {
+      if (!this._liveEdit) {
         return;
       }
       liveApplied = true;
@@ -4775,12 +4862,24 @@ class SceneExtrapolationPanel extends HTMLElement {
     infoBtn.appendChild(infoIcon);
     infoBtn.addEventListener("click", () => this._showEntityMoreInfo(light.entity_id));
 
+    const onLiveEditChange = async (on) => {
+      if (on) {
+        await applyLive();
+      } else if (liveApplied) {
+        await this._applyLightState(light.entity_id, snapshot);
+        liveApplied = false;
+      }
+    };
+
     const opened = await this._openSceneSidebar({
       title: light.name,
       subtitle: this._sceneName(sceneEntityId()),
       className: "light-dialog",
       actionItems: [infoBtn],
       onDismiss: () => {
+        if (this._liveEditSidebarHandler === onLiveEditChange) {
+          this._liveEditSidebarHandler = null;
+        }
         this._syncPreviewOverlay();
         this._sunPathKey = undefined;
         this._ensureSunPath();
@@ -4792,6 +4891,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!opened) {
       return;
     }
+    this._liveEditSidebarHandler = onLiveEditChange;
     this._setSidebarEvent(event.id);
     const { host, header, body, footer } = opened;
     host._lightEntityId = light.entity_id;
@@ -4826,7 +4926,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         wheelCtl?.setMode(mode, { convertDraft: false });
       }
       wheelCtl?.sync();
-      if (liveEdit) {
+      if (this._liveEdit) {
         await applyLive();
       }
     };
@@ -4878,23 +4978,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (!draft) {
         return;
       }
-      const liveRow = document.createElement("label");
-      liveRow.className = "dialog-row";
-      const liveLabel = document.createElement("span");
-      liveLabel.textContent = "Live edit";
-      const liveSwitch = document.createElement("ha-switch");
-      liveSwitch.checked = liveEdit;
-      liveSwitch.addEventListener("change", async () => {
-        liveEdit = Boolean(liveSwitch.checked);
-        if (liveEdit) {
-          await applyLive();
-        } else if (liveApplied) {
-          await this._applyLightState(light.entity_id, snapshot);
-          liveApplied = false;
-        }
-      });
-      liveRow.append(liveLabel, liveSwitch);
-      fieldsHost.appendChild(liveRow);
 
       const onField = document.createElement("ha-selector");
       onField.hass = this._hass;
@@ -5121,6 +5204,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     paintFields();
     brightnessGraphCtl?.sync();
     wheelCtl?.sync();
+    if (this._liveEdit) {
+      await applyLive();
+    }
   }
 
   async _openSaveDialog({ rename = false, focus } = {}) {
@@ -6380,18 +6466,16 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     const face = this.shadowRoot?.querySelector(".sun-light-clock-face");
-    const stage = this._sunPathStage;
-    if (!face || !stage) {
+    if (!face) {
       return;
     }
     const faceRect = face.getBoundingClientRect();
-    const stageRect = stage.getBoundingClientRect();
     if (!faceRect.height) {
       return;
     }
-    // Absolute right edge of the stage — dial stays centered in the column.
+    // Match the dial height; grid columns handle horizontal centering.
     this._clockScrubRail.style.height = `${faceRect.height}px`;
-    this._clockScrubRail.style.top = `${faceRect.top - stageRect.top}px`;
+    this._clockScrubRail.style.top = "";
     this._clockScrubRail.style.left = "";
     this._clockScrubRail.style.marginTop = "";
   }
@@ -6748,14 +6832,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     return (seconds / SECONDS_PER_DAY) * 360;
   }
 
-  _lightAtClockPointer(ev, face, ringLights) {
-    if (!ringLights.length) {
+  _lightAtClockPointer(ev, ringsHost, ringLights) {
+    if (!ringLights.length || !ringsHost) {
       return null;
     }
-    const rect = face.getBoundingClientRect();
-    const size = Math.min(rect.width, rect.height);
-    // ringsHost is inset 14% on the face → radius is 36% of the face.
-    const ringsRadius = size * 0.36;
+    const rect = ringsHost.getBoundingClientRect();
+    const ringsRadius = Math.min(rect.width, rect.height) / 2;
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
     const r = Math.hypot(ev.clientX - cx, ev.clientY - cy);
@@ -6989,7 +7071,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._animateClockSunArc(from, idle, 2250, { forward: true });
   }
 
-  _paintClockSunPath(overlay, face, cx, cy) {
+  _paintClockSunPath(overlay, host, cx, cy) {
     const curve = this._sunPath?.curve;
     if (!curve?.length) {
       return;
@@ -7063,7 +7145,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       span.className = layer;
       marker.appendChild(span);
     }
-    face.appendChild(marker);
+    host.appendChild(marker);
     this._clockSunEl = marker;
     this._clockSunLive = false;
     this._cancelClockSunArc();
@@ -7142,6 +7224,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       "aria-label",
       "24-hour light rings with sun elevation around the rim; midnight at the top"
     );
+    const core = document.createElement("div");
+    core.className = "sun-light-clock-core";
 
     const glowHost = document.createElement("div");
     glowHost.className = "sun-light-clock-glow";
@@ -7194,7 +7278,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     };
     ringsHost.addEventListener("pointermove", (ev) => {
-      const light = this._lightAtClockPointer(ev, face, ringLights);
+      const light = this._lightAtClockPointer(ev, ringsHost, ringLights);
       setHoveredRing(light?.entity_id || null);
     });
     ringsHost.addEventListener("pointerleave", () => {
@@ -7222,7 +7306,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     };
     ringsHost.addEventListener("click", (ev) => {
-      openRingAt(ev, this._lightAtClockPointer(ev, face, ringLights));
+      openRingAt(ev, this._lightAtClockPointer(ev, ringsHost, ringLights));
     });
     ringsHost.tabIndex = 0;
     ringsHost.setAttribute("role", "listbox");
@@ -7237,7 +7321,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         ringLights[0];
       openRingAt(ev, selected);
     });
-    face.append(glowHost, ringsHost);
+    core.append(glowHost, ringsHost);
 
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("class", "sun-light-clock-overlay");
@@ -7282,7 +7366,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         overlay.appendChild(label);
       }
     }
-    this._paintClockSunPath(overlay, face, cx, cy);
+    this._paintClockSunPath(overlay, core, cx, cy);
 
     // Dashed spokes from each solar-event marker in to the planet horizon.
     const eventRayOuter =
@@ -7315,25 +7399,23 @@ class SceneExtrapolationPanel extends HTMLElement {
       );
       overlay.appendChild(ray);
     }
-    face.appendChild(overlay);
+    core.appendChild(overlay);
+    face.appendChild(core);
 
     const editable = this._view === "edit";
-    const iconR = CLOCK_EVENT_ICON_R;
+    const eventAnchors = [];
     for (const event of events) {
       const deg = this._clockAngleDeg(event.seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
-      const left = 50 + cos * iconR;
-      const top = 50 + sin * iconR;
       const sceneId = this._eventSceneId(event.id);
       const sceneName = this._sceneName(sceneId);
       const timeText = event.fallback ? `${event.time}*` : event.time;
 
       const anchor = document.createElement("div");
       anchor.className = "clock-event-anchor";
-      anchor.style.left = `${left}%`;
-      anchor.style.top = `${top}%`;
+      anchor._clockPolar = { cos, sin };
 
       const meta = document.createElement("div");
       meta.className = "clock-event-meta";
@@ -7387,6 +7469,26 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       anchor.append(meta, btn);
       face.appendChild(anchor);
+      eventAnchors.push(anchor);
+    }
+
+    const layoutEventAnchors = () => {
+      const w = face.clientWidth;
+      if (!w) {
+        return;
+      }
+      // Button centers sit just outside the chrome-inset core (fixed px chrome).
+      const iconR = ((w / 2 - CLOCK_CHROME_PX + 16) / w) * 100;
+      for (const anchor of eventAnchors) {
+        const { cos, sin } = anchor._clockPolar;
+        anchor.style.left = `${50 + cos * iconR}%`;
+        anchor.style.top = `${50 + sin * iconR}%`;
+      }
+    };
+    layoutEventAnchors();
+    if (typeof ResizeObserver === "function") {
+      const ro = new ResizeObserver(() => layoutEventAnchors());
+      ro.observe(face);
     }
 
     this._bindClockHover(face);
