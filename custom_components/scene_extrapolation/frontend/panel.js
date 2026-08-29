@@ -417,8 +417,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Registered via CSS.registerProperty (document), not @property here —
            shadow-root @property does not enable transitions. */
-        /* Soft disc using the outer ring’s conic — cheaper than blurring a
-           copy of every ring, still matches the rim colors around the day. */
+        /* Soft disc tinted by solar elevation (sky), not lamp conics. */
         .sun-light-clock-glow {
           position: absolute;
           inset: 14%;
@@ -428,7 +427,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Larger than the face rings (= bigger “spread”). */
           transform: scale(1.35);
           transform-origin: center center;
-          filter: blur(81px) saturate(1.45);
+          filter: blur(81px);
           opacity: 0.55;
         }
         .sun-light-clock-rings {
@@ -487,14 +486,87 @@ class SceneExtrapolationPanel extends HTMLElement {
           stroke-linecap: round;
           opacity: 0.9;
         }
-        .clock-sun-marker {
+        /* CSS sun + lens flare; --sun-* set from elevation. */
+        .clock-sun {
           position: absolute;
+          width: 26px;
+          height: 26px;
           transform: translate(-50%, -50%);
-          --mdc-icon-size: 22px;
-          color: ${SUN_LINE_DAY};
-          filter: drop-shadow(0 0 3px color-mix(in srgb, ${SUN_LINE_DAY} 80%, transparent));
           pointer-events: none;
           z-index: 6;
+          --sun-core: #fff8e7;
+          --sun-corona: #ffb74d;
+          --sun-streak: #ffe0b2;
+          --sun-streak-opacity: 0.85;
+          --sun-ray-opacity: 0.55;
+          --sun-ghost-opacity: 0.35;
+        }
+        .clock-sun > span {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          pointer-events: none;
+        }
+        .clock-sun-ghost {
+          inset: -40% -10%;
+          border-radius: 50%;
+          background: radial-gradient(
+            closest-side circle at 35% 50%,
+            color-mix(in srgb, var(--sun-corona) 55%, transparent) 0%,
+            transparent 70%
+          );
+          opacity: var(--sun-ghost-opacity);
+          mix-blend-mode: screen;
+          transform: translate(-18%, 0) scale(1.6);
+        }
+        .clock-sun-rays {
+          inset: -120%;
+          background: repeating-conic-gradient(
+            from 8deg,
+            color-mix(in srgb, var(--sun-streak) 70%, transparent) 0deg 3deg,
+            transparent 3deg 28deg
+          );
+          -webkit-mask-image: radial-gradient(
+            closest-side,
+            #000 8%,
+            transparent 55%
+          );
+          mask-image: radial-gradient(closest-side, #000 8%, transparent 55%);
+          opacity: var(--sun-ray-opacity);
+          mix-blend-mode: screen;
+        }
+        .clock-sun-streak {
+          inset: 35% -160%;
+          border-radius: 50%;
+          background: radial-gradient(
+            closest-side ellipse at center,
+            color-mix(in srgb, var(--sun-streak) 90%, white) 0%,
+            color-mix(in srgb, var(--sun-streak) 40%, transparent) 45%,
+            transparent 72%
+          );
+          opacity: var(--sun-streak-opacity);
+          mix-blend-mode: screen;
+        }
+        .clock-sun-corona {
+          inset: -55%;
+          background: radial-gradient(
+            closest-side circle at center,
+            color-mix(in srgb, var(--sun-corona) 85%, transparent) 0%,
+            color-mix(in srgb, var(--sun-corona) 35%, transparent) 42%,
+            transparent 72%
+          );
+          mix-blend-mode: screen;
+        }
+        .clock-sun-core {
+          inset: 22%;
+          background: radial-gradient(
+            closest-side circle at center,
+            #fff 0%,
+            var(--sun-core) 45%,
+            color-mix(in srgb, var(--sun-corona) 80%, var(--sun-core)) 78%,
+            transparent 100%
+          );
+          box-shadow: 0 0 6px color-mix(in srgb, var(--sun-core) 70%, transparent);
         }
         .sun-light-clock-overlay .clock-tick {
           stroke: var(--divider-color);
@@ -6011,39 +6083,73 @@ class SceneExtrapolationPanel extends HTMLElement {
     return null;
   }
 
+  _clockSunRadiusOf(elevation) {
+    const scale = Math.max(this._sunPath?.max_elevation || 0, 1);
+    const t = elevation / scale;
+    if (elevation >= 0) {
+      return (
+        CLOCK_SUN_HORIZON +
+        Math.min(1, t) * CLOCK_SUN_DAY_BASE_SPAN * CLOCK_SUN_DAY_EMPHASIS
+      );
+    }
+    return (
+      CLOCK_SUN_HORIZON +
+      Math.max(-1, t) * (CLOCK_SUN_HORIZON - CLOCK_SUN_NIGHT_MIN)
+    );
+  }
+
+  _clockSunXy(seconds, elevation) {
+    const elev =
+      elevation ?? interpolateElevation(this._sunPath?.curve || [], seconds);
+    const deg = this._clockAngleDeg(seconds);
+    const rad = ((deg - 90) * Math.PI) / 180;
+    const r = this._clockSunRadiusOf(elev);
+    return {
+      x: CLOCK_CX + Math.cos(rad) * r,
+      y: CLOCK_CY + Math.sin(rad) * r,
+      r,
+      rad,
+      elev,
+    };
+  }
+
+  _applyClockSunAppearance(seconds) {
+    const curve = this._sunPath?.curve;
+    if (!curve?.length) {
+      return;
+    }
+    const elev = interpolateElevation(curve, seconds);
+    const look = skyLookFromElevation(elev);
+    const sun = this._clockSunEl;
+    if (sun) {
+      const pos = this._clockSunXy(seconds, elev);
+      sun.style.left = `${(pos.x / CLOCK_VIEW) * 100}%`;
+      sun.style.top = `${(pos.y / CLOCK_VIEW) * 100}%`;
+      sun.style.setProperty("--sun-core", look.sunCore);
+      sun.style.setProperty("--sun-corona", look.sunCorona);
+      sun.style.setProperty("--sun-streak", look.sunStreak);
+      sun.style.setProperty("--sun-streak-opacity", String(look.streakOpacity));
+      sun.style.setProperty("--sun-ray-opacity", String(look.rayOpacity));
+      sun.style.setProperty("--sun-ghost-opacity", String(look.ghostOpacity));
+      sun.setAttribute(
+        "aria-label",
+        `Sun ${elev >= 0 ? "above" : "below"} horizon`
+      );
+    }
+    const glow = this._clockSkyGlow;
+    if (glow) {
+      glow.style.background = look.glowBackground;
+      glow.style.opacity = String(look.glowOpacity);
+    }
+  }
+
   _paintClockSunPath(overlay, face, cx, cy) {
     const curve = this._sunPath?.curve;
     if (!curve?.length) {
       return;
     }
-    // Same annual peak scale as the linear chart — winter noon stays low.
-    const scale = Math.max(this._sunPath.max_elevation || 0, 1);
-    const rOf = (elevation) => {
-      const t = elevation / scale;
-      if (elevation >= 0) {
-        return (
-          CLOCK_SUN_HORIZON +
-          Math.min(1, t) * CLOCK_SUN_DAY_BASE_SPAN * CLOCK_SUN_DAY_EMPHASIS
-        );
-      }
-      return (
-        CLOCK_SUN_HORIZON +
-        Math.max(-1, t) * (CLOCK_SUN_HORIZON - CLOCK_SUN_NIGHT_MIN)
-      );
-    };
-    const xyOf = (seconds, elevation) => {
-      const deg = this._clockAngleDeg(seconds);
-      const rad = ((deg - 90) * Math.PI) / 180;
-      const r = rOf(elevation);
-      return {
-        x: cx + Math.cos(rad) * r,
-        y: cy + Math.sin(rad) * r,
-        r,
-        rad,
-      };
-    };
     const point = (seconds, elevation) => {
-      const { x, y } = xyOf(seconds, elevation);
+      const { x, y } = this._clockSunXy(seconds, elevation);
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     };
 
@@ -6072,21 +6178,24 @@ class SceneExtrapolationPanel extends HTMLElement {
       overlay.appendChild(path);
     }
 
-    // Sun marker at “this time of day” on the preview date’s curve.
-    const nowSeconds = nowSecondsSinceMidnight();
-    const elev = interpolateElevation(curve, nowSeconds);
-    const pos = xyOf(nowSeconds, elev);
-    const marker = document.createElement("ha-icon");
-    marker.className = "clock-sun-marker";
-    marker.setAttribute("icon", "mdi:weather-sunny");
-    marker.setAttribute(
-      "aria-label",
-      `Sun ${elev >= 0 ? "above" : "below"} horizon`
-    );
-    // viewBox units → % of face (half of viewBox = 50%).
-    marker.style.left = `${(pos.x / CLOCK_VIEW) * 100}%`;
-    marker.style.top = `${(pos.y / CLOCK_VIEW) * 100}%`;
+    // CSS sun+flare at “this time of day” on the preview date’s curve.
+    const marker = document.createElement("div");
+    marker.className = "clock-sun";
+    marker.setAttribute("aria-hidden", "true");
+    for (const layer of [
+      "clock-sun-ghost",
+      "clock-sun-rays",
+      "clock-sun-streak",
+      "clock-sun-corona",
+      "clock-sun-core",
+    ]) {
+      const span = document.createElement("span");
+      span.className = layer;
+      marker.appendChild(span);
+    }
     face.appendChild(marker);
+    this._clockSunEl = marker;
+    this._applyClockSunAppearance(nowSecondsSinceMidnight());
   }
 
   _bindClockHover(face, hoverRay) {
@@ -6098,6 +6207,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (this._hoverLine) {
         this._hoverLine.style.display = "none";
       }
+      this._applyClockSunAppearance(seconds);
       this._fillHoverReadout(seconds, { hovering: true });
     };
     const clear = () => {
@@ -6106,6 +6216,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (this._hoverLine) {
         this._hoverLine.style.display = "";
       }
+      this._applyClockSunAppearance(nowSecondsSinceMidnight());
       this._fillHoverReadout(
         this._sunPath?.today ? nowSecondsSinceMidnight() : null,
         { hovering: false }
@@ -6156,6 +6267,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const glowHost = document.createElement("div");
     glowHost.className = "sun-light-clock-glow";
     glowHost.setAttribute("aria-hidden", "true");
+    this._clockSkyGlow = glowHost;
     const ringsHost = document.createElement("div");
     ringsHost.className = "sun-light-clock-rings";
     const n = ringLights.length;
@@ -6165,13 +6277,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Expand each ring into its neighbors so soft edges blend over lamp
     // color, not the dark card (same idea as the table’s negative margin).
     const overlap = CLOCK_FEATHER_PCT;
-    if (n) {
-      // Same conic as the outer ring — blur keeps the day colors without
-      // duplicating every lamp’s gradient.
-      glowHost.style.background = conicGradientFromSamples(
-        ringLights[0].samples || []
-      );
-    }
+    // Sky glow is applied in _applyClockSunAppearance after the sun marker.
     for (let index = 0; index < n; index += 1) {
       const light = ringLights[index];
       const midOuter = 100 - index * stroke;
@@ -8213,6 +8319,168 @@ function interpolateElevation(curve, seconds) {
     }
   }
   return curve[curve.length - 1][1];
+}
+
+/** Sky glow + sun flare palette from solar elevation (degrees). */
+function skyLookFromElevation(elev) {
+  // Keyframes: horizon pink/red near 0°, white high day, blue then dark night.
+  const keys = [
+    {
+      e: -90,
+      outer: [4, 6, 14],
+      mid: [8, 10, 22],
+      glowOpacity: 0.16,
+      sunCore: "#c5d0e8",
+      sunCorona: "#6a7a9a",
+      sunStreak: "#9aa8c4",
+      streakOpacity: 0.12,
+      rayOpacity: 0.08,
+      ghostOpacity: 0.1,
+    },
+    {
+      e: -18,
+      outer: [10, 14, 36],
+      mid: [16, 22, 55],
+      glowOpacity: 0.22,
+      sunCore: "#d0daf0",
+      sunCorona: "#7a8ab0",
+      sunStreak: "#a8b6d4",
+      streakOpacity: 0.18,
+      rayOpacity: 0.12,
+      ghostOpacity: 0.14,
+    },
+    {
+      e: -12,
+      outer: [22, 40, 110],
+      mid: [40, 70, 160],
+      glowOpacity: 0.38,
+      sunCore: "#e8eeff",
+      sunCorona: "#6b8fd4",
+      sunStreak: "#b0c4ff",
+      streakOpacity: 0.35,
+      rayOpacity: 0.22,
+      ghostOpacity: 0.22,
+    },
+    {
+      e: -4,
+      outer: [90, 45, 95],
+      mid: [200, 80, 100],
+      glowOpacity: 0.52,
+      sunCore: "#ffd0b8",
+      sunCorona: "#ff6b6b",
+      sunStreak: "#ffb0a0",
+      streakOpacity: 0.75,
+      rayOpacity: 0.45,
+      ghostOpacity: 0.4,
+    },
+    {
+      e: 0,
+      outer: [220, 70, 70],
+      mid: [255, 140, 90],
+      glowOpacity: 0.62,
+      sunCore: "#fff0d0",
+      sunCorona: "#ff7a4d",
+      sunStreak: "#ffc4a0",
+      streakOpacity: 0.95,
+      rayOpacity: 0.65,
+      ghostOpacity: 0.5,
+    },
+    {
+      e: 4,
+      outer: [255, 120, 90],
+      mid: [255, 190, 140],
+      glowOpacity: 0.58,
+      sunCore: "#fff6e0",
+      sunCorona: "#ff9a5c",
+      sunStreak: "#ffd4a8",
+      streakOpacity: 0.9,
+      rayOpacity: 0.6,
+      ghostOpacity: 0.42,
+    },
+    {
+      e: 8,
+      outer: [160, 190, 255],
+      mid: [255, 235, 210],
+      glowOpacity: 0.52,
+      sunCore: "#fffaf0",
+      sunCorona: "#ffc878",
+      sunStreak: "#ffe8c0",
+      streakOpacity: 0.8,
+      rayOpacity: 0.5,
+      ghostOpacity: 0.32,
+    },
+    {
+      e: 25,
+      outer: [140, 185, 255],
+      mid: [255, 255, 250],
+      glowOpacity: 0.5,
+      sunCore: "#ffffff",
+      sunCorona: "#ffe08a",
+      sunStreak: "#fff4c8",
+      streakOpacity: 0.85,
+      rayOpacity: 0.55,
+      ghostOpacity: 0.28,
+    },
+    {
+      e: 90,
+      outer: [120, 170, 255],
+      mid: [255, 255, 255],
+      glowOpacity: 0.48,
+      sunCore: "#ffffff",
+      sunCorona: "#ffe9a0",
+      sunStreak: "#fff8dc",
+      streakOpacity: 0.88,
+      rayOpacity: 0.58,
+      ghostOpacity: 0.3,
+    },
+  ];
+  let lo = keys[0];
+  let hi = keys[keys.length - 1];
+  for (let i = 0; i < keys.length - 1; i += 1) {
+    if (elev >= keys[i].e && elev <= keys[i + 1].e) {
+      lo = keys[i];
+      hi = keys[i + 1];
+      break;
+    }
+    if (elev < keys[0].e) {
+      lo = keys[0];
+      hi = keys[0];
+      break;
+    }
+  }
+  if (elev > keys[keys.length - 1].e) {
+    lo = hi = keys[keys.length - 1];
+  }
+  const span = hi.e - lo.e || 1;
+  const t = lo === hi ? 0 : (elev - lo.e) / span;
+  const mixRgb = (a, b) => [
+    Math.round(a[0] + (b[0] - a[0]) * t),
+    Math.round(a[1] + (b[1] - a[1]) * t),
+    Math.round(a[2] + (b[2] - a[2]) * t),
+  ];
+  const lerp = (a, b) => a + (b - a) * t;
+  const outer = mixRgb(lo.outer, hi.outer);
+  const mid = mixRgb(lo.mid, hi.mid);
+  const rgb = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const mixHex = (a, b) => {
+    const parse = (h) => [
+      parseInt(h.slice(1, 3), 16),
+      parseInt(h.slice(3, 5), 16),
+      parseInt(h.slice(5, 7), 16),
+    ];
+    const m = mixRgb(parse(a), parse(b));
+    return `#${m.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
+  };
+  return {
+    glowBackground: `radial-gradient(closest-side circle at center, ${rgb(mid, 1)} 0%, ${rgb(mid, 0.85)} 28%, ${rgb(outer, 0.55)} 58%, ${rgb(outer, 0)} 100%)`,
+    glowOpacity: lerp(lo.glowOpacity, hi.glowOpacity),
+    sunCore: mixHex(lo.sunCore, hi.sunCore),
+    sunCorona: mixHex(lo.sunCorona, hi.sunCorona),
+    sunStreak: mixHex(lo.sunStreak, hi.sunStreak),
+    streakOpacity: lerp(lo.streakOpacity, hi.streakOpacity),
+    rayOpacity: lerp(lo.rayOpacity, hi.rayOpacity),
+    ghostOpacity: lerp(lo.ghostOpacity, hi.ghostOpacity),
+  };
 }
 
 function darkenedRgb(sample) {
