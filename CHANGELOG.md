@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clock hour labels sit outside the tick marks at 8px
 - Editor page max-width is 1024px in table view and 1920px in dial view; landscape dial uses a centered grid with an in-flow timeline (matching left gutter) so the dial shrinks without leaving true center; event chips sit in a fixed-px chrome band around the dial core; the sun marker scales with the dial core; sky glow is not clipped; dial view drops horizontal page padding; day/month above the timeline opens the date picker; suggestion chips share the date row in table view and sit under the date in dial view; dial time/elevation readout is absolute top-left; Live edit, location, and Table/Dial view live in the header
 - Clock has no now-hand or hover ray; hover eases the sun along the path arc then tracks it
-- Clock sun stays at max scale (2×) below and at the horizon, then shrinks toward 1× as daytime elevation rises; marker follows the same path as the drawn curve
+- Clock sun stays at max scale (2×) below and at the horizon, then shrinks toward 1× as daytime elevation rises; marker follows its own inset track (deeper under the planet at night than the dashed stroke); below the horizon the disc keeps the horizon palette (glow still follows night)
 - Clock enter (once per editor visit): face fades 750ms and scales 1.5s; overlay rotates 12° over 1.5s; event buttons + sun sweep finish at 2.25s; list → edit plays it again (date redraws still skip)
 - Sun path / clock container is transparent with no card border
 - Adding a missing light to a scene is an undoable session edit
