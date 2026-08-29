@@ -434,7 +434,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: absolute;
           inset: 14%;
           border-radius: 50%;
-          z-index: 1;
+          /* Above the sun so the planet occludes the disc below the horizon. */
+          z-index: 2;
           --clock-feather: ${CLOCK_FEATHER_PCT}%;
           transition: --clock-feather 220ms cubic-bezier(0.2, 0, 0, 1);
           cursor: pointer;
@@ -466,27 +467,29 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
           stroke: ${SUN_LINE_DAY};
-          stroke-width: 3;
+          stroke-width: 2;
           stroke-linejoin: round;
           stroke-linecap: round;
         }
         .sun-light-clock-overlay .clock-sun-night {
           fill: none;
           stroke: color-mix(in srgb, ${SUN_LINE_NIGHT} 55%, white);
-          stroke-width: 2;
+          stroke-width: 1;
           stroke-dasharray: 3.5 3;
           stroke-linejoin: round;
           stroke-linecap: round;
           opacity: 0.9;
         }
-        /* CSS sun + lens flare; --sun-* set from elevation. */
+        /* CSS sun + lens flare; --sun-* set from elevation.
+           z-index below rings so night sits behind the planet; day sits
+           outside the rings host and stays visible (rim clips at sunrise). */
         .clock-sun {
           position: absolute;
-          width: 26px;
-          height: 26px;
+          width: 52px;
+          height: 52px;
           transform: translate(-50%, -50%);
           pointer-events: none;
-          z-index: 6;
+          z-index: 1;
           --sun-core: #fff8e7;
           --sun-corona: #ffb74d;
           --sun-streak: #ffe0b2;
