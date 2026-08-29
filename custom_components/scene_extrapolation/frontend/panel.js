@@ -15,6 +15,8 @@ const CLOCK_CX = 100;
 const CLOCK_CY = 100;
 /* Inset so event icons + labels fit in the square around the face. */
 const CLOCK_FACE_R = 74;
+/* Sky / night / glow fill the square (corners); face geometry stays inset. */
+const CLOCK_SKY_R = (CLOCK_VIEW / 2) * Math.SQRT2;
 /* Sun path is 25% smaller than the watch-face container. */
 const CLOCK_SUN_PATH_R = CLOCK_FACE_R * 0.75;
 /* Event buttons outside the face; dashed spoke runs into the path. */
@@ -26,6 +28,7 @@ const CLOCK_TICK_LEN_MAJOR = 6;
 const CLOCK_TICK_LEN_MID = 3.8;
 const CLOCK_TICK_LEN_MINOR = 2.4;
 const CLOCK_TICK_LEN_HAIR = 1.5;
+const CLOCK_TICK_LEN_FINE = 0.9;
 const CLOCK_LABEL_R = CLOCK_FACE_R - CLOCK_TICK_LEN_MAJOR - 8;
 /* Floating rings opposite the handle; stay inside the (inset) path. */
 const CLOCK_FLOAT_OFFSET = 14;
@@ -752,19 +755,20 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Registered via CSS.registerProperty (document), not @property here —
            shadow-root @property does not enable transitions. */
-        /* Soft disc tinted by solar elevation (sky), not lamp conics. */
-        .sun-light-clock-glow {
+        /* Full-container sky (conic from the day’s elevation). */
+        .clock-sky {
           position: absolute;
-          left: 50%;
-          top: 50%;
-          width: ${((CLOCK_FACE_R * 2) / CLOCK_VIEW) * 100}%;
-          height: ${((CLOCK_FACE_R * 2) / CLOCK_VIEW) * 100}%;
-          transform: translate(-50%, -50%) scale(1.2);
-          border-radius: 50%;
+          inset: 0;
           pointer-events: none;
           z-index: 0;
-          filter: blur(64px);
-          opacity: 0.55;
+        }
+        /* One angular wash at sunrise/sunset; color follows the sun. */
+        .clock-horizon-glow {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 1;
+          mix-blend-mode: screen;
         }
         .clock-float {
           position: absolute;
@@ -923,23 +927,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: visible;
           z-index: 2;
         }
-        .sun-light-clock-overlay .clock-sky-day {
-          fill: color-mix(in srgb, #87b5e0 42%, transparent);
-        }
         .sun-light-clock-overlay .clock-sky-night {
-          fill: color-mix(in srgb, #0a1028 58%, transparent);
+          fill: color-mix(in srgb, #07122e 42%, transparent);
         }
         .sun-light-clock-overlay .clock-sky-deep {
-          fill: color-mix(in srgb, #040814 78%, transparent);
+          fill: color-mix(in srgb, #030814 52%, transparent);
         }
         .sun-light-clock-overlay .clock-horizon-ray {
           stroke: var(--secondary-text-color);
           stroke-width: 1px;
           vector-effect: non-scaling-stroke;
           opacity: 0.45;
-        }
-        .sun-light-clock-overlay .clock-horizon-glow {
-          mix-blend-mode: screen;
         }
         .sun-light-clock-overlay .clock-face-ring {
           fill: none;
@@ -1018,10 +1016,10 @@ class SceneExtrapolationPanel extends HTMLElement {
            weight on mobile and desktop while the face scales. */
         .sun-light-clock-overlay .clock-tick {
           stroke: var(--primary-text-color);
-          stroke-width: 0.5px;
+          stroke-width: 0.45px;
           vector-effect: non-scaling-stroke;
           stroke-linecap: round;
-          opacity: 0.38;
+          opacity: 0.28;
         }
         .sun-light-clock-overlay .clock-tick.minor {
           opacity: 0.48;
@@ -7146,12 +7144,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       floatEl.style.left = `${(opposite.x / CLOCK_VIEW) * 100}%`;
       floatEl.style.top = `${(opposite.y / CLOCK_VIEW) * 100}%`;
     }
-    const glow = this._clockSkyGlow;
-    if (glow) {
-      glow.style.background = glowLook.glowBackground;
-      // Horizon bands carry sunrise/sunset warmth; this disc stays a faint wash.
-      glow.style.opacity = String(glowLook.glowOpacity * 0.35);
-    }
+    this._updateHorizonGlow(elev, glowLook);
   }
 
   _layoutClockSunFill(pos, scale, sunLook) {
@@ -7254,19 +7247,82 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._animateClockSunArc(from, idle, 2250, { forward: true });
   }
 
-  _paintClockSky(overlay, events) {
-    const day = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    day.setAttribute("class", "clock-sky-day");
-    day.setAttribute("cx", String(CLOCK_CX));
-    day.setAttribute("cy", String(CLOCK_CY));
-    day.setAttribute("r", String(CLOCK_FACE_R));
-    overlay.appendChild(day);
+  /** Full-day sky conic (midnight at the bottom), sampled from elevation. */
+  _clockSkyConic() {
+    const curve = this._sunPath?.curve;
+    if (!curve?.length) {
+      return "var(--card-background-color)";
+    }
+    const steps = 96;
+    const stops = [];
+    for (let i = 0; i <= steps; i += 1) {
+      const seconds = (i / steps) * SECONDS_PER_DAY;
+      const elev = interpolateElevation(curve, seconds);
+      const look = skyLookFromElevation(elev);
+      let fill = look.skyFill;
+      // Near the horizon, lean morning gold / evening rose so the ramps
+      // mix blue with reds, pinks, and yellows instead of a single orange.
+      if (elev > -8 && elev < 14) {
+        const near = 1 - Math.min(1, Math.max(0, elev) / 14);
+        const evening = seconds > 12 * 3600;
+        const tint = evening ? "rgb(255, 72, 118)" : "rgb(255, 204, 92)";
+        fill = `color-mix(in srgb, ${look.skyFill} ${Math.round((1 - near * 0.38) * 100)}%, ${tint})`;
+      }
+      stops.push(`${fill} ${((i / steps) * 100).toFixed(2)}%`);
+    }
+    return `conic-gradient(from 180deg, ${stops.join(", ")})`;
+  }
 
+  _horizonWeight(seconds, center, band) {
+    let delta = Math.abs(seconds - center);
+    delta = Math.min(delta, SECONDS_PER_DAY - delta);
+    if (delta >= band) {
+      return 0;
+    }
+    return 0.5 * (1 + Math.cos((delta / band) * Math.PI));
+  }
+
+  _updateHorizonGlow(elev, glowLook) {
+    const el = this._clockHorizonGlowEl;
+    if (!el) {
+      return;
+    }
+    const sunrise = this._clockSunriseSeconds;
+    const sunset = this._clockSunsetSeconds;
+    if (sunrise == null && sunset == null) {
+      el.style.background = "transparent";
+      return;
+    }
+    const nearHorizon =
+      elev < 0 ? 1 : 1 - Math.min(1, elev / CLOCK_SUN_SIZE_HORIZON_DEG);
+    const strength = 0.28 + 0.72 * nearHorizon;
+    const band = 2.6 * 3600;
+    const steps = 72;
+    const stops = [];
+    for (let i = 0; i <= steps; i += 1) {
+      const seconds = (i / steps) * SECONDS_PER_DAY;
+      let weight = 0;
+      if (sunrise != null) {
+        weight = Math.max(weight, this._horizonWeight(seconds, sunrise, band));
+      }
+      if (sunset != null) {
+        weight = Math.max(weight, this._horizonWeight(seconds, sunset, band));
+      }
+      const mix = weight * strength;
+      stops.push(
+        `color-mix(in srgb, ${glowLook.horizonFill} ${Math.round(mix * 100)}%, transparent) ${((i / steps) * 100).toFixed(2)}%`
+      );
+    }
+    el.style.background = `conic-gradient(from 180deg, ${stops.join(", ")})`;
+  }
+
+  _paintClockSky(overlay, events) {
     const sunrise = this._clockEventSeconds(events, "sunrise");
     const sunset = this._clockEventSeconds(events, "sunset");
     const dawn = this._clockEventSeconds(events, "dawn");
     const dusk = this._clockEventSeconds(events, "dusk");
-    this._paintHorizonGlows(overlay, sunrise, sunset);
+    this._clockSunriseSeconds = sunrise;
+    this._clockSunsetSeconds = sunset;
     this._clockSunDayClipId = null;
     if (sunset != null && sunrise != null) {
       // Clip the sun fill to the day wedge so the horizon rays mask it
@@ -7287,7 +7343,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         "http://www.w3.org/2000/svg",
         "path"
       );
-      slice.setAttribute("d", this._clockWedgePath(sunrise, sunset));
+      slice.setAttribute(
+        "d",
+        this._clockWedgePath(sunrise, sunset, CLOCK_SKY_R)
+      );
       clip.appendChild(slice);
       defs.appendChild(clip);
       this._clockSunDayClipId = "clock-sun-day-clip";
@@ -7296,7 +7355,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         "path"
       );
       night.setAttribute("class", "clock-sky-night");
-      night.setAttribute("d", this._clockWedgePath(sunset, sunrise));
+      night.setAttribute("d", this._clockWedgePath(sunset, sunrise, CLOCK_SKY_R));
       overlay.appendChild(night);
     }
     if (dusk != null && dawn != null) {
@@ -7305,7 +7364,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         "path"
       );
       deep.setAttribute("class", "clock-sky-deep");
-      deep.setAttribute("d", this._clockWedgePath(dusk, dawn));
+      deep.setAttribute("d", this._clockWedgePath(dusk, dawn, CLOCK_SKY_R));
       overlay.appendChild(deep);
     }
     for (const id of ["sunrise", "sunset"]) {
@@ -7314,7 +7373,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         continue;
       }
       const inner = this._clockPolar(seconds, 0);
-      const outer = this._clockPolar(seconds, CLOCK_TICK_OUTER);
+      const outer = this._clockPolar(seconds, CLOCK_SKY_R);
       const ray = document.createElementNS("http://www.w3.org/2000/svg", "line");
       ray.setAttribute("class", "clock-horizon-ray");
       ray.setAttribute("x1", inner.x.toFixed(2));
@@ -7322,86 +7381,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       ray.setAttribute("x2", outer.x.toFixed(2));
       ray.setAttribute("y2", outer.y.toFixed(2));
       overlay.appendChild(ray);
-    }
-  }
-
-  /** Warm wash from each horizon ray into the day (toward noon). */
-  _paintHorizonGlows(overlay, sunrise, sunset) {
-    if (sunrise == null && sunset == null) {
-      return;
-    }
-    let span = 2.5 * 3600;
-    if (sunrise != null && sunset != null) {
-      let day =
-        (((sunset - sunrise) % SECONDS_PER_DAY) + SECONDS_PER_DAY) %
-        SECONDS_PER_DAY;
-      if (day < 1) {
-        day = SECONDS_PER_DAY;
-      }
-      span = Math.min(span, day / 2);
-    }
-    const look = skyLookFromElevation(0);
-    const defs =
-      overlay.querySelector("defs") ||
-      overlay.insertBefore(
-        document.createElementNS("http://www.w3.org/2000/svg", "defs"),
-        overlay.firstChild
-      );
-    const bands = [];
-    if (sunrise != null) {
-      bands.push({
-        id: "sunrise",
-        horizon: sunrise,
-        intoDay: sunrise + span,
-        from: sunrise,
-        to: sunrise + span,
-      });
-    }
-    if (sunset != null) {
-      bands.push({
-        id: "sunset",
-        horizon: sunset,
-        intoDay: sunset - span,
-        from: sunset - span,
-        to: sunset,
-      });
-    }
-    for (const band of bands) {
-      const origin = this._clockPolar(band.horizon, CLOCK_FACE_R * 0.62);
-      const fade = this._clockPolar(band.intoDay, CLOCK_FACE_R * 0.62);
-      const grad = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "linearGradient"
-      );
-      grad.setAttribute("id", `clock-horizon-grad-${band.id}`);
-      grad.setAttribute("gradientUnits", "userSpaceOnUse");
-      grad.setAttribute("x1", origin.x.toFixed(2));
-      grad.setAttribute("y1", origin.y.toFixed(2));
-      grad.setAttribute("x2", fade.x.toFixed(2));
-      grad.setAttribute("y2", fade.y.toFixed(2));
-      const start = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "stop"
-      );
-      start.setAttribute("offset", "0%");
-      start.setAttribute("stop-color", look.pathColor);
-      start.setAttribute("stop-opacity", "0.85");
-      const mid = document.createElementNS("http://www.w3.org/2000/svg", "stop");
-      mid.setAttribute("offset", "42%");
-      mid.setAttribute("stop-color", look.pathColor);
-      mid.setAttribute("stop-opacity", "0.35");
-      const end = document.createElementNS("http://www.w3.org/2000/svg", "stop");
-      end.setAttribute("offset", "100%");
-      end.setAttribute("stop-color", look.pathColor);
-      end.setAttribute("stop-opacity", "0");
-      grad.append(start, mid, end);
-      defs.appendChild(grad);
-
-      const wash = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      wash.setAttribute("class", "clock-horizon-glow");
-      wash.setAttribute("d", this._clockWedgePath(band.from, band.to));
-      wash.setAttribute("fill", `url(#clock-horizon-grad-${band.id})`);
-      overlay.appendChild(wash);
     }
   }
 
@@ -7583,10 +7562,15 @@ class SceneExtrapolationPanel extends HTMLElement {
       "24-hour solar dial with light rings; midnight at the bottom"
     );
 
-    const glowHost = document.createElement("div");
-    glowHost.className = "sun-light-clock-glow";
-    glowHost.setAttribute("aria-hidden", "true");
-    this._clockSkyGlow = glowHost;
+    const skyHost = document.createElement("div");
+    skyHost.className = "clock-sky";
+    skyHost.setAttribute("aria-hidden", "true");
+    skyHost.style.background = this._clockSkyConic();
+    this._clockSkyEl = skyHost;
+    const horizonGlow = document.createElement("div");
+    horizonGlow.className = "clock-horizon-glow";
+    horizonGlow.setAttribute("aria-hidden", "true");
+    this._clockHorizonGlowEl = horizonGlow;
 
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("class", "sun-light-clock-overlay");
@@ -7597,15 +7581,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     const cy = CLOCK_CY;
     const hourLabels = [];
     const labelRpct = (CLOCK_LABEL_R / CLOCK_VIEW) * 100;
-    for (let step = 0; step < 96; step += 1) {
-      const seconds = step * 15 * 60;
+    for (let step = 0; step < 288; step += 1) {
+      const seconds = step * 5 * 60;
       const deg = this._clockAngleDeg(seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
       const evenHour = seconds % (2 * 3600) === 0;
       const hour = seconds % 3600 === 0;
       const half = seconds % 1800 === 0;
+      const quarter = seconds % 900 === 0;
       let tickClass = "clock-tick";
-      let tickLen = CLOCK_TICK_LEN_HAIR;
+      let tickLen = CLOCK_TICK_LEN_FINE;
       if (evenHour) {
         tickClass = "clock-tick major";
         tickLen = CLOCK_TICK_LEN_MAJOR;
@@ -7615,6 +7600,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       } else if (half) {
         tickClass = "clock-tick minor";
         tickLen = CLOCK_TICK_LEN_MINOR;
+      } else if (quarter) {
+        tickClass = "clock-tick";
+        tickLen = CLOCK_TICK_LEN_HAIR;
       }
       const inner = CLOCK_TICK_OUTER - tickLen;
       const tick = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -7732,7 +7720,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       openRingAt(ev, selected);
     });
     floatEl.appendChild(ringsHost);
-    face.append(glowHost, overlay, handleHit, floatEl, ...hourLabels);
+    face.append(skyHost, horizonGlow, overlay, handleHit, floatEl, ...hourLabels);
 
     const editable = this._view === "edit";
     const pathEvents = events.filter((event) => event.seconds != null);
@@ -9796,8 +9784,8 @@ function skyLookFromElevation(elev) {
   const keys = [
     {
       e: -90,
-      outer: [4, 6, 14],
-      mid: [8, 10, 22],
+      outer: [6, 10, 32],
+      mid: [10, 16, 48],
       glowOpacity: 0.16,
       sunCore: "#c5d0e8",
       sunCorona: "#6a7a9a",
@@ -9808,8 +9796,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: -18,
-      outer: [10, 14, 36],
-      mid: [16, 22, 55],
+      outer: [18, 16, 58],
+      mid: [36, 28, 100],
       glowOpacity: 0.22,
       sunCore: "#d0daf0",
       sunCorona: "#7a8ab0",
@@ -9820,8 +9808,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: -12,
-      outer: [22, 40, 110],
-      mid: [40, 70, 160],
+      outer: [56, 32, 130],
+      mid: [110, 55, 190],
       glowOpacity: 0.38,
       sunCore: "#e8eeff",
       sunCorona: "#6b8fd4",
@@ -9832,8 +9820,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: -4,
-      outer: [90, 45, 95],
-      mid: [200, 80, 100],
+      outer: [190, 40, 100],
+      mid: [255, 72, 130],
       glowOpacity: 0.52,
       sunCore: "#ffd0b8",
       sunCorona: "#ff6b6b",
@@ -9844,8 +9832,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: 0,
-      outer: [220, 70, 70],
-      mid: [255, 140, 90],
+      outer: [255, 72, 58],
+      mid: [255, 168, 78],
       glowOpacity: 0.62,
       sunCore: "#fff0d0",
       sunCorona: "#ff7a4d",
@@ -9856,8 +9844,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: 4,
-      outer: [255, 120, 90],
-      mid: [255, 190, 140],
+      outer: [255, 128, 64],
+      mid: [255, 210, 110],
       glowOpacity: 0.58,
       sunCore: "#fff6e0",
       sunCorona: "#ff9a5c",
@@ -9868,8 +9856,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: 8,
-      outer: [160, 190, 255],
-      mid: [255, 235, 210],
+      outer: [72, 158, 255],
+      mid: [255, 226, 168],
       glowOpacity: 0.52,
       sunCore: "#fffaf0",
       sunCorona: "#ffc878",
@@ -9880,8 +9868,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: 25,
-      outer: [140, 185, 255],
-      mid: [255, 255, 250],
+      outer: [48, 148, 250],
+      mid: [186, 224, 255],
       glowOpacity: 0.5,
       sunCore: "#ffffff",
       sunCorona: "#ffe08a",
@@ -9892,8 +9880,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: 90,
-      outer: [120, 170, 255],
-      mid: [255, 255, 255],
+      outer: [36, 128, 240],
+      mid: [160, 210, 255],
       glowOpacity: 0.48,
       sunCore: "#ffffff",
       sunCorona: "#ffe9a0",
@@ -9943,6 +9931,8 @@ function skyLookFromElevation(elev) {
   return {
     glowBackground: `radial-gradient(closest-side circle at center, ${rgb(mid, 1)} 0%, ${rgb(mid, 0.85)} 28%, ${rgb(outer, 0.55)} 58%, ${rgb(outer, 0)} 100%)`,
     glowOpacity: lerp(lo.glowOpacity, hi.glowOpacity),
+    skyFill: rgb(outer, 0.92),
+    horizonFill: `rgb(${mid[0]},${mid[1]},${mid[2]})`,
     sunCore: mixHex(lo.sunCore, hi.sunCore),
     sunCorona: mixHex(lo.sunCorona, hi.sunCorona),
     sunStreak: mixHex(lo.sunStreak, hi.sunStreak),
