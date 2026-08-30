@@ -805,6 +805,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex: 0 0 auto;
           pointer-events: auto;
         }
+        .sun-light-clock-empty-hint {
+          margin: 0;
+          padding: 0 12px;
+          max-width: min(100%, 86vh, var(--dial-face-max, 86vh));
+          text-align: center;
+          color: var(--secondary-text-color);
+          font-size: 14px;
+          line-height: 1.4;
+          position: relative;
+          z-index: 5;
+        }
         .sun-light-clock-face {
           position: relative;
           /* Leave headroom for the app bar + event labels around the dial. */
@@ -6353,6 +6364,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!this._hass || !this._sunPathEl) {
       return;
     }
+    // List view: do not leave a stale dial/chart from the last editor visit.
+    if (this._view !== "edit") {
+      this._sunPathEl.hidden = true;
+      return;
+    }
     if (this._previewInFlight) {
       this._previewQueued = true;
       return;
@@ -6375,29 +6391,25 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         try {
           let payload;
-          if (this._view === "edit") {
-            const msg = {
-              type: `${DOMAIN}/preview`,
-              date: this._previewDate,
-              scenes: this._sceneIdsFromForm(),
-            };
-            if (this._formData.area) {
-              msg.area = this._formData.area;
-            }
-            const dusk = this._duskMinimumSeconds();
-            if (dusk != null) {
-              msg.dusk_minimum = dusk;
-            }
-            if (this._previewOverlay) {
-              msg.overlay = this._previewOverlay;
-            }
-            if (this._previewLocation) {
-              msg.location = this._previewLocation;
-            }
-            payload = await this._hass.callWS(msg);
-          } else {
-            payload = await this._hass.callWS({ type: `${DOMAIN}/sun_path` });
+          const msg = {
+            type: `${DOMAIN}/preview`,
+            date: this._previewDate,
+            scenes: this._sceneIdsFromForm(),
+          };
+          if (this._formData.area) {
+            msg.area = this._formData.area;
           }
+          const dusk = this._duskMinimumSeconds();
+          if (dusk != null) {
+            msg.dusk_minimum = dusk;
+          }
+          if (this._previewOverlay) {
+            msg.overlay = this._previewOverlay;
+          }
+          if (this._previewLocation) {
+            msg.location = this._previewLocation;
+          }
+          payload = await this._hass.callWS(msg);
           if (this._chartKey() !== key) {
             this._previewQueued = true;
             continue;
@@ -9055,9 +9067,6 @@ class SceneExtrapolationPanel extends HTMLElement {
   _buildLightClock(events) {
     this._lightNameLabels = [];
     const lights = this._sunPath.lights || [];
-    if (!lights.length) {
-      return null;
-    }
     const ringLights = lights.filter((light) => !light.suggested);
     const suggested = lights.filter((light) => light.suggested);
     const wrap = document.createElement("div");
@@ -9587,6 +9596,15 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._playClockEnterAnimation(face);
     }
     wrap.appendChild(face);
+
+    if (!ringLights.length) {
+      const hint = document.createElement("p");
+      hint.className = "sun-light-clock-empty-hint";
+      hint.textContent = suggested.length
+        ? "Create a native scene from a solar event to fill the dial — area lights are listed below."
+        : "No lights in this area yet.";
+      wrap.appendChild(hint);
+    }
 
     const legend = document.createElement("div");
     legend.className = "sun-light-clock-legend";

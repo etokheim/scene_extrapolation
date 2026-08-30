@@ -27,6 +27,11 @@ jobs:
         run: |
           pylint custom_components/scene_extrapolation/ --disable=C0114,C0116
 
+      - name: Run unit tests
+        run: |
+          pip install pytest homeassistant
+          PYTHONPATH=. pytest tests/ -q
+
       - name: Run black
         run: |
           black --check custom_components/scene_extrapolation/

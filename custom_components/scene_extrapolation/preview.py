@@ -200,8 +200,27 @@ def _light_series(
             }
         )
     assigned = [item for item in bound if item["scene"].get("entity_id")]
+    area_lights = set(lights_in_area(hass, area_id)) if area_id else None
     if not assigned:
-        return [], []
+        # New extrapolation scene: no native scenes yet — still list area
+        # lights as suggested so dial/table/create-scene UI can render.
+        if not area_lights:
+            return [], []
+        lights = []
+        for entity_id in sorted(area_lights):
+            state = hass.states.get(entity_id)
+            lights.append(
+                {
+                    "entity_id": entity_id,
+                    "name": state.name if state else entity_id,
+                    "samples": [],
+                    "gaps": [],
+                    "event_states": _event_states_for_light(bound, entity_id),
+                    "suggested": True,
+                    "in_area": True,
+                }
+            )
+        return lights, []
 
     light_ids: set[str] = set()
     for item in assigned:
@@ -213,8 +232,6 @@ def _light_series(
     warnings_by_light: dict[str, list[dict[str, Any]]] = {}
     for warning in warnings:
         warnings_by_light.setdefault(warning["entity_id"], []).append(warning)
-
-    area_lights = set(lights_in_area(hass, area_id)) if area_id else None
 
     lights = []
     for entity_id in sorted(light_ids):

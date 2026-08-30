@@ -324,6 +324,13 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Why:** A ring makes the dusk→dawn wrap obvious. Equal clock hours match how people read “now”; solar events still land at their real times. Seasonal circle size shows how high the sun climbs without wobbling the path; elev still drives size and day/night clip. Snap-on-release keeps dragging predictable; chrome above sky bleed keeps controls readable. Without blur, a filled glow under opaque rings vanishes — the halo must live outside the planet rim. Light-band bloom sits above the isolated horizon wash so dial colors read over the rim, not under it. Two staged per-clone blurs keep lg/md blooms distinct; compositor promotion + planet `box-shadow` still isolate static dial work from scrub. A 26px day/month in an 88px rail overflowed the stage and created a horizontal scrollbar — pad and size the rail instead of clipping the page.
 - **Do not reverse without user ask.**
 
+## Preview lists area lights before native scenes are assigned
+
+- **Date:** 2026-08-30
+- **Decision:** `build_preview` / `_light_series` returns **suggested** area lights when no solar events have native scenes yet (new extrapolation scene). Do not early-return `[], []` solely because nothing is assigned — that left dial view as an empty page (clock build bailed on zero lights).
+- **Why:** Create flow picks an area first; users need the dial/legend and “create scene” affordances before any native scene exists.
+- **Do not reverse without user ask.**
+
 ## Dial light list stays under the face
 
 - **Date:** 2026-08-30
