@@ -1304,8 +1304,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           white-space: nowrap;
           /* Soft shadow so labels stay readable over path / horizon / rings. */
           text-shadow:
-            0 0 4px rgba(0, 0, 0, 0.75),
-            0 1px 2px rgba(0, 0, 0, 0.55);
+            0 0 4px rgba(0, 0, 0, 0.3),
+            0 1px 2px rgba(0, 0, 0, 0.3);
         }
         /* Collision placement: below the button (see _layoutClockEventMetas). */
         .clock-event-meta.below {
