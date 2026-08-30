@@ -1063,21 +1063,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
         }
         .clock-sun-shadow {
-          inset: -120%;
-          background: radial-gradient(
-            circle,
-            rgba(0, 0, 0, 0.55) 0%,
-            rgba(0, 0, 0, 0.22) 42%,
-            transparent 70%
-          );
-          filter: blur(16px);
-          /* Day uses the SVG shadow under the glow; HTML shadow is night-only
-             so it is never day-wedge clipped with the fill/glow. */
-          opacity: 0;
-          z-index: 0;
-        }
-        .clock-sun.below-horizon .clock-sun-shadow {
-          opacity: 0.7;
+          /* Shadow is SVG behind the fill so it never covers the white disc. */
+          display: none;
         }
         .clock-sun-ring {
           inset: 0;
@@ -7628,12 +7615,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       shadow.setAttribute("cx", pos.x.toFixed(2));
       shadow.setAttribute("cy", pos.y.toFixed(2));
       shadow.setAttribute("r", shadowR.toFixed(2));
-      // Day SVG shadow only — night uses the HTML shadow (never day-clipped).
-      const below = this._clockSunEl?.classList.contains("below-horizon");
-      shadow.setAttribute("visibility", below ? "hidden" : "visible");
     }
     // Without a sunrise/sunset wedge, hide fill+glow entirely below horizon.
-    // Shadow is intentionally not clipped/hidden with them.
     if (!this._clockSunDayClipId) {
       const below = this._clockSunEl?.classList.contains("below-horizon");
       const vis = below ? "hidden" : "visible";
@@ -7896,8 +7879,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       ? `url(#${this._clockSunDayClipId})`
       : null;
 
-    // Shadow stays outside the day clip so it remains below the horizon.
-    // Glow + white fill are day-wedge clipped (masked, not merely hidden).
+    // Shadow under a day-clipped group (glow + white fill) so the halo is
+    // masked by the sunrise→sunset wedge — not merely hidden below horizon.
     const shadow = document.createElementNS(
       "http://www.w3.org/2000/svg",
       "circle"
@@ -7924,11 +7907,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     const marker = document.createElement("div");
     marker.className = "clock-sun";
     marker.setAttribute("aria-hidden", "true");
-    for (const cls of ["clock-sun-shadow", "clock-sun-ring"]) {
-      const span = document.createElement("span");
-      span.className = cls;
-      marker.appendChild(span);
-    }
+    const ring = document.createElement("span");
+    ring.className = "clock-sun-ring";
+    marker.appendChild(ring);
     this._clockSunEl = marker;
 
     const hit = document.createElement("div");
