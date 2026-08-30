@@ -46,11 +46,11 @@ const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
    sunrise/sunset and fixed through the night until sunrise. */
 const CLOCK_SUN_SCALE_MAX = 2;
 /* Handle tip / major tick outer radius in viewBox units.
-   Hourly ticks; labels sit outside the marks. */
+   Hourly ticks stay near the path; hour labels live on the face chrome
+   (outermost), with solar-event buttons between labels and the core. */
 const CLOCK_TICK_OUTER = 94;
 const CLOCK_TICK_INNER_MAJOR = 89;
 const CLOCK_TICK_INNER_MINOR = 91;
-const CLOCK_LABEL_R = 102;
 /* Override scrub arc sits on the outer tip of the hour ticks. */
 const CLOCK_OVERRIDE_R = CLOCK_TICK_OUTER;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
@@ -1250,7 +1250,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           stroke: rgba(255, 255, 255, 0.5);
           stroke-width: 4px;
         }
-        /* HTML labels so 16/32px stay screen-fixed; sit outside the ticks. */
+        /* HTML hour labels on the face (outermost chrome); events sit inside. */
         .clock-hour-label {
           position: absolute;
           transform: translate(-50%, -50%);
@@ -1259,7 +1259,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           line-height: 1;
           color: rgba(255, 255, 255, 0.4);
           pointer-events: none;
-          z-index: 4;
+          z-index: 7;
         }
         @media (min-width: 871px) {
           .clock-hour-label {
@@ -5414,9 +5414,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     const subtitleEl = header.querySelector("[slot='subtitle']");
     const chipsHost = document.createElement("div");
     const brightnessGraphMount = document.createElement("div");
-    const fieldsHost = document.createElement("div");
     const wheelMount = document.createElement("div");
-    body.append(chipsHost, brightnessGraphMount, wheelMount, fieldsHost);
+    body.append(chipsHost, brightnessGraphMount, wheelMount);
 
     const selectScene = async (next, { fromWheel = false } = {}) => {
       const nextId = this._eventSceneId(next.id);
@@ -5434,7 +5433,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         subtitleEl.textContent = this._sceneName(nextId);
       }
       paintChips();
-      paintFields();
       brightnessGraphCtl?.sync();
       if (!fromWheel) {
         const mode = draftWheelMode(currentDraft(), hasColor, hasTemp);
@@ -5482,53 +5480,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         list.appendChild(btn);
       }
       chipsHost.appendChild(list);
-    };
-
-    const paintFields = () => {
-      fieldsHost.replaceChildren();
-      const draft = currentDraft();
-      if (!draft) {
-        return;
-      }
-
-      const onField = document.createElement("ha-selector");
-      onField.hass = this._hass;
-      onField.label = "On";
-      onField.value = draft.state !== "off";
-      onField.selector = { boolean: {} };
-      onField.addEventListener("value-changed", async (ev) => {
-        ev.stopPropagation();
-        currentDraft().state = ev.detail.value ? "on" : "off";
-        applyToSession();
-        await applyLive();
-      });
-      fieldsHost.appendChild(onField);
-
-      const brightness = document.createElement("ha-selector");
-      brightness.hass = this._hass;
-      brightness.label = "Brightness";
-      brightness.value = Math.round(((draft.brightness || 0) / 255) * 100);
-      brightness.selector = {
-        number: {
-          min: 0,
-          max: 100,
-          step: 1,
-          mode: "slider",
-          unit_of_measurement: "%",
-        },
-      };
-      brightness.addEventListener("value-changed", async (ev) => {
-        ev.stopPropagation();
-        const nextDraft = currentDraft();
-        nextDraft.brightness = Math.round((Number(ev.detail.value) / 100) * 255);
-        if (nextDraft.brightness > 0) {
-          nextDraft.state = "on";
-        }
-        applyToSession();
-        brightnessGraphCtl?.sync();
-        await applyLive();
-      });
-      fieldsHost.appendChild(brightness);
     };
 
     const onWheelChange = async () => {
@@ -5674,7 +5625,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         await applyLive();
       },
       onDragEnd: () => {
-        paintFields();
         wheelCtl?.sync();
       },
     });
@@ -5732,7 +5682,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
 
     paintChips();
-    paintFields();
     brightnessGraphCtl?.sync();
     wheelCtl?.sync();
     if (this._liveEdit) {
@@ -8830,10 +8779,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     overlay.setAttribute("aria-hidden", "true");
     const cx = CLOCK_CX;
     const cy = CLOCK_CY;
-    // Hourly ticks (majors every 6h); hour numbers outside as HTML so font-size
-    // does not scale with the face.
+    // Hourly ticks (majors every 6h). Hour numbers are HTML on the face
+    // (outermost chrome) so font-size stays screen-fixed.
     const hourLabels = [];
-    const labelRpct = (CLOCK_LABEL_R / CLOCK_VIEW) * 100;
     for (let hour = 0; hour < 24; hour += 1) {
       const seconds = hour * 3600;
       const deg = this._clockAngleDeg(seconds);
@@ -8855,8 +8803,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         const label = document.createElement("div");
         label.className = "clock-hour-label";
         label.textContent = String(hour).padStart(2, "0");
-        label.style.left = `${50 + Math.cos(rad) * labelRpct}%`;
-        label.style.top = `${50 + Math.sin(rad) * labelRpct}%`;
+        label._clockPolar = { cos: Math.cos(rad), sin: Math.sin(rad) };
         hourLabels.push(label);
       }
     }
@@ -8877,13 +8824,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     handleHit.setAttribute("aria-hidden", "true");
     this._clockHandleHitEl = handleHit;
     // Path under sun; rings above handle so the planet occludes it.
+    // Hour labels live on the face (appended after events) — not in the core.
     core.append(
       overlay,
       this._clockSunEl,
       handleOverlay,
       this._clockSunHitEl,
-      handleHit,
-      ...hourLabels
+      handleHit
     );
     // Horizon → light bloom → planet (bloom must cover the horizon wash).
     face.append(horizonBack, glowLayer, core);
@@ -8986,21 +8933,34 @@ class SceneExtrapolationPanel extends HTMLElement {
         eventAnchors.push(ghost);
       }
     }
+    // Hour labels outermost on the face (above event anchors in paint order).
+    for (const label of hourLabels) {
+      face.appendChild(label);
+    }
 
     const layoutEventAnchors = () => {
       const w = face.clientWidth;
       if (!w) {
         return;
       }
-      // Shrink chrome on small faces so the graphic stays large; keep buttons
-      // inside the face (half-button inset from the edge).
+      // Outer → inner on the face: hour numbers, solar-event buttons, then core.
       const t = Math.min(1, Math.max(0, (w - 300) / (720 - 300)));
-      const chromePx = Math.round(
-        CLOCK_CHROME_PX_MIN + t * (CLOCK_CHROME_PX - CLOCK_CHROME_PX_MIN)
+      const labelPad = w >= 871 ? 18 : 10;
+      const eventPad = labelPad + CLOCK_EVENT_BTN_PX / 2 + 10;
+      const chromePx = Math.max(
+        Math.round(
+          CLOCK_CHROME_PX_MIN + t * (CLOCK_CHROME_PX - CLOCK_CHROME_PX_MIN)
+        ),
+        Math.ceil(eventPad + 4)
       );
       face.style.setProperty("--clock-chrome", `${chromePx}px`);
-      const edgeInset = CLOCK_EVENT_BTN_PX / 2 + 4;
-      const iconR = ((w / 2 - edgeInset) / w) * 100;
+      const labelR = ((w / 2 - labelPad) / w) * 100;
+      for (const label of hourLabels) {
+        const { cos, sin } = label._clockPolar;
+        label.style.left = `${50 + cos * labelR}%`;
+        label.style.top = `${50 + sin * labelR}%`;
+      }
+      const iconR = ((w / 2 - eventPad) / w) * 100;
       for (const anchor of eventAnchors) {
         const { cos, sin } = anchor._clockPolar;
         anchor.style.left = `${50 + cos * iconR}%`;
