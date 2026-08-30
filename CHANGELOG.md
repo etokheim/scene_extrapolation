@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clock face fills the editor width up to 80vh, soft ring seams sharpen on hover, and the open light-edit lamp is highlighted
 - Clock ring seams overlap more when blurred so gaps stay lit instead of dark
 - Soft glow behind the light clock: blurred sky disc from solar elevation (not lamp conics)
-- Hovered clock light ring grows radially with inner/outer borders and overlaps neighbors; the open sidebar’s lamp keeps that size with a wider border (borders paint outside the fill mask; selected stays sharp)
+- Hovered/selected clock light rings grow slightly with a sharp primary rim (no soft glow; borders paint outside the fill mask)
 - Clock view wraps sun elevation around the rim (dashed above and below the horizon; day path at 50% opacity; no dashed horizon circle); the linear sun chart is hidden in that mode
 - Clock sun path stroke is minimum below the horizon, maximum at the horizon, and tapers toward noon; daytime tint follows the sky palette; round dashes at 50% opacity on continuous path runs
 - Clock hour labels sit outside the tick marks at 8px

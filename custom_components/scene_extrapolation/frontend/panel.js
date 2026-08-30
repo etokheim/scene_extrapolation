@@ -850,8 +850,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           --ring-border-w: 0%;
           transition:
             --ring-expand 180ms cubic-bezier(0.2, 0, 0, 1),
-            --ring-border-w 180ms cubic-bezier(0.2, 0, 0, 1),
-            filter 180ms cubic-bezier(0.2, 0, 0, 1);
+            --ring-border-w 180ms cubic-bezier(0.2, 0, 0, 1);
         }
         /* Fill lives on a child so the ring mask does not clip ::after borders. */
         .clock-ring-fill {
@@ -941,20 +940,19 @@ class SceneExtrapolationPanel extends HTMLElement {
               )
           );
         }
+        /* Hover/selected: slight radial grow + sharp primary rim (no soft glow). */
         .clock-ring.hovered {
-          --ring-expand: 2%;
-          --ring-border-w: 0.4%;
+          --ring-expand: 0.45%;
+          --ring-border-w: 0.55%;
           z-index: 5;
         }
         .clock-ring.hovered::after {
           opacity: 1;
         }
         .clock-ring.selected {
-          --ring-expand: 2%;
-          --ring-border-w: 0.7%;
+          --ring-expand: 0.45%;
+          --ring-border-w: 0.55%;
           z-index: 6;
-          filter: drop-shadow(0 0 2px var(--primary-color))
-            drop-shadow(0 0 6px color-mix(in srgb, var(--primary-color) 70%, transparent));
         }
         .clock-ring.selected::after {
           opacity: 1;
