@@ -113,10 +113,11 @@ function registerFeatherProperties() {
       initialValue: "0%",
     },
     {
-      name: "--ring-border-w",
-      syntax: "<percentage>",
+      name: "--ring-rim-w",
+      // Length (not %): hover rim stays 1px across dial sizes; soft mode is 0px.
+      syntax: "<length>",
       inherits: true,
-      initialValue: "0%",
+      initialValue: "0px",
     },
   ]) {
     try {
@@ -858,7 +859,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-glow .clock-ring {
           --ring-expand: var(--ring-soft-expand);
-          --ring-border-w: 0%;
+          --ring-rim-w: 0px;
           transition: none;
           filter: none;
           opacity: 1;
@@ -889,6 +890,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 50%;
           /* Above the hour handle so the planet occludes it; path/sun stay higher. */
           z-index: 7;
+          overflow: visible;
           --clock-feather: ${CLOCK_FEATHER_PCT}%;
           /* Soft mode: expand bands into neighbors so opaque cores overlap —
              feather alone only overlaps fades and the surface disc shows through. */
@@ -929,11 +931,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
           z-index: 1;
           --ring-expand: var(--ring-soft-expand);
-          --ring-border-w: 0%;
+          --ring-rim-w: 0px;
           transform-origin: center center;
           transition:
             --ring-expand 180ms cubic-bezier(0.2, 0, 0, 1),
-            --ring-border-w 180ms cubic-bezier(0.2, 0, 0, 1),
+            --ring-rim-w 180ms cubic-bezier(0.2, 0, 0, 1),
             opacity 180ms cubic-bezier(0.2, 0, 0, 1),
             transform 180ms cubic-bezier(0.2, 0, 0, 1),
             filter 180ms cubic-bezier(0.2, 0, 0, 1);
@@ -945,85 +947,64 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 50%;
           pointer-events: none;
         }
-        /* Inner + outer rim strokes; mask grows with --ring-expand / border-w. */
+        /* Inner + outer rim strokes just inside the band edges (not straddling
+           100%, which clipped the outer half of the outermost ring). Width is
+           a fixed length so it stays 1px across dial sizes. */
         .clock-ring::after {
           content: "";
           position: absolute;
           inset: 0;
           border-radius: 50%;
           pointer-events: none;
-          background: rgba(255, 255, 255, 0.45);
+          /* Was 0.45; half the remaining transparency → ~0.725 */
+          background: rgba(255, 255, 255, 0.725);
           opacity: 0;
           transition: opacity 180ms cubic-bezier(0.2, 0, 0, 1);
           -webkit-mask-image: radial-gradient(
             farthest-side,
-            transparent
-              calc(
-                var(--ring-inner) - var(--ring-expand) - var(--ring-border-w)
-              ),
+            transparent calc(var(--ring-inner) - var(--ring-expand)),
+            #000 calc(var(--ring-inner) - var(--ring-expand)),
             #000
               calc(
-                var(--ring-inner) - var(--ring-expand) - var(--ring-border-w)
-              ),
-            #000
-              calc(
-                var(--ring-inner) - var(--ring-expand) + var(--ring-border-w)
+                var(--ring-inner) - var(--ring-expand) + var(--ring-rim-w)
               ),
             transparent
               calc(
-                var(--ring-inner) - var(--ring-expand) + var(--ring-border-w)
+                var(--ring-inner) - var(--ring-expand) + var(--ring-rim-w)
               ),
             transparent
               calc(
-                var(--ring-outer) + var(--ring-expand) - var(--ring-border-w)
+                var(--ring-outer) + var(--ring-expand) - var(--ring-rim-w)
               ),
             #000
               calc(
-                var(--ring-outer) + var(--ring-expand) - var(--ring-border-w)
+                var(--ring-outer) + var(--ring-expand) - var(--ring-rim-w)
               ),
-            #000
-              calc(
-                var(--ring-outer) + var(--ring-expand) + var(--ring-border-w)
-              ),
-            transparent
-              calc(
-                var(--ring-outer) + var(--ring-expand) + var(--ring-border-w)
-              )
+            #000 calc(var(--ring-outer) + var(--ring-expand)),
+            transparent calc(var(--ring-outer) + var(--ring-expand))
           );
           mask-image: radial-gradient(
             farthest-side,
-            transparent
-              calc(
-                var(--ring-inner) - var(--ring-expand) - var(--ring-border-w)
-              ),
+            transparent calc(var(--ring-inner) - var(--ring-expand)),
+            #000 calc(var(--ring-inner) - var(--ring-expand)),
             #000
               calc(
-                var(--ring-inner) - var(--ring-expand) - var(--ring-border-w)
-              ),
-            #000
-              calc(
-                var(--ring-inner) - var(--ring-expand) + var(--ring-border-w)
+                var(--ring-inner) - var(--ring-expand) + var(--ring-rim-w)
               ),
             transparent
               calc(
-                var(--ring-inner) - var(--ring-expand) + var(--ring-border-w)
+                var(--ring-inner) - var(--ring-expand) + var(--ring-rim-w)
               ),
             transparent
               calc(
-                var(--ring-outer) + var(--ring-expand) - var(--ring-border-w)
+                var(--ring-outer) + var(--ring-expand) - var(--ring-rim-w)
               ),
             #000
               calc(
-                var(--ring-outer) + var(--ring-expand) - var(--ring-border-w)
+                var(--ring-outer) + var(--ring-expand) - var(--ring-rim-w)
               ),
-            #000
-              calc(
-                var(--ring-outer) + var(--ring-expand) + var(--ring-border-w)
-              ),
-            transparent
-              calc(
-                var(--ring-outer) + var(--ring-expand) + var(--ring-border-w)
-              )
+            #000 calc(var(--ring-outer) + var(--ring-expand)),
+            transparent calc(var(--ring-outer) + var(--ring-expand))
           );
         }
         /* Dim only siblings — :is/:has dimming outranked .hovered/.selected
@@ -1034,10 +1015,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Hover/selected: 10% grow, strong black shadow, soft white rim.
            Keep rules separate — comma-grouped selectors failed to apply
-           registered --ring-* props in the past. */
+           registered --ring-* props in the past.
+           Border width is calc(1px/1.1) so scale(1.1) still reads as 1px. */
         .clock-ring.hovered {
           --ring-expand: 0%;
-          --ring-border-w: 0.7%;
+          --ring-rim-w: calc(1px / 1.1);
           opacity: 1;
           transform: scale(1.1);
           filter:
@@ -1050,7 +1032,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .clock-ring.selected {
           --ring-expand: 0%;
-          --ring-border-w: 0.7%;
+          --ring-rim-w: calc(1px / 1.1);
           opacity: 1;
           transform: scale(1.1);
           filter:
@@ -8676,7 +8658,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       const light = ringLights[index];
       const outer = 100 - index * stroke;
       const inner = Math.max(hole, outer - stroke);
-      // --ring-expand / --ring-border-w grow the hover rim; --clock-feather softens seams.
+      // --ring-expand / --ring-rim-w grow the hover rim; --clock-feather softens seams.
       const mask = `radial-gradient(farthest-side, transparent calc(var(--ring-inner) - var(--clock-feather) - var(--ring-expand)), #000 calc(var(--ring-inner) + var(--clock-feather) - var(--ring-expand)), #000 calc(var(--ring-outer) - var(--clock-feather) + var(--ring-expand)), transparent calc(var(--ring-outer) + var(--clock-feather) + var(--ring-expand)))`;
       const bg = conicGradientFromSamples(light.samples || []);
 
