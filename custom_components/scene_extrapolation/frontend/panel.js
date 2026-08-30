@@ -7884,7 +7884,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       // Stronger when the sun is up; keep a faint wash below the horizon so
       // the sector still reads before civil dawn paints the rim.
       const dayAlpha =
-        elev < 0 ? 0.12 : 0.28 + 0.3 * (1 - nearHorizon);
+        elev < 0 ? 0.16 : 0.42 + 0.38 * (1 - nearHorizon);
       dayEl.setAttribute(
         "fill",
         `color-mix(in srgb, ${sky} ${Math.round(dayAlpha * 100)}%, transparent)`
