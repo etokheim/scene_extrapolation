@@ -775,13 +775,18 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform-origin: center center;
           --clock-chrome: ${CLOCK_CHROME_PX}px;
         }
-        /* Mobile: drop hour numbers, overflow L/R a little so the dial can
-           grow while event buttons stay on-screen. */
+        /* Mobile: drop hour numbers; grow the face past the column (clipped by
+           the graphics container) so ticks can bleed while events stay on-path. */
         @media (max-width: 870px) {
+          .page.dial-wide,
+          .sun-path.dial-view,
+          .sun-light-clock {
+            overflow-x: hidden;
+          }
           .sun-light-clock-face {
-            width: min(calc(100% + 32px), 92vh);
-            max-width: 92vh;
-            margin-inline: -16px;
+            width: min(calc(100% + 48px), 96vh);
+            max-width: 96vh;
+            margin-inline: -24px;
           }
           .clock-hour-label {
             display: none;
@@ -9282,7 +9287,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         label.style.top = `${50 + sin * labelR}%`;
       }
       const pathR = this._clockSunPathRadius();
-      const eventRCore = pathR + CLOCK_EVENT_GAP_FROM_PATH;
+      // Mobile: event buttons sit on the path so the dial can grow larger.
+      const eventGap = narrowFace ? 0 : CLOCK_EVENT_GAP_FROM_PATH;
+      const eventRCore = pathR + eventGap;
       const eventRFacePx = (eventRCore / 100) * (coreW / 2);
       const iconR = (eventRFacePx / w) * 100;
       for (const anchor of eventAnchors) {
