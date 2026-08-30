@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dial event labels use a soft text shadow; scene name line is primary text at 70% opacity (not secondary gray)
 - Year-scrub month labels hug the track; dial top gets a 50% black readability ramp; scrub thumb is 16px
 - On mobile (≤870px), dial hides hour numbers, places event buttons on the sun path, overflows ~24px L/R (clipped past `.page.dial-wide`’s visible overflow), and shrinks chrome so the graphic can grow
+- On narrow layouts, location preview and Table/Dial view live in the overflow menu (with undo/redo); Live edit stays in the app bar
 - Touch/pen ring scrub matches mouse hover (sharp + highlight); releasing on a ring opens it
 - Dial chrome: hour ticks + numbers outermost (numbers inside the tick tips, clear of the stroke), solar-event buttons at a fixed gap from the sun path, sticky override arc on the outer tick tips, then the dial core
 - When earliest dusk clamps the scene, dial/chart keep true-solar marks and show a ghost button plus dashed link to the clamped control; top event cards strike through solar time and show the override
