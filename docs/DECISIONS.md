@@ -214,6 +214,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 
 - **Date:** 2026-08-26
 - **Superseded in part:** 2026-08-30 — editor Save FAB appears only while the session is dirty; fades/scales with `.is-hidden` (not UA `[hidden]` display:none) so show/hide matches HA fab motion. New scenes open the save dialog; existing scenes save immediately. Name / area / metadata edits go through overflow → Rename/settings.
+- **Superseded in part:** 2026-08-30 — Save FAB is always shown on `#new` (create is unsaved until the first successful save, even when the post-wizard form matches the session baseline). Existing scenes still show Save only while dirty.
 - **Decision:** List and editor use a corner overlay (`position: absolute` sibling of `ha-top-app-bar-fixed`, same offsets as hass-subpage `#fab`) with `ha-button size="l" variant="brand" appearance="accent"`. List label is “New extrapolation scene”; editor Save shows only when dirty. Do not use `ha-fab` — it is not registered in this frontend.
 - **Why:** Automations create with that button in the `#fab` slot. `ha-top-app-bar-fixed` has no fab slot, so the overlay has to sit beside the app bar. Hiding a clean Save matches HA’s dirty-only create/save pattern.
 - **Do not reverse without user ask.**
@@ -271,6 +272,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Buffer unsaved edits in local storage
 
 - **Date:** 2026-08-29
+- **Superseded in part:** 2026-08-30 — leaving the editor with an unsaved new scene or a dirty existing session prompts Keep editing / Discard (same dialog as draft discard). Discard clears the local draft; Keep cancels navigation. `localStorage` buffering remains for refresh / remount.
 - **Decision:** Persist the dirty session (`form` + native drafts, plus the server baseline) in `localStorage` under `scene_extrapolation.draft.v1.<user>.<sceneId|new>`. Write on a short debounce and on hide/leave. Loading that scene reapplies the draft and shows a top-of-page banner; Discard restores the baseline and deletes the key. An X on the banner hides it for this visit only (in-memory; comes back after a full refresh / remount). Save and delete clear it. If the stored baseline no longer matches the server form, drop the draft (do not overlay it). Do not persist undo/redo stacks. Light-edit sidebar edits are session native drafts (same store), not a nested buffer. Isolate by `hass.user.id`.
 - **Why:** Refresh, a closed tab, or going back to the list was dropping work that had not reached YAML yet. The banner makes the restore obvious and gives a way back to the saved scene. A stale baseline means someone already saved a newer copy.
 - **Do not reverse without user ask.**

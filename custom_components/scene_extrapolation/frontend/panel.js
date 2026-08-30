@@ -180,6 +180,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._settings = { hide_managed_native_scenes: false };
     this._listTab = "extrapolation";
     this._translationsReady = false;
+    this._leaveConfirmDone = false;
     this._formData = emptyFormData();
     this._entityId = null;
     this._pendingNewForm = null;
@@ -3302,10 +3303,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const hash = (window.location.hash || "#").replace(/^#/, "");
     const current = this._currentHash();
-    if (hash !== current && this._lightEditIsDirty()) {
+    if (
+      hash !== current &&
+      (this._lightEditIsDirty() || this._needsLeaveConfirm())
+    ) {
       this._hashConfirming = true;
       history.replaceState(null, "", this._hashHref(current));
-      const leave = await this._confirmLeaveLightEdit();
+      const leave = await this._confirmLeaveEditor();
       this._hashConfirming = false;
       if (!leave) {
         return;
@@ -3317,6 +3321,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._view === "edit" && hash !== current) {
       this._flushPersistedDraft();
     }
+    this._leaveConfirmDone = false;
     if (hash === "new") {
       const pending = this._pendingNewForm;
       this._pendingNewForm = null;
@@ -3584,9 +3589,51 @@ class SceneExtrapolationPanel extends HTMLElement {
     meta.append(name, sub);
     row.appendChild(meta);
 
-    const chevron = document.createElement("ha-icon");
-    chevron.setAttribute("icon", "mdi:chevron-right");
-    row.appendChild(chevron);
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
+    const settingsBtn = document.createElement("ha-icon-button");
+    settingsBtn.label = this._t(
+      "frontend.settings.scene_settings",
+      "Scene settings"
+    );
+    const settingsIcon = document.createElement("ha-icon");
+    settingsIcon.setAttribute("icon", "mdi:cog-outline");
+    settingsBtn.appendChild(settingsIcon);
+    settingsBtn.disabled = !item.entity_id;
+    settingsBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (!item.entity_id) {
+        return;
+      }
+      this._showEntityMoreInfo(item.entity_id, "settings");
+    });
+    const deleteBtn = document.createElement("ha-icon-button");
+    deleteBtn.label = this._loc("ui.common.delete", "Delete");
+    const deleteIcon = document.createElement("ha-icon");
+    deleteIcon.setAttribute("icon", "mdi:delete-outline");
+    deleteBtn.appendChild(deleteIcon);
+    deleteBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      const confirmed = await this._confirmExtrapolationDelete(
+        item.scene_name || item.entity_id || item.id
+      );
+      if (!confirmed) {
+        return;
+      }
+      try {
+        await this._hass.callWS({
+          type: `${DOMAIN}/delete`,
+          scene_id: item.id,
+        });
+        this._clearPersistedDraft(item.id);
+        await this._loadList();
+      } catch (err) {
+        this._error = err.message || String(err);
+        this._renderList();
+      }
+    });
+    actions.append(settingsBtn, deleteBtn);
+    row.appendChild(actions);
     return row;
   }
 
@@ -3771,12 +3818,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
   }
 
-  /** Editor Save FAB: only while dirty; dialog on first create, else immediate. */
+  /** Editor Save FAB: always on #new; only while dirty for existing scenes. */
   _syncSaveFab() {
     if (this._view !== "edit") {
       return;
     }
-    if (!this._sessionIsDirty()) {
+    // New scenes are unsaved until the first successful save — keep Save visible
+    // even when the post-wizard form still matches the session baseline.
+    const show = !this._editId || this._sessionIsDirty();
+    if (!show) {
       if (this._saveFabVisible || this._fabEl?.childElementCount) {
         this._setFab(null);
       }
@@ -3793,13 +3843,17 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._saveFabVisible = true;
     this._setFab(
-      this._fabButton("Save", "mdi:content-save", () => {
-        if (!this._editId) {
-          this._openSaveDialog();
-          return;
+      this._fabButton(
+        this._t("frontend.common.save", "Save"),
+        "mdi:content-save",
+        () => {
+          if (!this._editId) {
+            this._openSaveDialog();
+            return;
+          }
+          this._save();
         }
-        this._save();
-      })
+      )
     );
   }
 
@@ -3980,9 +4034,45 @@ class SceneExtrapolationPanel extends HTMLElement {
     return this._lightEditIsDirty() || this._sessionIsDirty();
   }
 
+  _needsLeaveConfirm() {
+    // _go and hashchange both call confirm — skip the second pass.
+    if (this._leaveConfirmDone) {
+      return false;
+    }
+    if (this._view !== "edit") {
+      return false;
+    }
+    // Never persisted to HA yet.
+    if (!this._editId) {
+      return true;
+    }
+    return this._sessionIsDirty();
+  }
+
   async _confirmLeaveEditor() {
     if (this._lightEditIsDirty() && !(await this._confirmLeaveLightEdit())) {
       return false;
+    }
+    if (this._needsLeaveConfirm()) {
+      const discard = await this._confirmDiscard({
+        title: this._t(
+          "frontend.dialogs.unsaved_title",
+          "Unsaved changes"
+        ),
+        text: this._t(
+          "frontend.dialogs.unsaved_text",
+          "You have unsaved changes. Discard them?"
+        ),
+      });
+      if (!discard) {
+        return false;
+      }
+      this._clearPersistedDraft();
+      if (!this._editId) {
+        this._clearPersistedDraft("new");
+      }
+      this._leaveConfirmDone = true;
+      return true;
     }
     this._flushPersistedDraft();
     return true;
@@ -5813,6 +5903,61 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
   }
 
+  _confirmExtrapolationDelete(name) {
+    return new Promise((resolve) => {
+      this.shadowRoot
+        .querySelector("ha-dialog.extrapolation-scene-delete")
+        ?.remove();
+      const dialog = document.createElement("ha-dialog");
+      dialog.className = "extrapolation-scene-delete confirm-dialog";
+      dialog.setAttribute(
+        "header-title",
+        this._loc(
+          "ui.panel.config.scene.picker.delete_confirm_title",
+          "Delete scene?"
+        )
+      );
+      dialog.open = true;
+      const text = document.createElement("p");
+      text.textContent = this._loc(
+        "ui.panel.config.scene.picker.delete_confirm_text",
+        `Are you sure you want to delete ${name}?`,
+        { name }
+      );
+      dialog.appendChild(text);
+      const footer = customElements.get("ha-dialog-footer")
+        ? document.createElement("ha-dialog-footer")
+        : document.createElement("div");
+      footer.slot = "footer";
+      const cancel = document.createElement("ha-button");
+      cancel.slot = "secondaryAction";
+      cancel.appearance = "plain";
+      cancel.textContent = this._loc("ui.common.cancel", "Cancel");
+      const confirm = document.createElement("ha-button");
+      confirm.slot = "primaryAction";
+      confirm.variant = "danger";
+      confirm.textContent = this._loc("ui.common.delete", "Delete");
+      let settled = false;
+      const settle = (value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        dialog.open = false;
+        resolve(value);
+      };
+      cancel.addEventListener("click", () => settle(false));
+      confirm.addEventListener("click", () => settle(true));
+      footer.append(cancel, confirm);
+      dialog.appendChild(footer);
+      dialog.addEventListener("closed", () => {
+        dialog.remove();
+        settle(false);
+      });
+      this.shadowRoot.appendChild(dialog);
+    });
+  }
+
   _confirmNativeSceneDelete(name) {
     return new Promise((resolve) => {
       this.shadowRoot.querySelector("ha-dialog.native-scene-delete")?.remove();
@@ -6641,11 +6786,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       const keep = document.createElement("ha-button");
       keep.slot = "secondaryAction";
       keep.appearance = "plain";
-      keep.textContent = "Keep editing";
+      keep.textContent = this._t(
+        "frontend.common.keep_editing",
+        "Keep editing"
+      );
       const discard = document.createElement("ha-button");
       discard.slot = "primaryAction";
       discard.variant = "danger";
-      discard.textContent = "Discard";
+      discard.textContent = this._t("frontend.common.discard", "Discard");
       let settled = false;
       const settle = (value) => {
         if (settled) {
