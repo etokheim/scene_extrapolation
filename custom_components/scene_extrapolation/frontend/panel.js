@@ -8206,25 +8206,29 @@ class SceneExtrapolationPanel extends HTMLElement {
     const sunrise = this._clockEventSeconds(events, "sunrise");
     const sunset = this._clockEventSeconds(events, "sunset");
     this._clockSunDayClipId = null;
-    if (sunset == null || sunrise == null) {
-      return;
-    }
     const defs =
       overlay.querySelector("defs") ||
       overlay.insertBefore(
         document.createElementNS("http://www.w3.org/2000/svg", "defs"),
         overlay.firstChild
       );
-    const clip = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "clipPath"
-    );
-    clip.setAttribute("id", "clock-sun-day-clip");
-    clip.setAttribute("clipPathUnits", "userSpaceOnUse");
-    const slice = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    let clip = defs.querySelector("#clock-sun-day-clip");
+    if (sunset == null || sunrise == null) {
+      clip?.remove();
+      return;
+    }
+    if (!clip) {
+      clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+      clip.setAttribute("id", "clock-sun-day-clip");
+      clip.setAttribute("clipPathUnits", "userSpaceOnUse");
+      defs.appendChild(clip);
+    }
+    let slice = clip.querySelector("path");
+    if (!slice) {
+      slice = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      clip.appendChild(slice);
+    }
     slice.setAttribute("d", this._clockWedgePath(sunrise, sunset, CLOCK_SKY_R));
-    clip.appendChild(slice);
-    defs.appendChild(clip);
     this._clockSunDayClipId = "clock-sun-day-clip";
   }
 
@@ -8314,7 +8318,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._animateClockSunArc(from, idle, 2250, { forward: true });
   }
 
-  _paintClockSunPath(overlay, events) {
+  _paintClockSunPath(overlay, events, { includeSun = true } = {}) {
     const curve = this._sunPath?.curve;
     if (!curve?.length) {
       return;
@@ -8410,6 +8414,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     }
 
+    // Year-scrub patch only refreshes path/marks — recreating sun chrome here
+    // would replace _clockSunEl with a detached node and skip spoke layout.
+    if (!includeSun) {
+      return;
+    }
+
     const defs =
       overlay.querySelector("defs") ||
       overlay.insertBefore(
@@ -8483,6 +8493,7 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     // Shadow + glow + fill share the day wedge clip so they fade together
     // across the horizon (no hard on/off). Outline ring stays unclipped.
+    overlay.querySelectorAll(".clock-sun-day-group").forEach((el) => el.remove());
     const shadow = document.createElementNS(
       "http://www.w3.org/2000/svg",
       "circle"
@@ -8878,7 +8889,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     ]) {
       overlay.querySelectorAll(sel).forEach((el) => el.remove());
     }
-    this._paintClockSunPath(overlay, payload.events);
+    this._paintClockSunPath(overlay, payload.events, { includeSun: false });
     const sky = this._clockHorizonSkyEl;
     if (sky) {
       while (sky.firstChild) {
@@ -8899,22 +8910,43 @@ class SceneExtrapolationPanel extends HTMLElement {
     return true;
   }
 
-  /** Reposition / relabel event buttons mid-scrub (ghosts reconciled on release). */
+  /** Reposition / relabel event buttons mid-scrub (ghosts move with solar marks). */
   _syncClockEventAnchorsForScrub(events) {
     const anchors = this._clockEventAnchors || [];
     for (const anchor of anchors) {
-      if (anchor.classList.contains("ghost")) {
-        continue;
-      }
       const eventId = anchor.dataset.eventId;
       const event = (events || []).find((item) => item.id === eventId);
-      const buttonSeconds = this._eventButtonSeconds(event);
-      if (event == null || buttonSeconds == null) {
+      if (event == null) {
         continue;
       }
-      const deg = this._clockAngleDeg(buttonSeconds);
+      const isGhost = anchor.classList.contains("ghost");
+      const markSeconds = this._eventMarkSeconds(event);
+      const buttonSeconds = this._eventButtonSeconds(event);
+      const placeSeconds = isGhost ? markSeconds : buttonSeconds;
+      if (placeSeconds == null) {
+        continue;
+      }
+      if (isGhost) {
+        const show =
+          event.overridden &&
+          markSeconds != null &&
+          buttonSeconds != null &&
+          markSeconds !== buttonSeconds;
+        anchor.hidden = !show;
+        if (!show) {
+          continue;
+        }
+      }
+      const deg = this._clockAngleDeg(placeSeconds);
       const rad = ((deg - 90) * Math.PI) / 180;
       anchor._clockPolar = { cos: Math.cos(rad), sin: Math.sin(rad) };
+      if (isGhost) {
+        const ghostBtn = anchor.querySelector(".clock-event");
+        if (ghostBtn) {
+          ghostBtn.title = `${event.name} · solar ${event.solar_time || event.time}`;
+        }
+        continue;
+      }
       const timeText = event.fallback ? `${event.time}*` : event.time;
       const heading = anchor.querySelector(".clock-event-heading");
       if (heading) {
@@ -9349,6 +9381,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         const ghostPolar = polarForSeconds(markSeconds);
         const ghost = document.createElement("div");
         ghost.className = "clock-event-anchor ghost";
+        ghost.dataset.eventId = event.id;
         ghost._clockPolar = ghostPolar;
         ghost.setAttribute("aria-hidden", "true");
         const ghostBtn = document.createElement("div");
