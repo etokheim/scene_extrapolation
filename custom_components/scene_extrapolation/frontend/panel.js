@@ -46,13 +46,14 @@ const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
    sunrise/sunset and fixed through the night until sunrise. */
 const CLOCK_SUN_SCALE_MAX = 2;
 /* Handle tip radius in the dial-core viewBox (path-adjacent). Face chrome
-   carries the hour ticks + numbers; solar-event buttons sit inside that ring. */
+   carries the hour ticks + numbers; solar-event buttons track the sun path. */
 const CLOCK_TICK_OUTER = 94;
 const CLOCK_TICK_MAJOR_LEN = 5;
 const CLOCK_TICK_MINOR_LEN = 3;
-/* Numbers sit this far inside the tick outer tip (viewBox units on r=100). */
-const CLOCK_LABEL_INSIDE_TICK = 8;
-/* Override scrub arc sits on the outer tip of the hour ticks. */
+/* Core-viewBox gap from sun-path radius to event-button center (constant as
+   the path scales seasonally). */
+const CLOCK_EVENT_GAP_FROM_PATH = 10;
+/* Fallback override radius until layout maps face tick tips into core space. */
 const CLOCK_OVERRIDE_R = CLOCK_TICK_OUTER;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
 const CLOCK_SUN_STROKE_MAX_PX = 10;
@@ -7842,7 +7843,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       arc.setAttribute("visibility", "hidden");
       return;
     }
-    const r = CLOCK_OVERRIDE_R;
+    const r = this._clockOverrideR ?? CLOCK_OVERRIDE_R;
+    glow.setAttribute("r", String(r));
     const start = this._clockPolar(now, r);
     const end = this._clockPolar(overrideSeconds, r);
     const absSpan = Math.abs(delta);
@@ -8999,20 +9001,28 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (!w) {
         return;
       }
-      // Outer → inner: tick tips + numbers (numbers inside the tips), then
-      // solar-event buttons, then the dial core. Same tick lengths as before.
+      // Face chrome: tick tips near the edge, hour numbers just inside the
+      // ticks (clear of the stroke). Event buttons track the sun path at a
+      // fixed core-viewBox gap so seasonal path scaling keeps the same space.
       const t = Math.min(1, Math.max(0, (w - 300) / (720 - 300)));
       const tickOuterPad = w >= 871 ? 10 : 6;
-      const labelPad =
-        tickOuterPad + (CLOCK_LABEL_INSIDE_TICK / 100) * (w / 2);
-      const eventPad = labelPad + CLOCK_EVENT_BTN_PX / 2 + 8;
+      const labelFontPx = w >= 871 ? 32 : 16;
+      // Past major tick length + ~half glyph + air so digits do not sit on ticks.
+      const labelInsetPx =
+        (CLOCK_TICK_MAJOR_LEN / 100) * (w / 2) + labelFontPx * 0.55 + 4;
+      const labelPad = tickOuterPad + labelInsetPx;
       const chromePx = Math.max(
         Math.round(
           CLOCK_CHROME_PX_MIN + t * (CLOCK_CHROME_PX - CLOCK_CHROME_PX_MIN)
         ),
-        Math.ceil(eventPad + 4)
+        Math.ceil(labelPad + 4)
       );
       face.style.setProperty("--clock-chrome", `${chromePx}px`);
+      // Derive core size from chrome (do not wait for a second layout pass).
+      const coreW = w - 2 * chromePx;
+      if (coreW < 8) {
+        return;
+      }
       // Face SVG viewBox radius 100 ≡ half the face; pad → viewBox r.
       const tickOuterR = 100 * (1 - (2 * tickOuterPad) / w);
       for (const tick of faceTickLines) {
@@ -9029,12 +9039,23 @@ class SceneExtrapolationPanel extends HTMLElement {
         label.style.left = `${50 + cos * labelR}%`;
         label.style.top = `${50 + sin * labelR}%`;
       }
-      const iconR = ((w / 2 - eventPad) / w) * 100;
+      const pathR = this._clockSunPathRadius();
+      const eventRCore = pathR + CLOCK_EVENT_GAP_FROM_PATH;
+      const eventRFacePx = (eventRCore / 100) * (coreW / 2);
+      const iconR = (eventRFacePx / w) * 100;
       for (const anchor of eventAnchors) {
         const { cos, sin } = anchor._clockPolar;
         anchor.style.left = `${50 + cos * iconR}%`;
         anchor.style.top = `${50 + sin * iconR}%`;
       }
+      // Override arc/glow on the outer tip of the face hour ticks, in core space.
+      const tickOuterPx = (tickOuterR / 100) * (w / 2);
+      const overrideR = (tickOuterPx / (coreW / 2)) * 100;
+      this._clockOverrideR = overrideR;
+      if (this._clockOverrideGlowEl) {
+        this._clockOverrideGlowEl.setAttribute("r", String(overrideR));
+      }
+      this._updateOverrideArc(this._clockStickySeconds);
       this._layoutClockEventMetas(eventAnchors);
       this._clockEventIconR = iconR;
       this._layoutClockEventSpokes();
