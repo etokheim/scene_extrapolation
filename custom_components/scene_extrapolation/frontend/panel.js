@@ -730,7 +730,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           --clock-chrome: ${CLOCK_CHROME_PX}px;
         }
         /* Sunrise/sunset shadow + glow sit behind the planet (back-most).
-           Sized in JS to cover the full panel (under the sidebar). */
+           Sized in JS to cover the full panel (under the sidebar).
+           Isolate so screen-blend horizon wash does not composite over the
+           light-band bloom that stacks above this layer. */
         .clock-horizon-back {
           position: absolute;
           left: 50%;
@@ -738,6 +740,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform: translate(-50%, -50%);
           pointer-events: none;
           z-index: 0;
+          overflow: visible;
+          isolation: isolate;
+        }
+        /* Light-band bloom between horizon wash and planet (same chrome inset
+           as the core so clones stay aligned with the rings). */
+        .sun-light-clock-glow-layer {
+          position: absolute;
+          inset: var(--clock-chrome);
+          border-radius: 50%;
+          pointer-events: none;
+          z-index: 1;
           overflow: visible;
         }
         /* Planet / path live in the inset core; event chips stay on the face
@@ -798,13 +811,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Registered via CSS.registerProperty (document), not @property here —
            shadow-root @property does not enable transitions. */
-        /* Soft bloom from simple dial clones (same ring colors as the planet). */
+        /* Soft bloom from simple dial clones (same ring colors as the planet).
+           Parent .sun-light-clock-glow-layer stacks above .clock-horizon-back. */
         .sun-light-clock-glow {
           position: absolute;
           inset: ${CLOCK_RINGS_INSET_PCT}%;
           border-radius: 50%;
           pointer-events: none;
-          z-index: 1;
           transform-origin: center center;
           filter: blur(28px);
           /* Was 0.63; 50% less transparent → opacity 0.815 */
@@ -8574,6 +8587,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
     // Soft bloom clones behind the interactive rings — same conic colors as the
     // planet (not elevation sky). Large + half-size layers share opacity.
+    // Face-level layer (not inside core) so bloom paints over the horizon wash.
     const makeGlow = (mod) => {
       const glow = ringsHost.cloneNode(true);
       glow.className = `sun-light-clock-glow ${mod}`;
@@ -8588,10 +8602,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       return glow;
     };
+    const glowLayer = document.createElement("div");
+    glowLayer.className = "sun-light-clock-glow-layer";
+    glowLayer.setAttribute("aria-hidden", "true");
     const glowLg = makeGlow("glow-lg");
     const glowMd = makeGlow("glow-md");
+    glowLayer.append(glowLg, glowMd);
     this._clockSkyGlow = glowLg;
-    core.append(glowLg, glowMd, ringsHost);
+    core.append(ringsHost);
 
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("class", "sun-light-clock-overlay");
@@ -8654,7 +8672,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       handleHit,
       ...hourLabels
     );
-    face.append(horizonBack, core);
+    // Horizon → light bloom → planet (bloom must cover the horizon wash).
+    face.append(horizonBack, glowLayer, core);
 
     const editable = this._view === "edit";
     const eventAnchors = [];
