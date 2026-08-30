@@ -16,10 +16,15 @@ const CLOCK_CY = 100;
 const CLOCK_RINGS_OUTER = 52;
 /* elev=0 is outside the planet — night sun is not under the rings. */
 const CLOCK_SUN_HORIZON = 68;
-/* Drawn stroke (+ sun marker on the same radius): day height so noon ~96. */
+/* Drawn stroke (+ sun marker on the same radius): day height so noon ~96.
+   Night floor stays outside the planet even at max sun scale. */
 const CLOCK_SUN_PATH_DAY_EMPHASIS = 2;
 const CLOCK_SUN_PATH_DAY_BASE_SPAN = 14;
-const CLOCK_SUN_PATH_NIGHT_MIN = 36;
+const CLOCK_SUN_PATH_NIGHT_MIN = 58;
+/* Magnetic scrub: capture / rubber-break windows around solar events (seconds). */
+const CLOCK_SNAP_CAPTURE_SEC = 22 * 60;
+const CLOCK_SNAP_RELEASE_SEC = 50 * 60;
+const CLOCK_DRAG_CLICK_PX = 7;
 /* Event spokes aim near the face edge; buttons sit in slim chrome. */
 const CLOCK_EVENT_ICON_R = 92;
 /* Fixed px band around the dial for event buttons + labels (do not scale). */
@@ -2332,6 +2337,35 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-hover-time {
           font-weight: 500;
+        }
+        .sun-hover-reset {
+          pointer-events: auto;
+          display: inline-grid;
+          place-items: center;
+          width: 32px;
+          height: 32px;
+          margin: 0;
+          padding: 0;
+          border: 0;
+          border-radius: 50%;
+          background: color-mix(
+            in srgb,
+            var(--primary-color) 14%,
+            var(--card-background-color)
+          );
+          color: var(--primary-text-color);
+          cursor: pointer;
+          font: inherit;
+        }
+        .sun-hover-reset:hover {
+          background: color-mix(
+            in srgb,
+            var(--primary-color) 24%,
+            var(--card-background-color)
+          );
+        }
+        .sun-hover-reset ha-icon {
+          --mdc-icon-size: 18px;
         }
         .sun-plots {
           position: relative;
@@ -6937,14 +6971,47 @@ class SceneExtrapolationPanel extends HTMLElement {
       !hovering &&
       this._sidebarEventId &&
       (this._sunPath?.events || []).some((e) => e.id === this._sidebarEventId);
+    const sticky = this._clockStickySeconds != null;
     time.textContent =
-      hovering || eventIdle
+      hovering || eventIdle || sticky
         ? formatClock(seconds)
         : `Now ${formatClock(seconds)}`;
     const sun = document.createElement("span");
     const elev = interpolateElevation(this._sunPath.curve, seconds);
     sun.textContent = `Sun ${elev.toFixed(1)}°`;
     readout.append(time, sun);
+    if (sticky && this._view === "edit" && this._lightView === "clock") {
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.className = "sun-hover-reset";
+      reset.title = "Reset to now";
+      reset.setAttribute("aria-label", "Reset sun to current time");
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", "mdi:restore");
+      reset.appendChild(icon);
+      reset.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this._resetClockSunToNow();
+      });
+      readout.appendChild(reset);
+    }
+  }
+
+  _resetClockSunToNow() {
+    this._clockStickySeconds = undefined;
+    this._clockMagnetEventId = null;
+    this._clockSunDragging = false;
+    this._hoverSeconds = undefined;
+    this._clockSunLive = false;
+    const now = nowSecondsSinceMidnight();
+    const from = this._clockSunDisplayedSeconds ?? now;
+    this._cancelClockSunArc();
+    if (Math.abs(this._shortestSecondsDelta(from, now)) < 1) {
+      this._applyClockSunAppearance(now);
+    } else {
+      this._animateClockSunArc(from, now, 420);
+    }
+    this._fillHoverReadout(now, { hovering: false });
   }
 
   _updateLightNameBrightness(seconds) {
@@ -7117,10 +7184,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           CLOCK_SUN_PATH_DAY_EMPHASIS
       );
     }
-    return (
+    const nightR =
       CLOCK_SUN_HORIZON +
-      Math.max(-1, t) * (CLOCK_SUN_HORIZON - CLOCK_SUN_PATH_NIGHT_MIN)
-    );
+      Math.max(-1, t) * (CLOCK_SUN_HORIZON - CLOCK_SUN_PATH_NIGHT_MIN);
+    // Night disc is largest; keep its center outside the light-ring planet.
+    const sunR = CLOCK_SUN_R_VIEW * CLOCK_SUN_SCALE_MAX * 0.94;
+    return Math.max(nightR, CLOCK_RINGS_OUTER + sunR + 1.5);
   }
 
   /** Smallest at daytime zenith; largest at sunrise/sunset; fixed max at night. */
@@ -7744,14 +7813,86 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._cancelClockSunArc();
   }
 
+  _clockMagnetEvents() {
+    return (this._sunPath?.events || []).filter(
+      (event) => event?.seconds != null
+    );
+  }
+
+  _nearestClockMagnet(seconds) {
+    let best = null;
+    let bestAbs = Infinity;
+    for (const event of this._clockMagnetEvents()) {
+      const delta = this._shortestSecondsDelta(seconds, event.seconds);
+      const abs = Math.abs(delta);
+      if (abs < bestAbs) {
+        bestAbs = abs;
+        best = { event, delta, abs };
+      }
+    }
+    return best;
+  }
+
+  /** Map pointer time → display time with snap / rubber-band around events. */
+  _clockMagnetDisplaySeconds(pointerSeconds) {
+    const nearest = this._nearestClockMagnet(pointerSeconds);
+    if (!nearest) {
+      this._clockMagnetEventId = null;
+      return pointerSeconds;
+    }
+    const magnetId = this._clockMagnetEventId;
+    if (magnetId) {
+      const stuck = this._clockMagnetEvents().find((e) => e.id === magnetId);
+      if (!stuck) {
+        this._clockMagnetEventId = null;
+      } else {
+        const pull = this._shortestSecondsDelta(stuck.seconds, pointerSeconds);
+        const absPull = Math.abs(pull);
+        if (absPull >= CLOCK_SNAP_RELEASE_SEC) {
+          this._clockMagnetEventId = null;
+          this._clockMagnetReleaseFrom = this._clockSunDisplayedSeconds;
+          return pointerSeconds;
+        }
+        // Rubber band: sun stays near the event while the pointer pulls away.
+        const t = absPull / CLOCK_SNAP_RELEASE_SEC;
+        const soft = pull * (1 - t) * (1 - t);
+        let display = stuck.seconds + soft;
+        display =
+          ((display % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
+        return display;
+      }
+    }
+    if (nearest.abs <= CLOCK_SNAP_CAPTURE_SEC) {
+      if (this._clockMagnetEventId !== nearest.event.id) {
+        this._clockMagnetEventId = nearest.event.id;
+        this._clockMagnetSnapFrom = this._clockSunDisplayedSeconds;
+      }
+      return nearest.event.seconds;
+    }
+    return pointerSeconds;
+  }
+
   _bindClockSunDrag(face, handles) {
-    const apply = (seconds) => {
+    const applyLive = (seconds) => {
       this._hoverSeconds = seconds;
       this._clockStickySeconds = seconds;
       this._applyClockSunAppearance(seconds);
       this._fillHoverReadout(seconds, { hovering: true });
     };
     const onMove = (ev) => {
+      if (!this._clockPointerArmed) {
+        return;
+      }
+      const origin = this._clockPointerOrigin;
+      if (origin) {
+        const dist = Math.hypot(ev.clientX - origin.x, ev.clientY - origin.y);
+        if (dist >= CLOCK_DRAG_CLICK_PX) {
+          this._clockSunDragging = true;
+          if (this._sidebarEventId) {
+            this._closeSceneSidebar({ animate: true });
+          }
+        }
+      }
       if (!this._clockSunDragging) {
         return;
       }
@@ -7764,30 +7905,86 @@ class SceneExtrapolationPanel extends HTMLElement {
         if (!this._pendingClockHover || !this._clockSunDragging) {
           return;
         }
-        apply(this._secondsFromClockPointer(this._pendingClockHover, face));
+        const pointer = this._secondsFromClockPointer(
+          this._pendingClockHover,
+          face
+        );
+        const prevMagnet = this._clockMagnetEventId;
+        const display = this._clockMagnetDisplaySeconds(pointer);
+        // Animate onto a newly captured event, or out to the cursor on release.
+        if (
+          this._clockMagnetEventId &&
+          this._clockMagnetEventId !== prevMagnet &&
+          this._clockMagnetSnapFrom != null
+        ) {
+          const from = this._clockMagnetSnapFrom;
+          this._clockMagnetSnapFrom = null;
+          this._animateClockSunArc(from, display, 280);
+          this._hoverSeconds = display;
+          this._clockStickySeconds = display;
+          this._fillHoverReadout(display, { hovering: true });
+          return;
+        }
+        if (
+          !this._clockMagnetEventId &&
+          prevMagnet &&
+          this._clockMagnetReleaseFrom != null
+        ) {
+          const from = this._clockMagnetReleaseFrom;
+          this._clockMagnetReleaseFrom = null;
+          this._animateClockSunArc(from, pointer, 320);
+          this._hoverSeconds = pointer;
+          this._clockStickySeconds = pointer;
+          this._fillHoverReadout(pointer, { hovering: true });
+          return;
+        }
+        if (this._clockMagnetEventId && this._clockSunArcRaf) {
+          // Let the snap-in animation finish before rubber-banding.
+          return;
+        }
+        applyLive(display);
       });
     };
     const onUp = (ev) => {
-      if (!this._clockSunDragging) {
+      if (!this._clockPointerArmed) {
         return;
       }
-      this._clockSunDragging = false;
+      this._clockPointerArmed = false;
       this._pendingClockHover = undefined;
       if (this._clockHoverRaf) {
         window.cancelAnimationFrame(this._clockHoverRaf);
         this._clockHoverRaf = undefined;
       }
-      const seconds = this._secondsFromClockPointer(ev, face);
-      this._clockStickySeconds = seconds;
-      this._hoverSeconds = undefined;
-      this._clockSunLive = false;
-      this._applyClockSunAppearance(seconds);
-      this._fillHoverReadout(seconds, { hovering: false });
+      const wasDragging = this._clockSunDragging;
+      this._clockSunDragging = false;
       try {
         ev.currentTarget.releasePointerCapture?.(ev.pointerId);
       } catch {
         /* already released */
       }
+      if (!wasDragging) {
+        // Click — return to wall-clock now.
+        this._resetClockSunToNow();
+        return;
+      }
+      const pointer = this._secondsFromClockPointer(ev, face);
+      const display = this._clockMagnetDisplaySeconds(pointer);
+      // Prefer the event itself if still magnetized after rubber band.
+      let finalSeconds = display;
+      if (this._clockMagnetEventId) {
+        const stuck = this._clockMagnetEvents().find(
+          (e) => e.id === this._clockMagnetEventId
+        );
+        if (stuck) {
+          finalSeconds = stuck.seconds;
+        }
+      }
+      this._cancelClockSunArc();
+      this._clockStickySeconds = finalSeconds;
+      this._hoverSeconds = undefined;
+      this._clockSunLive = false;
+      this._applyClockSunAppearance(finalSeconds);
+      this._fillHoverReadout(finalSeconds, { hovering: false });
     };
     const onDown = (ev) => {
       if (ev.button != null && ev.button !== 0) {
@@ -7795,16 +7992,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       ev.preventDefault();
       ev.stopPropagation();
-      const seconds = this._secondsFromClockPointer(ev, face);
-      this._clockStickySeconds = seconds;
+      this._clockPointerArmed = true;
+      this._clockSunDragging = false;
+      this._clockPointerOrigin = { x: ev.clientX, y: ev.clientY };
+      this._clockMagnetEventId = null;
       this._cancelClockSunArc();
       this._clockSunLive = true;
-      this._clockSunDragging = true;
-      if (this._sidebarEventId) {
-        this._closeSceneSidebar({ animate: true });
-      }
       ev.currentTarget.setPointerCapture?.(ev.pointerId);
-      apply(seconds);
     };
     for (const el of handles) {
       if (!el) {
