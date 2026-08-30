@@ -20,12 +20,14 @@ from .const import (
     DOMAIN,
 )
 from .native_scene import (
+    async_apply_area_setup,
     async_apply_native_drafts,
     async_create_native_scene,
     async_delete_native_scene,
     async_rename_native_scene,
     async_update_native_scene_entities,
     async_update_native_scene_entity,
+    area_setup_info,
 )
 from .preview import build_preview
 from .scene import async_create_or_update_entity, async_remove_entity
@@ -49,6 +51,8 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_rename_native_scene)
     websocket_api.async_register_command(hass, ws_delete_native_scene)
     websocket_api.async_register_command(hass, ws_apply_native_drafts)
+    websocket_api.async_register_command(hass, ws_area_setup_info)
+    websocket_api.async_register_command(hass, ws_apply_area_setup)
 
 
 def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
@@ -474,5 +478,56 @@ async def ws_apply_native_drafts(
         )
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "apply_failed", str(err))
+        return
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/area_setup_info",
+        vol.Required("area_id"): str,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_area_setup_info(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Lights + ranked native scenes for the create-scene wizard."""
+    try:
+        payload = area_setup_info(hass, msg["area_id"])
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "area_setup_failed", str(err))
+        return
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/apply_area_setup",
+        vol.Required("area_id"): str,
+        vol.Required("linked"): bool,
+        vol.Required("assignments"): dict,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_apply_area_setup(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Create Automatic native scenes and return resolved slot assignments."""
+    try:
+        payload = await async_apply_area_setup(
+            hass,
+            msg["area_id"],
+            linked=bool(msg["linked"]),
+            assignments=dict(msg.get("assignments") or {}),
+        )
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "area_setup_failed", str(err))
         return
     connection.send_result(msg["id"], payload)

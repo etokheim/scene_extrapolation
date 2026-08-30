@@ -75,6 +75,7 @@ const DRAFT_PERSIST_MS = 200;
 const LIGHT_VIEW_STORAGE_VERSION = 1;
 const CLOCK_FEATHER_PCT = 5.5;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
+const SETUP_AUTOMATIC = "automatic";
 // Same circadian seeds as native_scene.EVENT_LIGHT_DEFAULTS (0–255, kelvin).
 const EVENT_LIGHT_DEFAULTS = {
   dawn: [102, 2700],
@@ -2895,6 +2896,15 @@ class SceneExtrapolationPanel extends HTMLElement {
             overflow-x: hidden;
           }
         }
+        /* Sidebar open: let horizon/bloom paint under the drawer (desktop). */
+        :host([data-sidebar-docked]) .page-shell,
+        :host([data-sidebar-docked]) .page.dial-wide,
+        :host([data-sidebar-docked]) .sun-path.dial-view,
+        :host([data-sidebar-docked]) .sun-path-stage,
+        :host([data-sidebar-docked]) .sun-path-body,
+        :host([data-sidebar-docked]) .sun-light-clock {
+          overflow: visible;
+        }
         .draft-restore {
           position: relative;
           /* Above dial sky/horizon bleed that paints past the face. */
@@ -3024,6 +3034,104 @@ class SceneExtrapolationPanel extends HTMLElement {
         .confirm-dialog p {
           display: block;
           margin-top: 16px;
+        }
+        .area-dialog {
+          --mdc-dialog-min-width: min(440px, 95vw);
+        }
+        .area-dialog .setup-step {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          margin-top: 8px;
+        }
+        .area-dialog .setup-step[hidden] {
+          display: none;
+        }
+        .area-dialog .setup-mode-cards {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .area-dialog .setup-mode-card {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
+          width: 100%;
+          text-align: left;
+          padding: 14px 16px;
+          border-radius: var(--ha-border-radius-lg, 12px);
+          border: 2px solid var(--divider-color);
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          cursor: pointer;
+          box-sizing: border-box;
+        }
+        .area-dialog .setup-mode-card:hover {
+          border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+        }
+        .area-dialog .setup-mode-card.selected {
+          border-color: var(--primary-color);
+          background: color-mix(
+            in srgb,
+            var(--primary-color) 10%,
+            var(--card-background-color)
+          );
+        }
+        .area-dialog .setup-mode-card .mode-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 15px;
+          font-weight: 600;
+        }
+        .area-dialog .setup-mode-card .mode-title ha-icon {
+          --mdc-icon-size: 22px;
+          color: var(--primary-color);
+        }
+        .area-dialog .setup-mode-card .mode-detail {
+          font-size: 13px;
+          line-height: 1.35;
+          color: var(--secondary-text-color);
+          padding-left: 30px;
+        }
+        .area-dialog .setup-error {
+          margin: 0;
+          color: var(--error-color);
+          font-size: 13px;
+          line-height: 1.35;
+        }
+        .area-dialog .setup-slot {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .area-dialog .setup-slot label {
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--primary-text-color);
+        }
+        .area-dialog .setup-slot select {
+          width: 100%;
+          box-sizing: border-box;
+          min-height: 40px;
+          padding: 8px 12px;
+          border-radius: var(--ha-border-radius-md, 8px);
+          border: 1px solid var(--divider-color);
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          font: inherit;
+        }
+        .area-dialog .setup-link-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 4px 0;
+        }
+        .area-dialog .setup-link-row span {
+          font-size: 14px;
+          line-height: 1.3;
         }
         .save-dialog ha-chip-set {
           margin-top: 16px;
@@ -4488,11 +4596,12 @@ class SceneExtrapolationPanel extends HTMLElement {
   _setSidebarDocked(docked) {
     // Width + drawer’s right inset only — no extra “left margin” gap; banners
     // and page content keep their own inline spacing.
-    const gutter =
-      docked && !this._isEditorNarrow()
-        ? "calc(var(--scene-sidebar-width, 375px) + 16px)"
-        : "0px";
+    const on = Boolean(docked && !this._isEditorNarrow());
+    const gutter = on
+      ? "calc(var(--scene-sidebar-width, 375px) + 16px)"
+      : "0px";
     this.style.setProperty("--scene-sidebar-gutter", gutter);
+    this.toggleAttribute("data-sidebar-docked", on);
     this._syncYearScrubLayout();
     this._layoutClockHorizonBack();
   }
@@ -6282,20 +6391,111 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._areaPromptOpen = true;
     let committed = false;
     this.shadowRoot.querySelector("ha-dialog.area-dialog")?.remove();
-    const data = { area: this._formData.area || null };
+
+    const state = {
+      area: this._formData.area || null,
+      mode: "automatic",
+      step: 1,
+      linked: true,
+      assignments: {
+        noon: SETUP_AUTOMATIC,
+        linked: SETUP_AUTOMATIC,
+        dusk: SETUP_AUTOMATIC,
+        dawn: SETUP_AUTOMATIC,
+        sunrise: SETUP_AUTOMATIC,
+        sunset: SETUP_AUTOMATIC,
+      },
+      info: null,
+      busy: false,
+      error: "",
+    };
+
     const dialog = document.createElement("ha-dialog");
     dialog.className = "area-dialog";
-    dialog.setAttribute("header-title", LABELS.area);
+    dialog.setAttribute("header-title", "New extrapolation scene");
     dialog.open = true;
 
+    const step1 = document.createElement("div");
+    step1.className = "setup-step";
     const picker = document.createElement("ha-selector");
     picker.hass = this._hass;
     picker.label = LABELS.area;
     picker.helper = HELPERS.area;
     picker.required = true;
-    picker.value = data.area;
+    picker.value = state.area;
     picker.selector = { area: {} };
-    dialog.appendChild(picker);
+    step1.appendChild(picker);
+
+    const cards = document.createElement("div");
+    cards.className = "setup-mode-cards";
+    const modeMeta = [
+      {
+        id: "automatic",
+        icon: "mdi:auto-fix",
+        title: "Set up automatically",
+        detail:
+          "Creates Bright, Dimmed, and Low lights scenes for every light in the area.",
+      },
+      {
+        id: "manual",
+        icon: "mdi:playlist-edit",
+        title: "Use my existing scenes",
+        detail:
+          "Pick scenes for each solar event, or leave Automatic to create them.",
+      },
+    ];
+    const modeButtons = {};
+    for (const item of modeMeta) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "setup-mode-card";
+      btn.dataset.mode = item.id;
+      const title = document.createElement("div");
+      title.className = "mode-title";
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", item.icon);
+      const titleText = document.createElement("span");
+      titleText.textContent = item.title;
+      title.append(icon, titleText);
+      const detail = document.createElement("div");
+      detail.className = "mode-detail";
+      detail.textContent = item.detail;
+      btn.append(title, detail);
+      btn.addEventListener("click", () => {
+        state.mode = item.id;
+        state.error = "";
+        syncModeCards();
+        syncFooter();
+      });
+      modeButtons[item.id] = btn;
+      cards.appendChild(btn);
+    }
+    step1.appendChild(cards);
+
+    const step2 = document.createElement("div");
+    step2.className = "setup-step";
+    step2.hidden = true;
+    const linkRow = document.createElement("div");
+    linkRow.className = "setup-link-row";
+    const linkLabel = document.createElement("span");
+    linkLabel.textContent = "Same scene for dawn, sunrise, and sunset";
+    const linkSwitch = document.createElement("ha-switch");
+    linkSwitch.checked = state.linked;
+    linkSwitch.addEventListener("change", () => {
+      state.linked = Boolean(linkSwitch.checked);
+      applySuggestions();
+      paintSlots();
+    });
+    linkRow.append(linkLabel, linkSwitch);
+    const slotsHost = document.createElement("div");
+    slotsHost.className = "setup-step";
+    step2.append(linkRow, slotsHost);
+
+    const errorEl = document.createElement("p");
+    errorEl.className = "setup-error";
+    errorEl.hidden = true;
+
+    dialog.append(step1, step2, errorEl);
 
     const footer = customElements.get("ha-dialog-footer")
       ? document.createElement("ha-dialog-footer")
@@ -6308,33 +6508,227 @@ class SceneExtrapolationPanel extends HTMLElement {
     cancel.addEventListener("click", () => {
       dialog.open = false;
     });
-    const continueBtn = document.createElement("ha-button");
-    continueBtn.slot = "primaryAction";
-    continueBtn.variant = "brand";
-    continueBtn.textContent = this._loc("ui.common.continue", "Continue");
-    continueBtn.disabled = !data.area;
+    const backBtn = document.createElement("ha-button");
+    backBtn.slot = "secondaryAction";
+    backBtn.appearance = "plain";
+    backBtn.textContent = this._loc("ui.common.back", "Back");
+    backBtn.hidden = true;
+    backBtn.addEventListener("click", () => {
+      state.step = 1;
+      state.error = "";
+      syncSteps();
+      syncFooter();
+    });
+    const nextBtn = document.createElement("ha-button");
+    nextBtn.slot = "primaryAction";
+    nextBtn.variant = "brand";
+    nextBtn.textContent = this._loc("ui.common.continue", "Next");
+    footer.append(cancel, backBtn, nextBtn);
+    dialog.appendChild(footer);
+
+    const setError = (message) => {
+      state.error = message || "";
+      errorEl.textContent = state.error;
+      errorEl.hidden = !state.error;
+    };
+    const syncModeCards = () => {
+      for (const [id, btn] of Object.entries(modeButtons)) {
+        btn.classList.toggle("selected", state.mode === id);
+      }
+    };
+    const syncSteps = () => {
+      step1.hidden = state.step !== 1;
+      step2.hidden = state.step !== 2;
+      dialog.setAttribute(
+        "header-title",
+        state.step === 1 ? "New extrapolation scene" : "Assign scenes"
+      );
+    };
+    const syncFooter = () => {
+      backBtn.hidden = state.step !== 2;
+      cancel.hidden = state.step === 2;
+      nextBtn.disabled = state.busy || !state.area;
+      nextBtn.textContent =
+        state.step === 2 || state.mode === "automatic"
+          ? this._loc("ui.common.continue", "Next")
+          : this._loc("ui.common.continue", "Next");
+    };
+    const slotDefs = () => {
+      if (state.linked) {
+        return [
+          { key: "noon", label: "Noon" },
+          { key: "linked", label: "Dawn, sunrise & sunset" },
+          { key: "dusk", label: "Dusk" },
+        ];
+      }
+      return [
+        { key: "dawn", label: "Dawn" },
+        { key: "sunrise", label: "Sunrise" },
+        { key: "noon", label: "Noon" },
+        { key: "sunset", label: "Sunset" },
+        { key: "dusk", label: "Dusk" },
+      ];
+    };
+    const applySuggestions = () => {
+      const suggestions = state.linked
+        ? state.info?.suggestions_linked || {}
+        : state.info?.suggestions_unlinked || {};
+      for (const { key } of slotDefs()) {
+        state.assignments[key] = suggestions[key] || SETUP_AUTOMATIC;
+      }
+    };
+    const paintSlots = () => {
+      slotsHost.replaceChildren();
+      const scenes = state.info?.scenes || [];
+      for (const { key, label } of slotDefs()) {
+        const row = document.createElement("div");
+        row.className = "setup-slot";
+        const lab = document.createElement("label");
+        lab.textContent = label;
+        const select = document.createElement("select");
+        const autoOpt = document.createElement("option");
+        autoOpt.value = SETUP_AUTOMATIC;
+        autoOpt.textContent = "Automatic";
+        select.appendChild(autoOpt);
+        for (const scene of scenes) {
+          const opt = document.createElement("option");
+          opt.value = scene.entity_id;
+          opt.textContent = scene.name;
+          select.appendChild(opt);
+        }
+        const current = state.assignments[key] || SETUP_AUTOMATIC;
+        select.value = [...select.options].some((o) => o.value === current)
+          ? current
+          : SETUP_AUTOMATIC;
+        state.assignments[key] = select.value;
+        select.addEventListener("change", () => {
+          state.assignments[key] = select.value;
+        });
+        row.append(lab, select);
+        slotsHost.appendChild(row);
+      }
+    };
+
+    const buildAssignmentsPayload = () => {
+      const payload = {};
+      for (const { key } of slotDefs()) {
+        payload[key] = state.assignments[key] || SETUP_AUTOMATIC;
+      }
+      return payload;
+    };
+
+    const finish = async () => {
+      state.busy = true;
+      syncFooter();
+      setError("");
+      try {
+        const linked =
+          state.mode === "automatic" ? true : Boolean(state.linked);
+        const assignments =
+          state.mode === "automatic"
+            ? {
+                noon: SETUP_AUTOMATIC,
+                linked: SETUP_AUTOMATIC,
+                dusk: SETUP_AUTOMATIC,
+              }
+            : buildAssignmentsPayload();
+        const result = await this._hass.callWS({
+          type: `${DOMAIN}/apply_area_setup`,
+          area_id: state.area,
+          linked,
+          assignments,
+        });
+        for (const entityId of Object.values(result.assignments || {})) {
+          if (entityId) {
+            await this._waitForEntity(entityId);
+          }
+        }
+        const form = {
+          ...emptyFormData(),
+          area: state.area,
+          scene_name: `${result.area_name} Lighting`,
+          display_scenes_combined: linked,
+        };
+        if (linked) {
+          const shared = result.assignments.linked || null;
+          form.scene_noon = result.assignments.noon || null;
+          form.scene_dawn_sunrise_sunset = shared;
+          form.scene_dawn = shared;
+          form.scene_sunrise = shared;
+          form.scene_sunset = shared;
+          form.scene_dusk = result.assignments.dusk || null;
+        } else {
+          for (const eventId of ["dawn", "sunrise", "noon", "sunset", "dusk"]) {
+            form[`scene_${eventId}`] = result.assignments[eventId] || null;
+          }
+        }
+        committed = true;
+        if (context === "list") {
+          this._pendingNewForm = form;
+          this._go("new");
+        } else {
+          this._formData = { ...form };
+          this._nativeDrafts = {};
+          this._clearPreviewCache();
+          this._render();
+        }
+        dialog.open = false;
+      } catch (err) {
+        setError(err?.message || String(err));
+      } finally {
+        state.busy = false;
+        syncFooter();
+      }
+    };
+
     picker.addEventListener("value-changed", (ev) => {
       ev.stopPropagation();
-      data.area = ev.detail?.value || null;
-      continueBtn.disabled = !data.area;
+      state.area = ev.detail?.value || null;
+      state.info = null;
+      setError("");
+      syncFooter();
     });
-    continueBtn.addEventListener("click", () => {
-      if (!data.area) {
+
+    nextBtn.addEventListener("click", async () => {
+      if (!state.area) {
         picker.reportValidity?.();
         return;
       }
-      committed = true;
-      if (context === "list") {
-        this._pendingNewForm = { area: data.area };
-        this._go("new");
-      } else {
-        this._formData.area = data.area;
-        this._render();
+      if (state.busy) {
+        return;
       }
-      dialog.open = false;
+      state.busy = true;
+      syncFooter();
+      setError("");
+      try {
+        if (!state.info || state.info.area_id !== state.area) {
+          state.info = await this._hass.callWS({
+            type: `${DOMAIN}/area_setup_info`,
+            area_id: state.area,
+          });
+        }
+        if (!state.info.light_count) {
+          setError(
+            "This area has no lights. Add lights to the area in Home Assistant before creating an extrapolation scene."
+          );
+          return;
+        }
+        if (state.mode === "automatic" || state.step === 2) {
+          await finish();
+          return;
+        }
+        state.step = 2;
+        applySuggestions();
+        paintSlots();
+        syncSteps();
+      } catch (err) {
+        setError(err?.message || String(err));
+      } finally {
+        state.busy = false;
+        syncFooter();
+      }
     });
-    footer.append(cancel, continueBtn);
-    dialog.appendChild(footer);
+
     dialog.addEventListener("closed", () => {
       this._areaPromptOpen = false;
       dialog.remove();
@@ -6342,8 +6736,14 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._go("");
       }
     });
+
+    syncModeCards();
+    syncSteps();
+    syncFooter();
     this.shadowRoot.appendChild(dialog);
   }
+
+
 
   _duskMinimumSeconds() {
     if (this._view !== "edit") {
@@ -9732,9 +10132,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._lightNameLabels.push({ light, titleEl: title, subEl: sub });
     }
 
-    if (this._view === "edit" && !suggested) {
+    if (this._view === "edit") {
       const assigned = events.filter((item) => this._eventSceneId(item.id));
-      if (assigned.length) {
+      if (!suggested && assigned.length) {
         row.classList.add("interactive");
         row.setAttribute("role", "button");
         row.tabIndex = 0;
@@ -9759,52 +10159,54 @@ class SceneExtrapolationPanel extends HTMLElement {
           openClosest(ev);
         });
       }
-      const remove = document.createElement("ha-icon-button");
-      remove.className = "light-remove";
-      remove.label = `Remove ${light.name} from scenes`;
-      const removeIcon = document.createElement("ha-icon");
-      removeIcon.setAttribute("icon", "mdi:close");
-      remove.appendChild(removeIcon);
-      remove.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        this._removeLightFromAssignedScenes(light.entity_id);
-      });
-      row.appendChild(remove);
-      if (assigned.length) {
-        const chevron = document.createElement("ha-icon");
-        chevron.className = "clock-legend-chevron";
-        chevron.setAttribute("icon", "mdi:chevron-right");
-        row.appendChild(chevron);
+      const missingScenes = this._missingSceneRows(light);
+      if (missingScenes.length) {
+        const names = [
+          ...new Set(missingScenes.map((row) => row.scene_name).filter(Boolean)),
+        ];
+        const warn = document.createElement("button");
+        warn.type = "button";
+        warn.className = "light-warn";
+        warn.title =
+          "Add this light using the typical brightness and color of the other lights in that scene";
+        warn.setAttribute(
+          "aria-label",
+          suggested
+            ? `Add ${light.name} to scenes`
+            : `Add ${light.name} to ${names.join(", ")}`
+        );
+        const icon = document.createElement("ha-icon");
+        icon.setAttribute("icon", "mdi:lightbulb-plus-outline");
+        const text = document.createElement("span");
+        text.textContent = suggested
+          ? "Add to scenes"
+          : `Add to ${names.join(", ")}`;
+        warn.append(icon, text);
+        warn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          this._addLightToMissingScenes(light);
+        });
+        row.appendChild(warn);
       }
-    }
-    const missingScenes = this._missingSceneRows(light);
-    if (this._view === "edit" && missingScenes.length) {
-      const names = [
-        ...new Set(missingScenes.map((row) => row.scene_name).filter(Boolean)),
-      ];
-      const warn = document.createElement("button");
-      warn.type = "button";
-      warn.className = "light-warn";
-      warn.title =
-        "Add this light using the typical brightness and color of the other lights in that scene";
-      warn.setAttribute(
-        "aria-label",
-        suggested
-          ? `Add ${light.name} to scenes`
-          : `Add ${light.name} to ${names.join(", ")}`
-      );
-      const icon = document.createElement("ha-icon");
-      icon.setAttribute("icon", "mdi:lightbulb-plus-outline");
-      const text = document.createElement("span");
-      text.textContent = suggested
-        ? "Add to scenes"
-        : `Add to ${names.join(", ")}`;
-      warn.append(icon, text);
-      warn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        this._addLightToMissingScenes(light);
-      });
-      row.appendChild(warn);
+      if (!suggested) {
+        const remove = document.createElement("ha-icon-button");
+        remove.className = "light-remove";
+        remove.label = `Remove ${light.name} from scenes`;
+        const removeIcon = document.createElement("ha-icon");
+        removeIcon.setAttribute("icon", "mdi:close");
+        remove.appendChild(removeIcon);
+        remove.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          this._removeLightFromAssignedScenes(light.entity_id);
+        });
+        row.appendChild(remove);
+        if (assigned.length) {
+          const chevron = document.createElement("ha-icon");
+          chevron.className = "clock-legend-chevron";
+          chevron.setAttribute("icon", "mdi:chevron-right");
+          row.appendChild(chevron);
+        }
+      }
     }
     return row;
   }
@@ -10006,6 +10408,35 @@ class SceneExtrapolationPanel extends HTMLElement {
         edits.appendChild(editHit);
       }
       bar.appendChild(edits);
+      const missingScenes = this._missingSceneRows(light);
+      if (missingScenes.length) {
+        const names = [
+          ...new Set(missingScenes.map((row) => row.scene_name).filter(Boolean)),
+        ];
+        const warn = document.createElement("button");
+        warn.type = "button";
+        warn.className = "light-warn";
+        warn.title =
+          "Add this light using the typical brightness and color of the other lights in that scene";
+        warn.setAttribute(
+          "aria-label",
+          suggested
+            ? `Add ${light.name} to scenes`
+            : `Add ${light.name} to ${names.join(", ")}`
+        );
+        const icon = document.createElement("ha-icon");
+        icon.setAttribute("icon", "mdi:lightbulb-plus-outline");
+        const text = document.createElement("span");
+        text.textContent = suggested
+          ? "Add to scenes"
+          : `Add to ${names.join(", ")}`;
+        warn.append(icon, text);
+        warn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          this._addLightToMissingScenes(light);
+        });
+        bar.appendChild(warn);
+      }
       const remove = document.createElement("ha-icon-button");
       remove.className = "light-remove";
       remove.label = `Remove ${light.name} from scenes`;
@@ -10017,35 +10448,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._removeLightFromAssignedScenes(light.entity_id);
       });
       bar.appendChild(remove);
-    }
-    const missingScenes = this._missingSceneRows(light);
-    if (this._view === "edit" && missingScenes.length) {
-      const names = [
-        ...new Set(missingScenes.map((row) => row.scene_name).filter(Boolean)),
-      ];
-      const warn = document.createElement("button");
-      warn.type = "button";
-      warn.className = "light-warn";
-      warn.title =
-        "Add this light using the typical brightness and color of the other lights in that scene";
-      warn.setAttribute(
-        "aria-label",
-        suggested
-          ? `Add ${light.name} to scenes`
-          : `Add ${light.name} to ${names.join(", ")}`
-      );
-      const icon = document.createElement("ha-icon");
-      icon.setAttribute("icon", "mdi:lightbulb-plus-outline");
-      const text = document.createElement("span");
-      text.textContent = suggested
-        ? "Add to scenes"
-        : `Add to ${names.join(", ")}`;
-      warn.append(icon, text);
-      warn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        this._addLightToMissingScenes(light);
-      });
-      bar.appendChild(warn);
     }
     row.appendChild(bar);
     return row;

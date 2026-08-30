@@ -231,8 +231,16 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 
 - **Date:** 2026-08-26
 - **Superseded in part:** 2026-08-30 — area is still collected on first Save / Rename; subsequent Saves skip the dialog.
+- **Superseded in part:** 2026-08-30 — create dialog is a wizard: area + Automatic / Manual cards; Manual adds a second step with solar-event scene pickers (linked dawn/sunrise/sunset on by default; empty slots = Automatic). Areas with no lights are rejected with an error. See “Create wizard sets up native scenes”.
 - **Decision:** **New extrapolation scene** opens an area dialog first. Continue navigates to `#new` with that area already set (refresh of `#new` with no area prompts again; cancel returns to the list). First Save and Rename show the area selector, prefilled. Area is not on `ha-form`. Native scene pickers still filter by the working area.
 - **Why:** Area is the room identity and the filter for native scenes. Asking once up front avoids an empty editor; Rename keeps a path to change it later without interrupting every Save.
+- **Do not reverse without user ask.**
+
+## Create wizard sets up native scenes
+
+- **Date:** 2026-08-30
+- **Decision:** New-scene wizard offers **Set up automatically** (linked Bright / Dimmed / Low lights) or **Use my existing scenes** (manual picks; Automatic per slot creates). Manual pre-fills from area native scenes by average light brightness: brightest → noon, second → linked day, lowest → dusk. Unlinked creates use `{area} Dawn`… event names; noon is `{area} Bright`, dusk `{area} Low lights`, linked day `{area} Dimmed` (sunset profile, not noon). Batch create via `apply_area_setup` (one YAML reload).
+- **Why:** Most rooms need a sensible first draft; power users want to wire existing HA scenes without leaving the flow.
 - **Do not reverse without user ask.**
 
 ## Earliest dusk time lives on the dusk event dialog
@@ -248,7 +256,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Date:** 2026-08-29
 - **Superseded in part:** 2026-08-29 — create writes YAML and reloads immediately. A draft id (`scene.__se_draft_*`) is not a Home Assistant entity, so `ha-selector` errors. Rename / delete stay in the editor session until the extrapolation Save.
 - **Superseded in part:** 2026-08-30 — clear uses the entity picker’s built-in clear (`ha-selector` `required: false`); an information button beside the picker opens that scene’s more-info **settings** view.
-- **Decision:** The solar-event sidebar can create a native YAML scene for the working area, rename or delete the selected one, and clear the assignment via the native entity picker’s clear control (optional `ha-selector`). An `mdi:information-outline` button beside the picker opens `hass-more-info` with `view: "settings"` for the selected scene. Create is disabled without an area. Create walks every enabled light in that area (entity area, else device area) and writes on + brightness + color for the event: `color_temp_kelvin` when the lamp supports color temp (or rgbww / `min_color_temp_kelvin`), otherwise HS from the same kelvin. Linked dawn / sunrise / sunset uses the noon (day) profile and the name “{area} Day”, because that picker is one daytime scene. Unlinked events use dawn 40%/2700K, sunrise 75%/3500K, noon 100%/4500K, sunset 70%/3000K, dusk 25%/2200K. Create writes `scenes.yaml`, reloads, and sets the new scene’s area before the picker binds. Rename / delete stay in the editor session (preview overlay); the extrapolation Save writes those later.
+- **Decision:** The solar-event sidebar can create a native YAML scene for the working area, rename or delete the selected one, and clear the assignment via the native entity picker’s clear control (optional `ha-selector`). An `mdi:information-outline` button beside the picker opens `hass-more-info` with `view: "settings"` for the selected scene. Create is disabled without an area. Create walks every enabled light in that area (entity area, else device area) and writes on + brightness + color for the event: `color_temp_kelvin` when the lamp supports color temp (or rgbww / `min_color_temp_kelvin`), otherwise HS from the same kelvin. Linked dawn / sunrise / sunset uses the sunset (“Dimmed”) profile and the name “{area} Dimmed”. Noon creates “{area} Bright”; dusk “{area} Low lights”; other unlinked events “{area} {Event}". Profiles: dawn 40%/2700K, sunrise 75%/3500K, noon 100%/4500K, sunset 70%/3000K, dusk 25%/2200K. Create writes `scenes.yaml`, reloads, and sets the new scene’s area before the picker binds. Rename / delete stay in the editor session (preview overlay); the extrapolation Save writes those later.
 - **Why:** Building the native scenes in Home Assistant is the tedious part. The event you are assigning is the place to create the matching room scene. The native scene picker can only show entities Home Assistant already knows. Reusing the picker’s clear avoids a duplicate X control.
 - **Do not reverse without user ask.**
 
@@ -342,7 +350,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Dial light list stays under the face
 
 - **Date:** 2026-08-30
-- **Decision:** The dial light list always flows **under** the clock face (portrait and landscape), same width as the face. Do **not** shrink `--dial-face-max` (or other face budget) to make room for it — scrolling to reach the list is fine; a smaller graphic is not. Do **not** move the list into the landscape left grid column; that column is only a matching gutter so the timeline rail can take width while the dial stays optically centered. Ring hover name sits flush above the outer light ring (`top` = rings inset inside the core), not above `--clock-chrome` / face chrome.
+- **Decision:** The dial light list always flows **under** the clock face (portrait and landscape), same width as the face. Do **not** shrink `--dial-face-max` (or other face budget) to make room for it — scrolling to reach the list is fine; a smaller graphic is not. Do **not** move the list into the landscape left grid column; that column is only a matching gutter so the timeline rail can take width while the dial stays optically centered. Ring hover name sits flush above the outer light ring (`top` = rings inset inside the core), not above `--clock-chrome` / face chrome. Legend actions order: Add to …, then remove (X), then chevron.
 - **Why:** Subtracting legend height from the face pushed the graphic up and forced landscape scroll to see the dial. Parking the list in the left gutter left-aligned/truncated names and broke parity with portrait. Under-face flow matches mobile and keeps scale.
 - **Do not reverse without user ask.**
 
