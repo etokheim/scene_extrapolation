@@ -7879,8 +7879,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       ? `url(#${this._clockSunDayClipId})`
       : null;
 
-    // Shadow under a day-clipped group (glow + white fill) so the halo is
-    // masked by the sunrise→sunset wedge — not merely hidden below horizon.
+    // Shadow + glow + fill share the day wedge clip so they fade together
+    // across the horizon (no hard on/off). Outline ring stays unclipped.
     const shadow = document.createElementNS(
       "http://www.w3.org/2000/svg",
       "circle"
@@ -7897,8 +7897,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (clipUrl) {
       dayGroup.setAttribute("clip-path", clipUrl);
     }
-    dayGroup.append(glow, fill);
-    overlay.append(shadow, dayGroup);
+    dayGroup.append(shadow, glow, fill);
+    overlay.append(dayGroup);
     this._clockSunShadowEl = shadow;
     this._clockSunGlowEl = glow;
     this._clockSunFillEl = fill;
