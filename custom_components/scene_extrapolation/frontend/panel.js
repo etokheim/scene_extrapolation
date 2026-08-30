@@ -440,6 +440,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-path-stage.landscape-clock-scrub .sun-year-scrub-rail {
           display: flex;
+          /* Match portrait toolbar top inset under the app bar. */
+          padding-top: 12px;
         }
         .sun-path-stage.landscape-clock-scrub.scrub-collapsed .sun-year-scrub-rail {
           opacity: 0;

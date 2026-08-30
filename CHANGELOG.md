@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Landscape dial rail gets the same 12px top inset under the header as portrait
 - Enter animation keeps SVG sun fill locked to the HTML outline (counter-spin)
 - Portrait dial date/scrub overlay the dial graphics instead of sitting above them
 - Dial legend overlays the face so it is not clipped by dial overflow
