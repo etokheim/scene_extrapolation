@@ -7758,9 +7758,13 @@ class SceneExtrapolationPanel extends HTMLElement {
   _clockSunPathRadius() {
     const sunClear = CLOCK_SUN_R_VIEW * CLOCK_SUN_SCALE_MAX;
     const rMin = CLOCK_RINGS_OUTER + CLOCK_SUN_PATH_PAD + sunClear;
-    // Max is 10% inside the padded face limit (min stays as-is).
+    // Mobile events sit on the path — use more of the core toward the ticks.
+    const narrow =
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 870px)").matches;
+    const edgeScale = narrow ? 0.97 : 0.9;
     const rMax =
-      (CLOCK_VIEW / 2 - CLOCK_SUN_PATH_PAD - sunClear) * 0.9;
+      (CLOCK_VIEW / 2 - CLOCK_SUN_PATH_PAD - sunClear) * edgeScale;
     const lo = Math.min(rMin, rMax);
     const hi = Math.max(rMin, rMax);
     const annual = Math.max(this._sunPath?.max_elevation || 0, 1e-6);
@@ -9316,20 +9320,22 @@ class SceneExtrapolationPanel extends HTMLElement {
       const labelInsetPx =
         (CLOCK_TICK_MAJOR_LEN / 100) * (w / 2) + labelFontPx * 0.55 + 4 + 18;
       const labelPad = tickOuterPad + labelInsetPx;
-      // Mobile hides hour numbers — chrome only needs to clear the tick tips
-      // so the core (path / planet / events) can grow.
+      // Mobile: events on the path — shrink chrome to tick clearance only so
+      // path / planet / events grow; hour ticks stay on the face rim.
       const narrowFace = window.matchMedia("(max-width: 870px)").matches;
       const chromeFloor = narrowFace
         ? Math.ceil(
-            tickOuterPad + (CLOCK_TICK_MAJOR_LEN / 100) * (w / 2) + 8
+            tickOuterPad + (CLOCK_TICK_MAJOR_LEN / 100) * (w / 2) + 2
           )
         : Math.ceil(labelPad + 4);
-      const chromePx = Math.max(
-        Math.round(
-          CLOCK_CHROME_PX_MIN + t * (CLOCK_CHROME_PX - CLOCK_CHROME_PX_MIN)
-        ),
-        chromeFloor
-      );
+      const chromePx = narrowFace
+        ? chromeFloor
+        : Math.max(
+            Math.round(
+              CLOCK_CHROME_PX_MIN + t * (CLOCK_CHROME_PX - CLOCK_CHROME_PX_MIN)
+            ),
+            chromeFloor
+          );
       face.style.setProperty("--clock-chrome", `${chromePx}px`);
       // Derive core size from chrome (do not wait for a second layout pass).
       const coreW = w - 2 * chromePx;
