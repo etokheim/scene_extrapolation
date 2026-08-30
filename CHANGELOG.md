@@ -12,8 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dial compositing: staged per-clone bloom blurs, `translateZ(0)` layers, `box-shadow` planet shadow; sun keeps CSS-blur halo/shadow (halo 20% less transparent)
 - Landscape dial timeline has right padding and a wider rail so the day/month label no longer widens the page; daytime horizon fills with Apple-like sky blue
 - Dial legend lights open the light-edit sidebar on click (same closest-event targeting as ring clicks)
-- Dial ring hover/selected: 10% scale grow, strong black drop-shadow, 1px white rim (~72.5% opacity) inset so the outer ring isn’t clipped; sibling rings at 50% over a surface disc (active ring stays fully opaque); hover yields selected highlight so only one band is emphasized; click outside deselects
+- Dial ring hover/selected: 10% scale grow, strong black drop-shadow, 1px white rim (10% opacity) inset so the outer ring isn’t clipped; sibling rings at 50% over a surface disc (active ring stays fully opaque); hover yields selected highlight so only one band is emphasized; click outside deselects
 - Dial ring hover shows the light’s friendly name in a center label
+- Light sidebar ignores unavailable (orphaned) native scene assignments so dawn/sunrise/sunset no longer look populated when the YAML scene is gone
 - When earliest dusk clamps the scene, dial/chart keep true-solar marks and show a ghost button plus dashed link to the clamped control; top event cards strike through solar time and show the override
 - Sidebar panel to create and edit all extrapolation scenes from one integration instance
 - Sun-path visualization on the create/edit screen (elevation curve + solar events)

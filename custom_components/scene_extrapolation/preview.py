@@ -141,19 +141,34 @@ def _overlay_native_scenes(
             }
             continue
         scene = result.get(scene_id)
-        if not scene:
-            continue
-        patched = copy.deepcopy(scene)
-        if patch.get("name"):
-            patched["name"] = patch["name"]
         entity_id = patch.get("entity_id")
         if entity_id and patch.get("remove"):
+            if not scene:
+                continue
+            patched = copy.deepcopy(scene)
             patched["entities"].pop(entity_id, None)
             result = {**result, scene_id: patched}
             continue
         entity_state = patch.get("entity_state")
         if entity_id and isinstance(entity_state, dict):
+            # Draft edits for a scene that is not loaded yet (orphan /
+            # unavailable entity) — materialize a stub so membership works.
+            if not scene:
+                scene = {
+                    "id": scene_id,
+                    "name": scene_id,
+                    "entity_id": scene_id,
+                    "entities": {},
+                }
+            patched = copy.deepcopy(scene)
             patched["entities"][entity_id] = scene_entity_payload(entity_state)
+            result = {**result, scene_id: patched}
+            continue
+        if not scene:
+            continue
+        if patch.get("name"):
+            patched = copy.deepcopy(scene)
+            patched["name"] = patch["name"]
             result = {**result, scene_id: patched}
     return result
 

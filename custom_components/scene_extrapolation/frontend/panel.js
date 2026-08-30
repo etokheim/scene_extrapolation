@@ -956,8 +956,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           inset: 0;
           border-radius: 50%;
           pointer-events: none;
-          /* Was 0.45; half the remaining transparency → ~0.725 */
-          background: rgba(255, 255, 255, 0.725);
+          /* Hover rim: soft white at 10% opacity. */
+          background: rgba(255, 255, 255, 0.1);
           opacity: 0;
           transition: opacity 180ms cubic-bezier(0.2, 0, 0, 1);
           -webkit-mask-image: radial-gradient(
@@ -4717,15 +4717,33 @@ class SceneExtrapolationPanel extends HTMLElement {
     ];
   }
 
+  _resolvableSceneId(sceneId) {
+    if (!sceneId) {
+      return null;
+    }
+    if (this._nativeDrafts[sceneId]?.deleted) {
+      return null;
+    }
+    // Pending creates are resolvable via overlay before the entity exists.
+    if (this._nativeDrafts[sceneId]?.created) {
+      return sceneId;
+    }
+    // Orphan / deleted YAML scenes stay in hass.states as unavailable and
+    // still have a friendly name — treat them as unassigned so the dial and
+    // light sidebar do not pretend membership exists.
+    const state = this._hass?.states?.[sceneId];
+    if (!state || state.state === "unavailable") {
+      return null;
+    }
+    return sceneId;
+  }
+
   _eventSceneId(eventId) {
     const sceneId =
       LINKED_EVENTS.includes(eventId) && this._formData.display_scenes_combined
         ? this._formData.scene_dawn_sunrise_sunset || null
         : this._formData[EVENT_SCENE_KEYS[eventId]] || null;
-    if (sceneId && this._nativeDrafts[sceneId]?.deleted) {
-      return null;
-    }
-    return sceneId;
+    return this._resolvableSceneId(sceneId);
   }
 
   _sceneName(entityId) {
@@ -6137,22 +6155,23 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _sceneIdsFromForm() {
+    const resolve = (id) => this._resolvableSceneId(id);
     if (this._formData.display_scenes_combined) {
-      const shared = this._formData.scene_dawn_sunrise_sunset || null;
+      const shared = resolve(this._formData.scene_dawn_sunrise_sunset || null);
       return {
         scene_dawn: shared,
         scene_sunrise: shared,
         scene_sunset: shared,
-        scene_noon: this._formData.scene_noon || null,
-        scene_dusk: this._formData.scene_dusk || null,
+        scene_noon: resolve(this._formData.scene_noon || null),
+        scene_dusk: resolve(this._formData.scene_dusk || null),
       };
     }
     return {
-      scene_dawn: this._formData.scene_dawn || null,
-      scene_sunrise: this._formData.scene_sunrise || null,
-      scene_noon: this._formData.scene_noon || null,
-      scene_sunset: this._formData.scene_sunset || null,
-      scene_dusk: this._formData.scene_dusk || null,
+      scene_dawn: resolve(this._formData.scene_dawn || null),
+      scene_sunrise: resolve(this._formData.scene_sunrise || null),
+      scene_noon: resolve(this._formData.scene_noon || null),
+      scene_sunset: resolve(this._formData.scene_sunset || null),
+      scene_dusk: resolve(this._formData.scene_dusk || null),
     };
   }
 
