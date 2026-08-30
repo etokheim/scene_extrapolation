@@ -784,7 +784,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 24px;
           width: 100%;
           /* No horizontal padding — use the full stage column for the dial.
-             Extra top pad leaves room for the ring hover name above the face. */
+             Extra top pad leaves room for event labels above the face. */
           padding: 40px 0 16px;
           box-sizing: border-box;
           overflow: visible;
@@ -1205,12 +1205,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-ring.selected.hovered {
           z-index: 7;
         }
-        /* Friendly name above the dial while pointing at a band. */
+        /* Friendly name just above the light-ring planet (not the face chrome). */
         .clock-ring-hover-name {
           position: absolute;
           left: 50%;
-          top: 0;
-          transform: translate(-50%, calc(-100% - 10px));
+          top: var(--clock-chrome);
+          transform: translate(-50%, calc(-100% - 8px));
           z-index: 10;
           pointer-events: none;
           max-width: min(80%, 14rem);
