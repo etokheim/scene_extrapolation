@@ -748,9 +748,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           backface-visibility: hidden;
         }
         /* Light-band bloom between horizon wash and planet (same chrome inset
-           as the core so clones stay aligned with the rings). One blur on
-           this host (not per clone) + a promoted layer so sun scrub does not
-           re-rasterize the static bloom. */
+           as the core so clones stay aligned with the rings). Promoted so sun
+           scrub does not re-rasterize the static bloom clones. */
         .sun-light-clock-glow-layer {
           position: absolute;
           inset: var(--clock-chrome);
@@ -758,7 +757,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
           z-index: 1;
           overflow: visible;
-          filter: blur(28px);
           transform: translateZ(0);
           backface-visibility: hidden;
         }
@@ -823,23 +821,25 @@ class SceneExtrapolationPanel extends HTMLElement {
         /* Registered via CSS.registerProperty (document), not @property here —
            shadow-root @property does not enable transitions. */
         /* Soft bloom from simple dial clones (same ring colors as the planet).
-           Blur lives on .sun-light-clock-glow-layer (one pass for both scales). */
+           Each scale is its own blurred stage (lg then md) above the horizon. */
         .sun-light-clock-glow {
           position: absolute;
           inset: ${CLOCK_RINGS_INSET_PCT}%;
           border-radius: 50%;
           pointer-events: none;
           transform-origin: center center;
+          filter: blur(28px);
           /* Was 0.63; 50% less transparent → opacity 0.815 */
           opacity: 0.815;
           overflow: visible;
           --clock-feather: 0.35%;
+          backface-visibility: hidden;
         }
         .sun-light-clock-glow.glow-lg {
-          transform: scale(2.76);
+          transform: translateZ(0) scale(2.76);
         }
         .sun-light-clock-glow.glow-md {
-          transform: scale(1.38);
+          transform: translateZ(0) scale(1.38);
         }
         .sun-light-clock-glow .clock-ring {
           --ring-expand: 0%;
@@ -8123,10 +8123,11 @@ class SceneExtrapolationPanel extends HTMLElement {
       glowGrad.appendChild(stop);
     };
     // Soft warm halo — stronger than a flat white so it reads past the shadow.
-    mkGlow("0%", "#ffffff", 0.2);
-    mkGlow("28%", "#ffffff", 0.95);
-    mkGlow("55%", "#fff1c2", 0.65);
-    mkGlow("78%", "#ffd27a", 0.35);
+    // Opacities: prior values with transparency reduced 20% → o' = 1 - 0.8*(1-o).
+    mkGlow("0%", "#ffffff", 0.36);
+    mkGlow("28%", "#ffffff", 0.96);
+    mkGlow("55%", "#fff1c2", 0.72);
+    mkGlow("78%", "#ffd27a", 0.48);
     mkGlow("100%", "#ffc878", 0);
 
     let shadowGrad = defs.querySelector("#clock-sun-shadow-grad");
