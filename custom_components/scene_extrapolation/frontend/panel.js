@@ -43,6 +43,8 @@ const CLOCK_TICK_OUTER = 98;
 const CLOCK_TICK_INNER_MAJOR = 90;
 const CLOCK_TICK_INNER_MINOR = 94;
 const CLOCK_LABEL_R = 86;
+/* Override scrub arc sits on the outer tip of the hour ticks. */
+const CLOCK_OVERRIDE_R = CLOCK_TICK_OUTER;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
 const CLOCK_SUN_STROKE_MAX_PX = 10;
 const SIDEBAR_ANIMATION_MS = 200;
@@ -265,6 +267,10 @@ class SceneExtrapolationPanel extends HTMLElement {
             this._yearScrub?.contains(active))
         ) {
           return;
+        }
+        // Keep the sticky-scrub arc’s “now” tip moving without a full redraw.
+        if (this._clockStickySeconds != null) {
+          this._updateOverrideArc(this._clockStickySeconds);
         }
         this._drawSunPath();
       }, 30000);
@@ -701,10 +707,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           --clock-chrome: ${CLOCK_CHROME_PX}px;
         }
         /* Sunrise/sunset shadow + glow sit behind the planet (back-most).
-           Same center as the core; inset bleeds past chrome/face edge. */
+           Sized in JS to cover the full panel (under the sidebar). */
         .clock-horizon-back {
           position: absolute;
-          inset: calc(var(--clock-chrome) - 12%);
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%, -50%);
           pointer-events: none;
           z-index: 0;
           overflow: visible;
@@ -981,6 +989,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           vector-effect: non-scaling-stroke;
           stroke-linecap: round;
           opacity: 0.85;
+        }
+        .sun-light-clock-overlay .clock-override-arc {
+          fill: none;
+          stroke: #ffc107;
+          stroke-width: 2.5px;
+          vector-effect: non-scaling-stroke;
+          stroke-linecap: round;
+          opacity: 0.92;
+        }
+        .sun-light-clock-overlay .clock-override-glow {
+          pointer-events: none;
         }
         .clock-handle-hit {
           position: absolute;
@@ -2382,9 +2401,18 @@ class SceneExtrapolationPanel extends HTMLElement {
           --page-max-width: none;
           max-width: none;
           padding-inline: 0;
+          /* Extend under the sidebar gutter; in-flow content keeps padding so
+             the dial still shifts left while horizon backgrounds span full width. */
+          margin-right: calc(-1 * var(--scene-sidebar-gutter));
+          width: calc(100% + var(--scene-sidebar-gutter));
+          padding-right: var(--scene-sidebar-gutter);
+          box-sizing: border-box;
           position: relative;
-          /* Let horizon glow bleed past the dial face. */
           overflow: visible;
+          transition:
+            margin-right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
+            width ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
+            padding-right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         }
         .draft-restore {
           display: flex;
@@ -3895,6 +3923,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         : "0px";
     this.style.setProperty("--scene-sidebar-gutter", gutter);
     this._syncYearScrubLayout();
+    this._layoutClockHorizonBack();
   }
 
   _fillSidebarHeader(header, { title, subtitle, actionItems, host }) {
@@ -7191,6 +7220,141 @@ class SceneExtrapolationPanel extends HTMLElement {
       glow.style.opacity = String(Math.min(0.42, glowLook.glowOpacity));
     }
     this._updateHorizonGlow(elev, glowLook);
+    this._updateOverrideArc(this._clockStickySeconds);
+  }
+
+  _layoutClockHorizonBack() {
+    const back = this._clockHorizonBackEl;
+    const face = this._clockFaceEl;
+    if (!back || !face) {
+      return;
+    }
+    const host = this.getBoundingClientRect();
+    const fr = face.getBoundingClientRect();
+    if (fr.width < 8 || host.width < 8) {
+      return;
+    }
+    const cx = fr.left + fr.width / 2;
+    const cy = fr.top + fr.height / 2;
+    // Cover the full panel from the dial center (includes sidebar overlap).
+    const reach = Math.max(
+      cx - host.left,
+      host.right - cx,
+      cy - host.top,
+      host.bottom - cy,
+      fr.width * 0.62
+    );
+    const side = reach * 2;
+    back.style.width = `${side}px`;
+    back.style.height = `${side}px`;
+  }
+
+  _ensureOverrideArc(overlay) {
+    const defs =
+      overlay.querySelector("defs") ||
+      overlay.insertBefore(
+        document.createElementNS("http://www.w3.org/2000/svg", "defs"),
+        overlay.firstChild
+      );
+    let grad = defs.querySelector("#clock-override-glow-grad");
+    if (!grad) {
+      grad = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "radialGradient"
+      );
+      grad.setAttribute("id", "clock-override-glow-grad");
+      grad.setAttribute("cx", "50%");
+      grad.setAttribute("cy", "50%");
+      grad.setAttribute("r", "50%");
+      const mk = (offset, opacity) => {
+        const stop = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "stop"
+        );
+        stop.setAttribute("offset", offset);
+        stop.setAttribute("stop-color", "#ffc107");
+        stop.setAttribute("stop-opacity", String(opacity));
+        grad.appendChild(stop);
+      };
+      // Transparent at center → gold near the rim stroke.
+      mk("0%", 0);
+      mk("55%", 0);
+      mk("82%", 0.22);
+      mk("100%", 0.55);
+      defs.appendChild(grad);
+    }
+    let clip = defs.querySelector("#clock-override-wedge");
+    if (!clip) {
+      clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+      clip.setAttribute("id", "clock-override-wedge");
+      clip.setAttribute("clipPathUnits", "userSpaceOnUse");
+      const slice = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path"
+      );
+      clip.appendChild(slice);
+      defs.appendChild(clip);
+      this._clockOverrideWedgePathEl = slice;
+    } else {
+      this._clockOverrideWedgePathEl = clip.querySelector("path");
+    }
+    let glow = overlay.querySelector(".clock-override-glow");
+    if (!glow) {
+      glow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      glow.setAttribute("class", "clock-override-glow");
+      glow.setAttribute("cx", String(CLOCK_CX));
+      glow.setAttribute("cy", String(CLOCK_CY));
+      glow.setAttribute("r", String(CLOCK_OVERRIDE_R));
+      glow.setAttribute("fill", "url(#clock-override-glow-grad)");
+      glow.setAttribute("clip-path", "url(#clock-override-wedge)");
+      glow.setAttribute("visibility", "hidden");
+      overlay.appendChild(glow);
+    }
+    let arc = overlay.querySelector(".clock-override-arc");
+    if (!arc) {
+      arc = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      arc.setAttribute("class", "clock-override-arc");
+      arc.setAttribute("vector-effect", "non-scaling-stroke");
+      arc.setAttribute("stroke-width", "2.5px");
+      arc.setAttribute("visibility", "hidden");
+      overlay.appendChild(arc);
+    }
+    this._clockOverrideGlowEl = glow;
+    this._clockOverrideArcEl = arc;
+  }
+
+  _updateOverrideArc(overrideSeconds) {
+    const glow = this._clockOverrideGlowEl;
+    const arc = this._clockOverrideArcEl;
+    const wedge = this._clockOverrideWedgePathEl;
+    if (!glow || !arc || !wedge) {
+      return;
+    }
+    if (overrideSeconds == null) {
+      glow.setAttribute("visibility", "hidden");
+      arc.setAttribute("visibility", "hidden");
+      return;
+    }
+    const now = nowSecondsSinceMidnight();
+    const delta = this._shortestSecondsDelta(now, overrideSeconds);
+    if (Math.abs(delta) < 45) {
+      glow.setAttribute("visibility", "hidden");
+      arc.setAttribute("visibility", "hidden");
+      return;
+    }
+    const r = CLOCK_OVERRIDE_R;
+    const start = this._clockPolar(now, r);
+    const end = this._clockPolar(overrideSeconds, r);
+    const absSpan = Math.abs(delta);
+    const large = absSpan / SECONDS_PER_DAY > 0.5 ? 1 : 0;
+    // Time increases clockwise on this dial; negative delta sweeps the other way.
+    const sweep = delta >= 0 ? 1 : 0;
+    const arcD = `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${r} ${r} 0 ${large} ${sweep} ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
+    const wedgeD = `M ${CLOCK_CX} ${CLOCK_CY} L ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${r} ${r} 0 ${large} ${sweep} ${end.x.toFixed(2)} ${end.y.toFixed(2)} Z`;
+    arc.setAttribute("d", arcD);
+    wedge.setAttribute("d", wedgeD);
+    glow.setAttribute("visibility", "visible");
+    arc.setAttribute("visibility", "visible");
   }
 
   _layoutClockSunFill(pos, scale, sunLook) {
@@ -7676,6 +7840,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     const horizonBack = document.createElement("div");
     horizonBack.className = "clock-horizon-back";
     horizonBack.setAttribute("aria-hidden", "true");
+    this._clockHorizonBackEl = horizonBack;
+    this._clockFaceEl = face;
     const horizonGlow = document.createElement("div");
     horizonGlow.className = "clock-horizon-glow";
     this._clockHorizonGlowEl = horizonGlow;
@@ -7824,6 +7990,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     }
     this._paintClockSunPath(overlay, core, cx, cy);
+    this._ensureOverrideArc(overlay);
 
     const handleHit = document.createElement("div");
     handleHit.className = "clock-handle-hit";
@@ -7916,13 +8083,20 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     };
     layoutEventAnchors();
+    const layoutDialChrome = () => {
+      layoutEventAnchors();
+      this._layoutClockHorizonBack();
+      this._alignYearScrubRail();
+    };
+    layoutDialChrome();
     if (typeof ResizeObserver === "function") {
       const ro = new ResizeObserver(() => {
-        layoutEventAnchors();
-        this._alignYearScrubRail();
+        layoutDialChrome();
       });
       ro.observe(face);
+      ro.observe(this);
     }
+    requestAnimationFrame(() => this._layoutClockHorizonBack());
 
     this._bindClockSunDrag(face, [this._clockSunEl, this._clockHandleHitEl]);
     // Enter once per editor visit (not on date/scene redraws). Cleared when
