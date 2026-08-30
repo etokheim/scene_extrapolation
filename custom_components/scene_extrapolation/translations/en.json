@@ -13,5 +13,139 @@
         "description": "Adds Scene Extrapolation to the sidebar. Create and edit extrapolation scenes from there — one integration, as many rooms as you need."
       }
     }
+  },
+  "frontend": {
+    "title": "Scene Extrapolation",
+    "tabs": {
+      "extrapolation": "Extrapolation scenes",
+      "created": "Created scenes"
+    },
+    "empty": {
+      "extrapolation": "No extrapolation scenes yet. Create one to start lighting a room from the sun.",
+      "created": "No native scenes created by Scene Extrapolation yet. They appear here when you use Automatic setup or Create new scene."
+    },
+    "settings": {
+      "title": "Settings",
+      "intro": "These settings apply to every room. Changes take effect immediately.",
+      "hide_created": "Hide created scenes in Home Assistant",
+      "hide_created_helper": "Marks native scenes created by this integration as hidden in the HA UI (entity registry). You can still manage them here.",
+      "scene_settings": "Scene settings",
+      "hidden_in_ha": "Hidden in Home Assistant"
+    },
+    "common": {
+      "untitled": "Untitled",
+      "no_area": "No area",
+      "back": "Back",
+      "close": "Close",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "discard": "Discard",
+      "keep_editing": "Keep editing",
+      "choose_scene": "Choose scene",
+      "dismiss": "Dismiss",
+      "change": "Change",
+      "preview": "Preview",
+      "search": "Search",
+      "name": "Name",
+      "description": "Description",
+      "category": "Category",
+      "labels": "Labels",
+      "date": "Date",
+      "scene": "Scene",
+      "location": "Location",
+      "save": "Save",
+      "rename": "Rename"
+    },
+    "actions": {
+      "live_edit": "Live edit",
+      "table_view": "Table view",
+      "dial_view": "Dial view",
+      "preview_location": "Preview another location",
+      "use_home_location": "Use home location",
+      "reset_sun_now": "Reset sun to current time"
+    },
+    "draft": {
+      "title": "Picked up where you left off",
+      "detail": "Unsaved changes from a previous session are restored."
+    },
+    "location": {
+      "banner": "Previewing another location",
+      "dialog_title": "Preview location",
+      "search_placeholder": "City or address",
+      "no_matches": "No matching places. Try a city name or move the map."
+    },
+    "dialogs": {
+      "delete_scene_title": "Delete scene?",
+      "delete_scene_text": "Are you sure you want to delete {name}? This removes the native Home Assistant scene.",
+      "linked_scenes": "Same scene for dawn, sunrise, and sunset",
+      "new_scene_step": "{step}/2 New extrapolation scene",
+      "unsaved_title": "Unsaved changes",
+      "unsaved_text": "You have unsaved changes. Discard them?"
+    },
+    "chart": {
+      "fallback_note": "* Time uses a seasonal fallback because the sun does not rise or set that day.",
+      "choose_scene": "Choose scene",
+      "not_in_scene": "Not in an assigned scene yet",
+      "brightness": "Brightness",
+      "brightness_sub": "0–100% by solar event",
+      "overridden_dusk": "{name} uses the dusk minimum ({solar_time} solar dusk)",
+      "seasonal_fallback": "Seasonal fallback (no real solar event this day)"
+    },
+    "fields": {
+      "scene_name": {
+        "label": "Scene name",
+        "helper": "Name for the extrapolation scene entity"
+      },
+      "area": {
+        "label": "Area",
+        "helper": "Used to filter native Home Assistant scenes and to assign the new scene"
+      },
+      "display_scenes_combined": {
+        "label": "Combine dawn / sunrise / sunset scenes?",
+        "helper": "If on, configure 3 scenes in the next step. If off, configure 5"
+      },
+      "scene_dawn": {
+        "label": "Dawn scene",
+        "helper": "First light (sun 6° below the horizon)"
+      },
+      "scene_sunrise": {
+        "label": "Sunrise scene",
+        "helper": "When the sun rises"
+      },
+      "scene_noon": {
+        "label": "Noon scene",
+        "helper": "When the sun is at its highest point"
+      },
+      "scene_sunset": {
+        "label": "Sunset scene",
+        "helper": "When the sun sets"
+      },
+      "scene_dusk": {
+        "label": "Dusk scene",
+        "helper": "Last light (sun 6° below the horizon)"
+      },
+      "scene_dawn_sunrise_sunset": {
+        "label": "Dawn, sunrise, and sunset scene",
+        "helper": "First light, sunrise, and sunset"
+      },
+      "scene_dusk_minimum_time_of_day": {
+        "label": "Earliest time for the dusk scene",
+        "helper": "To avoid lights dimming too much, too early"
+      },
+      "nightlights_boolean": {
+        "label": "Nightlights trigger",
+        "helper": "When this input boolean is on, the nightlights scene is used instead"
+      },
+      "nightlights_scene": {
+        "label": "Nightlights scene",
+        "helper": "Required if a nightlights trigger is set"
+      },
+      "setup_empty_means_auto": {
+        "helper": "Leave empty to create a native scene automatically for this event"
+      }
+    },
+    "defaults": {
+      "automatic_lighting": "Automatic Lighting"
+    }
   }
 }

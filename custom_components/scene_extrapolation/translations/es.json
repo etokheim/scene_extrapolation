@@ -1,0 +1,151 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Scene Extrapolation ya está configurado",
+      "single_instance_allowed": "Scene Extrapolation ya está configurado. Ábrelo desde la barra lateral para añadir escenas."
+    },
+    "error": {
+      "unknown": "Error inesperado"
+    },
+    "step": {
+      "user": {
+        "title": "Scene Extrapolation",
+        "description": "Añade Scene Extrapolation a la barra lateral. Crea y edita escenas de extrapolación desde allí: una integración, tantas habitaciones como necesites."
+      }
+    }
+  },
+  "frontend": {
+    "title": "Scene Extrapolation",
+    "tabs": {
+      "extrapolation": "Escenas de extrapolación",
+      "created": "Escenas creadas"
+    },
+    "empty": {
+      "extrapolation": "Aún no hay escenas de extrapolación. Crea una para iluminar una habitación según el sol.",
+      "created": "Aún no hay escenas nativas creadas por Scene Extrapolation. Aparecen aquí al usar Configuración automática o Crear nueva escena."
+    },
+    "settings": {
+      "title": "Ajustes",
+      "intro": "Estos ajustes se aplican a todas las habitaciones. Los cambios surten efecto de inmediato.",
+      "hide_created": "Ocultar escenas creadas en Home Assistant",
+      "hide_created_helper": "Marca las escenas nativas creadas por esta integración como ocultas en la interfaz de HA (registro de entidades). Aun así puedes gestionarlas aquí.",
+      "scene_settings": "Ajustes de la escena",
+      "hidden_in_ha": "Oculta en Home Assistant"
+    },
+    "common": {
+      "untitled": "Sin título",
+      "no_area": "Sin área",
+      "back": "Atrás",
+      "close": "Cerrar",
+      "cancel": "Cancelar",
+      "delete": "Eliminar",
+      "discard": "Descartar",
+      "keep_editing": "Seguir editando",
+      "choose_scene": "Elegir escena",
+      "dismiss": "Descartar",
+      "change": "Cambiar",
+      "preview": "Vista previa",
+      "search": "Buscar",
+      "name": "Nombre",
+      "description": "Descripción",
+      "category": "Categoría",
+      "labels": "Etiquetas",
+      "date": "Fecha",
+      "scene": "Escena",
+      "location": "Ubicación",
+      "save": "Guardar",
+      "rename": "Renombrar"
+    },
+    "actions": {
+      "live_edit": "Edición en vivo",
+      "table_view": "Vista de tabla",
+      "dial_view": "Vista de dial",
+      "preview_location": "Previsualizar otra ubicación",
+      "use_home_location": "Usar ubicación de casa",
+      "reset_sun_now": "Restablecer el sol a ahora"
+    },
+    "draft": {
+      "title": "Continuaste donde lo dejaste",
+      "detail": "Se han restaurado los cambios sin guardar de una sesión anterior."
+    },
+    "location": {
+      "banner": "Previsualizando otra ubicación",
+      "dialog_title": "Ubicación de vista previa",
+      "search_placeholder": "Ciudad o dirección",
+      "no_matches": "No hay coincidencias. Prueba un nombre de ciudad o mueve el mapa."
+    },
+    "dialogs": {
+      "delete_scene_title": "¿Eliminar escena?",
+      "delete_scene_text": "¿Seguro que quieres eliminar {name}? Esto quita la escena nativa de Home Assistant.",
+      "linked_scenes": "Misma escena para alba, amanecer y atardecer",
+      "new_scene_step": "{step}/2 Nueva escena de extrapolación",
+      "unsaved_title": "Cambios sin guardar",
+      "unsaved_text": "Tienes cambios sin guardar. ¿Descartarlos?"
+    },
+    "chart": {
+      "fallback_note": "* La hora usa un valor estacional de respaldo porque el sol no sale ni se pone ese día.",
+      "choose_scene": "Elegir escena",
+      "not_in_scene": "Aún no está en una escena asignada",
+      "brightness": "Brillo",
+      "brightness_sub": "0–100 % por evento solar",
+      "overridden_dusk": "{name} usa el mínimo de anochecer ({solar_time} anochecer solar)",
+      "seasonal_fallback": "Respaldo estacional (no hay evento solar real ese día)"
+    },
+    "fields": {
+      "scene_name": {
+        "label": "Nombre de la escena",
+        "helper": "Nombre de la entidad de escena de extrapolación"
+      },
+      "area": {
+        "label": "Área",
+        "helper": "Se usa para filtrar escenas nativas de Home Assistant y asignar la nueva escena"
+      },
+      "display_scenes_combined": {
+        "label": "¿Combinar escenas de alba / amanecer / atardecer?",
+        "helper": "Si está activado, configura 3 escenas en el siguiente paso. Si no, 5"
+      },
+      "scene_dawn": {
+        "label": "Escena del alba",
+        "helper": "Primera luz (sol 6° bajo el horizonte)"
+      },
+      "scene_sunrise": {
+        "label": "Escena del amanecer",
+        "helper": "Cuando sale el sol"
+      },
+      "scene_noon": {
+        "label": "Escena del mediodía",
+        "helper": "Cuando el sol está en su punto más alto"
+      },
+      "scene_sunset": {
+        "label": "Escena del atardecer",
+        "helper": "Cuando se pone el sol"
+      },
+      "scene_dusk": {
+        "label": "Escena del anochecer",
+        "helper": "Última luz (sol 6° bajo el horizonte)"
+      },
+      "scene_dawn_sunrise_sunset": {
+        "label": "Escena de alba, amanecer y atardecer",
+        "helper": "Primera luz, amanecer y atardecer"
+      },
+      "scene_dusk_minimum_time_of_day": {
+        "label": "Hora más temprana para la escena del anochecer",
+        "helper": "Para evitar que las luces se atenúen demasiado pronto"
+      },
+      "nightlights_boolean": {
+        "label": "Activador de luces nocturnas",
+        "helper": "Cuando este input boolean está activado, se usa la escena de luces nocturnas"
+      },
+      "nightlights_scene": {
+        "label": "Escena de luces nocturnas",
+        "helper": "Obligatoria si hay un activador de luces nocturnas"
+      },
+      "setup_empty_means_auto": {
+        "helper": "Déjalo vacío para crear automáticamente una escena nativa para este evento"
+      }
+    },
+    "defaults": {
+      "automatic_lighting": "Iluminación automática"
+    }
+  }
+}

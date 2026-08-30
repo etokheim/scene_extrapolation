@@ -20,6 +20,8 @@ from homeassistant.util.color import color_temperature_to_hs
 from homeassistant.util.file import write_utf8_file_atomic
 from homeassistant.util.yaml import dump, load_yaml
 
+# Avoid circular import of DOMAIN store at module load — resolve via hass.data.
+from .const import DATA_STORE, DOMAIN
 from .solar import EVENT_META, EVENT_ORDER
 
 _LOGGER = logging.getLogger(__name__)
@@ -187,9 +189,7 @@ def lights_in_area(hass: HomeAssistant, area_id: str) -> list[str]:
     entity_reg = er.async_get(hass)
     device_reg = dr.async_get(hass)
     device_ids = {
-        device.id
-        for device in device_reg.devices.values()
-        if device.area_id == area_id
+        device.id for device in device_reg.devices.values() if device.area_id == area_id
     }
     lights: list[str] = []
     for entry in entity_reg.entities.values():
@@ -207,10 +207,11 @@ def lights_in_area(hass: HomeAssistant, area_id: str) -> list[str]:
 def light_state_for_event(
     hass: HomeAssistant, entity_id: str, event_id: str, *, linked: bool = False
 ) -> dict[str, Any]:
-    """On + brightness + color matching the solar event (or shared day)."""
+    """On + brightness + color matching the solar event (or shared dimmed day)."""
     if event_id not in EVENT_ORDER:
         raise HomeAssistantError(f"Unknown solar event {event_id}")
-    profile = "noon" if linked and event_id in _DAY_EVENTS else event_id
+    # Linked dawn/sunrise/sunset share a softer "Dimmed" profile (not noon).
+    profile = "sunset" if linked and event_id in _DAY_EVENTS else event_id
     brightness, kelvin = EVENT_LIGHT_DEFAULTS[profile]
     state = hass.states.get(entity_id)
     attrs = state.attributes if state else {}
@@ -253,9 +254,7 @@ def _unique_scene_name(current: list[dict[str, Any]], base: str) -> str:
 
 def _native_scene_entity_id(hass: HomeAssistant, config_id: str) -> str | None:
     entity_reg = er.async_get(hass)
-    entity_id = entity_reg.async_get_entity_id(
-        SCENE_DOMAIN, "homeassistant", config_id
-    )
+    entity_id = entity_reg.async_get_entity_id(SCENE_DOMAIN, "homeassistant", config_id)
     if entity_id:
         return entity_id
     scene_component = hass.data.get("scene")
@@ -270,6 +269,183 @@ def _native_scene_entity_id(hass: HomeAssistant, config_id: str) -> str | None:
     return None
 
 
+async def _async_register_and_maybe_hide(
+    hass: HomeAssistant, config_id: str, entity_id: str
+) -> None:
+    """Track a created YAML scene and honor the hide-from-UI setting."""
+    store = hass.data[DOMAIN][DATA_STORE]
+    await store.async_register_managed_native_scene(config_id)
+    if store.settings.get("hide_managed_native_scenes"):
+        er.async_get(hass).async_update_entity(
+            entity_id, hidden_by=er.RegistryEntryHider.INTEGRATION
+        )
+
+
+def apply_managed_native_scene_visibility(hass: HomeAssistant, *, hidden: bool) -> int:
+    """Hide or unhide all managed native scenes in the entity registry."""
+    store = hass.data[DOMAIN][DATA_STORE]
+    entity_reg = er.async_get(hass)
+    hide_value = er.RegistryEntryHider.INTEGRATION if hidden else None
+    updated = 0
+    for config_id in list(store.managed_native_scene_ids):
+        entity_id = _native_scene_entity_id(hass, config_id)
+        if not entity_id:
+            continue
+        entry = entity_reg.async_get(entity_id)
+        if entry is None:
+            continue
+        # Never override a user-hidden entity.
+        if entry.hidden_by == er.RegistryEntryHider.USER:
+            continue
+        if entry.hidden_by == hide_value:
+            continue
+        entity_reg.async_update_entity(entity_id, hidden_by=hide_value)
+        updated += 1
+    return updated
+
+
+def list_managed_native_scenes(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """Return native scenes this integration created (still present)."""
+    store = hass.data[DOMAIN][DATA_STORE]
+    area_reg = ar.async_get(hass)
+    entity_reg = er.async_get(hass)
+    rows: list[dict[str, Any]] = []
+    for config_id in list(store.managed_native_scene_ids):
+        entity_id = _native_scene_entity_id(hass, config_id)
+        if not entity_id:
+            continue
+        entry = entity_reg.async_get(entity_id)
+        scene = native_scene_by_entity_id(hass, entity_id)
+        area_id = entry.area_id if entry else None
+        area_name = None
+        if area_id and area_id in area_reg.areas:
+            area_name = area_reg.areas[area_id].name
+        rows.append(
+            {
+                "id": config_id,
+                "entity_id": entity_id,
+                "name": (scene or {}).get("name")
+                or (entry.name if entry else None)
+                or (entry.original_name if entry else None)
+                or entity_id,
+                "area_id": area_id,
+                "area_name": area_name,
+                "hidden": bool(entry.hidden_by) if entry else False,
+            }
+        )
+    rows.sort(key=lambda row: str(row.get("name") or "").casefold())
+    return rows
+
+
+def _scene_base_name(area_name: str, event_id: str, *, linked: bool) -> str:
+    """Name for a newly created native scene."""
+    if linked and event_id in _DAY_EVENTS:
+        return f"{area_name} Dimmed"
+    if event_id == "noon":
+        return f"{area_name} Bright"
+    if event_id == "dusk":
+        return f"{area_name} Low lights"
+    return f"{area_name} {_EVENT_LABEL[event_id]}"
+
+
+def _scene_icon(event_id: str, *, linked: bool) -> str:
+    if linked and event_id in _DAY_EVENTS:
+        return _EVENT_ICON["sunset"]
+    return _EVENT_ICON[event_id]
+
+
+def average_light_brightness(entities: dict[str, Any]) -> float:
+    """Mean brightness of light entities in a native scene (off = 0)."""
+    values: list[float] = []
+    for entity_id, state in entities.items():
+        if not str(entity_id).startswith("light."):
+            continue
+        if not isinstance(state, dict):
+            continue
+        if state.get(ATTR_STATE) == "off" or state.get("state") == "off":
+            values.append(0.0)
+            continue
+        brightness = state.get("brightness")
+        if isinstance(brightness, (int, float)):
+            values.append(float(brightness))
+        elif state.get(ATTR_STATE) == "on" or state.get("state") == "on":
+            values.append(255.0)
+    if not values:
+        return 0.0
+    return sum(values) / len(values)
+
+
+def native_scenes_in_area(hass: HomeAssistant, area_id: str) -> list[dict[str, Any]]:
+    """Native HA scenes in an area, brightest first."""
+    entity_reg = er.async_get(hass)
+    results: list[dict[str, Any]] = []
+    for entry in entity_reg.entities.values():
+        if entry.domain != SCENE_DOMAIN or entry.disabled:
+            continue
+        if entry.area_id != area_id:
+            continue
+        # YAML / homeassistant platform only — skip extrapolation entities.
+        if entry.platform and entry.platform != "homeassistant":
+            continue
+        scene = native_scene_by_entity_id(hass, entry.entity_id)
+        if scene is None:
+            continue
+        entities = scene.get("entities") or {}
+        results.append(
+            {
+                "entity_id": entry.entity_id,
+                "name": scene.get("name")
+                or entry.name
+                or entry.original_name
+                or entry.entity_id,
+                "avg_brightness": average_light_brightness(entities),
+            }
+        )
+    results.sort(key=lambda row: (-row["avg_brightness"], str(row["name"]).lower()))
+    return results
+
+
+def suggest_setup_assignments(
+    scenes: list[dict[str, Any]], *, linked: bool
+) -> dict[str, str | None]:
+    """Map setup slots to existing scenes by brightness rank."""
+    ranked = list(scenes)
+    brightest = ranked[0]["entity_id"] if ranked else None
+    second = ranked[1]["entity_id"] if len(ranked) > 1 else None
+    lowest = ranked[-1]["entity_id"] if ranked else None
+    if linked:
+        return {
+            "noon": brightest,
+            "linked": second if second and second != brightest else None,
+            "dusk": lowest if lowest and lowest not in {brightest, second} else None,
+        }
+    # Unlinked: still seed noon / a mid day / dusk; leave others empty→Automatic.
+    return {
+        "dawn": second if second and second != brightest else None,
+        "sunrise": None,
+        "noon": brightest,
+        "sunset": None,
+        "dusk": lowest if lowest and lowest not in {brightest, second} else None,
+    }
+
+
+def area_setup_info(hass: HomeAssistant, area_id: str) -> dict[str, Any]:
+    """Lights + ranked native scenes for the create-scene wizard."""
+    area = ar.async_get(hass).async_get_area(area_id)
+    if area is None:
+        raise HomeAssistantError(f"Unknown area {area_id}")
+    lights = lights_in_area(hass, area_id)
+    scenes = native_scenes_in_area(hass, area_id)
+    return {
+        "area_id": area_id,
+        "area_name": area.name,
+        "light_count": len(lights),
+        "scenes": scenes,
+        "suggestions_linked": suggest_setup_assignments(scenes, linked=True),
+        "suggestions_unlinked": suggest_setup_assignments(scenes, linked=False),
+    }
+
+
 async def async_plan_native_scene(
     hass: HomeAssistant, area_id: str, event_id: str, *, linked: bool = False
 ) -> dict[str, Any]:
@@ -281,17 +457,11 @@ async def async_plan_native_scene(
         raise HomeAssistantError(f"Unknown area {area_id}")
     lights = lights_in_area(hass, area_id)
     entities = {
-        entity_id: light_state_for_event(
-            hass, entity_id, event_id, linked=linked
-        )
+        entity_id: light_state_for_event(hass, entity_id, event_id, linked=linked)
         for entity_id in lights
     }
-    if linked and event_id in _DAY_EVENTS:
-        base_name = f"{area.name} Day"
-        icon = _EVENT_ICON["noon"]
-    else:
-        base_name = f"{area.name} {_EVENT_LABEL[event_id]}"
-        icon = _EVENT_ICON[event_id]
+    base_name = _scene_base_name(area.name, event_id, linked=linked)
+    icon = _scene_icon(event_id, linked=linked)
     path = hass.config.path(SCENE_CONFIG_PATH)
     current = await hass.async_add_executor_job(_read_scenes, path)
     name = _unique_scene_name(current, base_name)
@@ -304,6 +474,101 @@ async def async_plan_native_scene(
         "entities": entities,
         "light_count": len(lights),
         "area_id": area_id,
+    }
+
+
+# Sentinel for create-wizard slots that should mint a new native scene.
+SETUP_AUTOMATIC = "automatic"
+
+
+async def async_apply_area_setup(
+    hass: HomeAssistant,
+    area_id: str,
+    *,
+    linked: bool,
+    assignments: dict[str, str | None],
+) -> dict[str, Any]:
+    """Create Automatic native scenes and resolve wizard slot → entity ids.
+
+    assignments keys:
+      linked: noon, linked, dusk
+      unlinked: dawn, sunrise, noon, sunset, dusk
+    Values: entity id, \"automatic\", or null/omit (treated as automatic).
+    """
+    info = area_setup_info(hass, area_id)
+    if info["light_count"] <= 0:
+        raise HomeAssistantError(
+            "This area has no lights. Add lights to the area in Home Assistant "
+            "before creating an extrapolation scene."
+        )
+
+    if linked:
+        slots = ("noon", "linked", "dusk")
+    else:
+        slots = ("dawn", "sunrise", "noon", "sunset", "dusk")
+
+    resolved: dict[str, str | None] = {}
+    to_create: list[tuple[str, str, bool]] = []
+    # (slot, event_id, linked_flag)
+    for slot in slots:
+        raw = assignments.get(slot)
+        if raw and raw != SETUP_AUTOMATIC:
+            resolved[slot] = raw
+            continue
+        if slot == "linked":
+            to_create.append((slot, "dawn", True))
+        else:
+            to_create.append((slot, slot, False))
+
+    created_by_slot: dict[str, dict[str, Any]] = {}
+    if to_create:
+        path = hass.config.path(SCENE_CONFIG_PATH)
+        async with _WRITE_LOCK:
+            current = await hass.async_add_executor_job(_read_scenes, path)
+            planned_rows: list[tuple[str, dict[str, Any]]] = []
+            for slot, event_id, link_flag in to_create:
+                planned = await async_plan_native_scene(
+                    hass, area_id, event_id, linked=link_flag
+                )
+                # Uniquify against disk + scenes already queued in this batch.
+                base = _scene_base_name(info["area_name"], event_id, linked=link_flag)
+                planned["name"] = _unique_scene_name(current, base)
+                current.append(
+                    {
+                        CONF_ID: planned["id"],
+                        "name": planned["name"],
+                        "icon": planned["icon"],
+                        "entities": planned["entities"],
+                    }
+                )
+                planned_rows.append((slot, planned))
+            await hass.async_add_executor_job(_write_scenes, path, current)
+
+        await hass.services.async_call(SCENE_DOMAIN, SERVICE_RELOAD, blocking=True)
+        entity_reg = er.async_get(hass)
+        for slot, planned in planned_rows:
+            entity_id = _native_scene_entity_id(hass, planned["id"])
+            if not entity_id:
+                raise HomeAssistantError(
+                    f"Created scene {planned['name']!r} but Home Assistant "
+                    "did not register it"
+                )
+            entity_reg.async_update_entity(entity_id, area_id=area_id)
+            await _async_register_and_maybe_hide(hass, planned["id"], entity_id)
+            created_by_slot[slot] = {
+                "entity_id": entity_id,
+                "name": planned["name"],
+                "light_count": planned["light_count"],
+            }
+            resolved[slot] = entity_id
+
+    return {
+        "linked": linked,
+        "assignments": resolved,
+        "created": created_by_slot,
+        "area_id": area_id,
+        "area_name": info["area_name"],
+        "light_count": info["light_count"],
     }
 
 
@@ -320,9 +585,7 @@ async def async_create_native_scene(
     write=False only plans (draft id). The picker needs a real entity, so
     the panel always writes immediately.
     """
-    planned = await async_plan_native_scene(
-        hass, area_id, event_id, linked=linked
-    )
+    planned = await async_plan_native_scene(hass, area_id, event_id, linked=linked)
     if not write:
         return planned
     path = hass.config.path(SCENE_CONFIG_PATH)
@@ -346,6 +609,7 @@ async def async_create_native_scene(
             f"Created scene {name!r} but Home Assistant did not register it"
         )
     er.async_get(hass).async_update_entity(entity_id, area_id=area_id)
+    await _async_register_and_maybe_hide(hass, planned["id"], entity_id)
     return {
         **planned,
         "entity_id": entity_id,
@@ -448,6 +712,7 @@ async def async_apply_native_drafts(
             )
         if area_id:
             entity_reg.async_update_entity(entity_id, area_id=area_id)
+        await _async_register_and_maybe_hide(hass, config_id, entity_id)
         created[draft_id] = entity_id
     return {"created": created}
 
@@ -517,6 +782,8 @@ async def async_delete_native_scene(
         await hass.async_add_executor_job(_write_scenes, path, updated)
 
     await hass.services.async_call(SCENE_DOMAIN, SERVICE_RELOAD, blocking=True)
+    store = hass.data[DOMAIN][DATA_STORE]
+    await store.async_unregister_managed_native_scene(str(config_key))
     return {"scene_entity_id": scene_entity_id}
 
 

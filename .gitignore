@@ -1,4 +1,6 @@
 __pycache__
+.venv/
+.pytest_cache/
 
 # Home Assistant sandbox runtime (keep the committed starter YAML)
 dev/config/*

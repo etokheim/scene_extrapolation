@@ -20,12 +20,16 @@ from .const import (
     DOMAIN,
 )
 from .native_scene import (
+    apply_managed_native_scene_visibility,
+    area_setup_info,
+    async_apply_area_setup,
     async_apply_native_drafts,
     async_create_native_scene,
     async_delete_native_scene,
     async_rename_native_scene,
     async_update_native_scene_entities,
     async_update_native_scene_entity,
+    list_managed_native_scenes,
 )
 from .preview import build_preview
 from .scene import async_create_or_update_entity, async_remove_entity
@@ -49,6 +53,11 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_rename_native_scene)
     websocket_api.async_register_command(hass, ws_delete_native_scene)
     websocket_api.async_register_command(hass, ws_apply_native_drafts)
+    websocket_api.async_register_command(hass, ws_area_setup_info)
+    websocket_api.async_register_command(hass, ws_apply_area_setup)
+    websocket_api.async_register_command(hass, ws_list_managed_native_scenes)
+    websocket_api.async_register_command(hass, ws_get_settings)
+    websocket_api.async_register_command(hass, ws_update_settings)
 
 
 def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
@@ -260,14 +269,18 @@ async def ws_preview(
 ) -> None:
     """Return sun path plus per-light brightness/color samples."""
     scenes = msg.get("scenes") or {}
-    payload = build_preview(
-        hass,
-        dusk_minimum=msg.get("dusk_minimum"),
-        target_date=msg.get("date"),
-        scene_ids=scenes,
-        overlay=msg.get("overlay"),
-        location=msg.get("location"),
-        area_id=msg.get("area") or None,
+    # Executor: preview samples are CPU-heavy; keep the event loop responsive
+    # (year scrub settles with one of these after a client-side drag).
+    payload = await hass.async_add_executor_job(
+        lambda: build_preview(
+            hass,
+            dusk_minimum=msg.get("dusk_minimum"),
+            target_date=msg.get("date"),
+            scene_ids=scenes,
+            overlay=msg.get("overlay"),
+            location=msg.get("location"),
+            area_id=msg.get("area") or None,
+        )
     )
     connection.send_result(msg["id"], payload)
 
@@ -472,3 +485,107 @@ async def ws_apply_native_drafts(
         connection.send_error(msg["id"], "apply_failed", str(err))
         return
     connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/area_setup_info",
+        vol.Required("area_id"): str,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_area_setup_info(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Lights + ranked native scenes for the create-scene wizard."""
+    try:
+        payload = area_setup_info(hass, msg["area_id"])
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "area_setup_failed", str(err))
+        return
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/apply_area_setup",
+        vol.Required("area_id"): str,
+        vol.Required("linked"): bool,
+        vol.Required("assignments"): dict,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_apply_area_setup(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Create Automatic native scenes and return resolved slot assignments."""
+    try:
+        payload = await async_apply_area_setup(
+            hass,
+            msg["area_id"],
+            linked=bool(msg["linked"]),
+            assignments=dict(msg.get("assignments") or {}),
+        )
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "area_setup_failed", str(err))
+        return
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/list_managed_native_scenes"}
+)
+@websocket_api.require_admin
+@callback
+def ws_list_managed_native_scenes(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """List native scenes created by this integration."""
+    connection.send_result(msg["id"], list_managed_native_scenes(hass))
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_settings"})
+@websocket_api.require_admin
+@callback
+def ws_get_settings(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return integration-wide settings."""
+    connection.send_result(msg["id"], dict(_store(hass).settings))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/update_settings",
+        vol.Required("settings"): dict,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_update_settings(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Update integration-wide settings and apply visibility side effects."""
+    store = _store(hass)
+    before_hide = bool(store.settings.get("hide_managed_native_scenes"))
+    settings = await store.async_update_settings(dict(msg.get("settings") or {}))
+    after_hide = bool(settings.get("hide_managed_native_scenes"))
+    updated = 0
+    if before_hide != after_hide:
+        updated = apply_managed_native_scene_visibility(hass, hidden=after_hide)
+    connection.send_result(
+        msg["id"],
+        {"settings": settings, "visibility_updated": updated},
+    )

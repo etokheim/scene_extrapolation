@@ -3,23 +3,29 @@
 from __future__ import annotations
 
 import copy
-from math import log
 from typing import Any
 
 from homeassistant.components.homeassistant.scene import HomeAssistantScene
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_MODE,
-    ATTR_COLOR_TEMP_KELVIN,
-    ATTR_HS_COLOR,
-    ATTR_RGB_COLOR,
-    ATTR_RGBW_COLOR,
-    ATTR_RGBWW_COLOR,
     ColorMode,
 )
 from homeassistant.const import ATTR_STATE, STATE_OFF, STATE_ON, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 
+from .color_math import (
+    DEFAULT_RGB,
+    blend_entity_rgb,
+    clamp_rgb,
+    hs_to_rgb,
+    infer_color_mode,
+    kelvin_to_rgb,
+    normalize_color_mode,
+    rgbw_to_rgb,
+    rgbww_to_rgb,
+    same_color_mode,
+)
 from .const import (
     SCENE_DAWN,
     SCENE_DUSK,
@@ -48,8 +54,6 @@ SCENE_KEYS = {
     "sunset": SCENE_SUNSET,
     "dusk": SCENE_DUSK,
 }
-
-DEFAULT_RGB = (255, 214, 170)
 
 
 def load_native_scenes(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
@@ -141,19 +145,34 @@ def _overlay_native_scenes(
             }
             continue
         scene = result.get(scene_id)
-        if not scene:
-            continue
-        patched = copy.deepcopy(scene)
-        if patch.get("name"):
-            patched["name"] = patch["name"]
         entity_id = patch.get("entity_id")
         if entity_id and patch.get("remove"):
+            if not scene:
+                continue
+            patched = copy.deepcopy(scene)
             patched["entities"].pop(entity_id, None)
             result = {**result, scene_id: patched}
             continue
         entity_state = patch.get("entity_state")
         if entity_id and isinstance(entity_state, dict):
+            # Draft edits for a scene that is not loaded yet (orphan /
+            # unavailable entity) — materialize a stub so membership works.
+            if not scene:
+                scene = {
+                    "id": scene_id,
+                    "name": scene_id,
+                    "entity_id": scene_id,
+                    "entities": {},
+                }
+            patched = copy.deepcopy(scene)
             patched["entities"][entity_id] = scene_entity_payload(entity_state)
+            result = {**result, scene_id: patched}
+            continue
+        if not scene:
+            continue
+        if patch.get("name"):
+            patched = copy.deepcopy(scene)
+            patched["name"] = patch["name"]
             result = {**result, scene_id: patched}
     return result
 
@@ -185,8 +204,27 @@ def _light_series(
             }
         )
     assigned = [item for item in bound if item["scene"].get("entity_id")]
+    area_lights = set(lights_in_area(hass, area_id)) if area_id else None
     if not assigned:
-        return [], []
+        # New extrapolation scene: no native scenes yet — still list area
+        # lights as suggested so dial/table/create-scene UI can render.
+        if not area_lights:
+            return [], []
+        lights = []
+        for entity_id in sorted(area_lights):
+            state = hass.states.get(entity_id)
+            lights.append(
+                {
+                    "entity_id": entity_id,
+                    "name": state.name if state else entity_id,
+                    "samples": [],
+                    "gaps": [],
+                    "event_states": _event_states_for_light(bound, entity_id),
+                    "suggested": True,
+                    "in_area": True,
+                }
+            )
+        return lights, []
 
     light_ids: set[str] = set()
     for item in assigned:
@@ -198,8 +236,6 @@ def _light_series(
     warnings_by_light: dict[str, list[dict[str, Any]]] = {}
     for warning in warnings:
         warnings_by_light.setdefault(warning["entity_id"], []).append(warning)
-
-    area_lights = set(lights_in_area(hass, area_id)) if area_id else None
 
     lights = []
     for entity_id in sorted(light_ids):
@@ -246,9 +282,7 @@ def _event_states_for_light(
     for item in bound:
         scene = item["scene"]
         scene_entity_id = scene.get("entity_id")
-        stored = (
-            scene["entities"].get(entity_id) if scene_entity_id else None
-        )
+        stored = scene["entities"].get(entity_id) if scene_entity_id else None
         rows.append(
             {
                 "event": item["id"],
@@ -271,9 +305,7 @@ def _gap_warnings(
     for index, current in enumerate(bound):
         nxt = bound[(index + 1) % count]
         # Unassigned events are off-knots, not native scenes — skip gap UI.
-        if not current["scene"].get("entity_id") or not nxt["scene"].get(
-            "entity_id"
-        ):
+        if not current["scene"].get("entity_id") or not nxt["scene"].get("entity_id"):
             continue
         current_ids = {
             entity_id
@@ -346,12 +378,8 @@ def _sample_light(
     elif ATTR_COLOR_MODE not in to_entity and ATTR_COLOR_MODE in from_entity:
         to_entity[ATTR_COLOR_MODE] = from_entity[ATTR_COLOR_MODE]
 
-    if percent >= 50:
-        color_mode = to_entity.get(ATTR_COLOR_MODE) or _infer_color_mode(to_entity)
-    else:
-        color_mode = from_entity.get(ATTR_COLOR_MODE) or _infer_color_mode(from_entity)
-    if not color_mode:
-        color_mode = _infer_color_mode(from_entity) or _infer_color_mode(to_entity)
+    from_mode = from_entity.get(ATTR_COLOR_MODE) or infer_color_mode(from_entity)
+    to_mode = to_entity.get(ATTR_COLOR_MODE) or infer_color_mode(to_entity)
 
     brightness = 0
     if ATTR_BRIGHTNESS in from_entity or ATTR_BRIGHTNESS in to_entity:
@@ -362,7 +390,9 @@ def _sample_light(
     elif final_entity.get(ATTR_STATE) == STATE_ON:
         brightness = 255
         final_entity[ATTR_BRIGHTNESS] = brightness
-    rgb = _display_rgb(from_entity, to_entity, final_entity, color_mode, percent)
+    rgb = _display_rgb(
+        from_entity, to_entity, final_entity, from_mode, to_mode, percent
+    )
     pct = max(0, min(100, round(brightness * 100 / 255)))
     if final_entity.get(ATTR_STATE) != STATE_ON and brightness <= 0:
         pct = 0
@@ -373,124 +403,32 @@ def _display_rgb(
     from_entity: dict[str, Any],
     to_entity: dict[str, Any],
     final_entity: dict[str, Any],
-    color_mode: str | None,
+    from_mode: str | None,
+    to_mode: str | None,
     percent: float,
 ) -> tuple[int, int, int]:
-    try:
-        if color_mode in (ColorMode.COLOR_TEMP, ATTR_COLOR_TEMP_KELVIN):
-            kelvin = extrapolate_temp_kelvin(
-                from_entity, to_entity, final_entity, percent
-            )
-            return kelvin_to_rgb(kelvin)
-        if color_mode in (ColorMode.RGB, ATTR_RGB_COLOR):
-            rgb = extrapolate_rgb(from_entity, to_entity, final_entity, percent)
-            return _clamp_rgb(rgb[0], rgb[1], rgb[2])
-        if color_mode in (ColorMode.HS, ATTR_HS_COLOR):
-            hs = extrapolate_hs(from_entity, to_entity, final_entity, percent)
-            return hs_to_rgb(hs[0], hs[1])
-        if color_mode in (ColorMode.RGBW, ATTR_RGBW_COLOR):
-            rgbw = extrapolate_rgbw(from_entity, to_entity, final_entity, percent)
-            return rgbw_to_rgb(rgbw)
-        if color_mode in (ColorMode.RGBWW, ATTR_RGBWW_COLOR):
-            rgbww = extrapolate_rgbww(from_entity, to_entity, final_entity, percent)
-            return rgbww_to_rgb(rgbww)
-    except (KeyError, TypeError, ValueError, IndexError):
-        pass
-    return _entity_rgb(from_entity) or _entity_rgb(to_entity) or DEFAULT_RGB
-
-
-def _infer_color_mode(entity: dict[str, Any]) -> str | None:
-    if entity.get(ATTR_RGBWW_COLOR):
-        return ColorMode.RGBWW
-    if entity.get(ATTR_RGBW_COLOR):
-        return ColorMode.RGBW
-    if entity.get(ATTR_RGB_COLOR):
-        return ColorMode.RGB
-    if entity.get(ATTR_HS_COLOR):
-        return ColorMode.HS
-    if entity.get(ATTR_COLOR_TEMP_KELVIN):
-        return ColorMode.COLOR_TEMP
-    return None
-
-
-def _entity_rgb(entity: dict[str, Any]) -> tuple[int, int, int] | None:
-    if ATTR_RGB_COLOR in entity and entity[ATTR_RGB_COLOR]:
-        rgb = entity[ATTR_RGB_COLOR]
-        return _clamp_rgb(rgb[0], rgb[1], rgb[2])
-    if ATTR_HS_COLOR in entity and entity[ATTR_HS_COLOR]:
-        hs = entity[ATTR_HS_COLOR]
-        return hs_to_rgb(hs[0], hs[1])
-    if ATTR_COLOR_TEMP_KELVIN in entity and entity[ATTR_COLOR_TEMP_KELVIN]:
-        return kelvin_to_rgb(entity[ATTR_COLOR_TEMP_KELVIN])
-    if ATTR_RGBW_COLOR in entity and entity[ATTR_RGBW_COLOR]:
-        return rgbw_to_rgb(entity[ATTR_RGBW_COLOR])
-    if ATTR_RGBWW_COLOR in entity and entity[ATTR_RGBWW_COLOR]:
-        return rgbww_to_rgb(entity[ATTR_RGBWW_COLOR])
-    return None
-
-
-def kelvin_to_rgb(kelvin: float) -> tuple[int, int, int]:
-    """Approximate daylight RGB from color temperature (Tanner Helland)."""
-    temp = max(1000.0, min(float(kelvin), 40000.0)) / 100.0
-    if temp <= 66:
-        red = 255.0
-        green = 99.4708025861 * _safe_log(temp) - 161.1195681661
-    else:
-        red = 329.698727446 * ((temp - 60) ** -0.1332047592)
-        green = 288.1221695283 * ((temp - 60) ** -0.0755148492)
-    if temp >= 66:
-        blue = 255.0
-    elif temp <= 19:
-        blue = 0.0
-    else:
-        blue = 138.5177312231 * _safe_log(temp - 10) - 305.0447927307
-    return _clamp_rgb(red, green, blue)
-
-
-def _safe_log(value: float) -> float:
-    if value <= 0:
-        return 0.0
-    return log(value)
-
-
-def hs_to_rgb(hue: float, saturation: float) -> tuple[int, int, int]:
-    """Convert Home Assistant HS (hue 0-360, sat 0-100) to RGB."""
-    heading = float(hue) % 360.0
-    sat = max(0.0, min(float(saturation) / 100.0, 1.0))
-    chroma = sat
-    x = chroma * (1 - abs((heading / 60.0) % 2 - 1))
-    m = 1.0 - chroma
-    if heading < 60:
-        red, green, blue = chroma, x, 0.0
-    elif heading < 120:
-        red, green, blue = x, chroma, 0.0
-    elif heading < 180:
-        red, green, blue = 0.0, chroma, x
-    elif heading < 240:
-        red, green, blue = 0.0, x, chroma
-    elif heading < 300:
-        red, green, blue = x, 0.0, chroma
-    else:
-        red, green, blue = chroma, 0.0, x
-    return _clamp_rgb((red + m) * 255, (green + m) * 255, (blue + m) * 255)
-
-
-def rgbw_to_rgb(rgbw: list | tuple) -> tuple[int, int, int]:
-    r, g, b, white = (int(v) for v in rgbw[:4])
-    return _clamp_rgb(r + white, g + white, b + white)
-
-
-def rgbww_to_rgb(rgbww: list | tuple) -> tuple[int, int, int]:
-    r, g, b, cold, warm = (int(v) for v in rgbww[:5])
-    r = r + cold * 0.86 + warm
-    g = g + cold * 0.90 + warm * 0.70
-    b = b + cold + warm * 0.35
-    return _clamp_rgb(r, g, b)
-
-
-def _clamp_rgb(red: float, green: float, blue: float) -> tuple[int, int, int]:
-    return (
-        max(0, min(255, int(round(red)))),
-        max(0, min(255, int(round(green)))),
-        max(0, min(255, int(round(blue)))),
-    )
+    # Same mode: keep kelvin/HS/channel lerp (smoother whites than RGB-of-kelvin).
+    # Different modes: RGB-lerp endpoints so preview does not snap at 50%.
+    if same_color_mode(from_mode, to_mode):
+        color_mode = normalize_color_mode(from_mode)
+        try:
+            if color_mode == ColorMode.COLOR_TEMP:
+                kelvin = extrapolate_temp_kelvin(
+                    from_entity, to_entity, final_entity, percent
+                )
+                return kelvin_to_rgb(kelvin)
+            if color_mode == ColorMode.RGB:
+                rgb = extrapolate_rgb(from_entity, to_entity, final_entity, percent)
+                return clamp_rgb(rgb[0], rgb[1], rgb[2])
+            if color_mode == ColorMode.HS:
+                hs = extrapolate_hs(from_entity, to_entity, final_entity, percent)
+                return hs_to_rgb(hs[0], hs[1])
+            if color_mode == ColorMode.RGBW:
+                rgbw = extrapolate_rgbw(from_entity, to_entity, final_entity, percent)
+                return rgbw_to_rgb(rgbw)
+            if color_mode == ColorMode.RGBWW:
+                rgbww = extrapolate_rgbww(from_entity, to_entity, final_entity, percent)
+                return rgbww_to_rgb(rgbww)
+        except (KeyError, TypeError, ValueError, IndexError):
+            pass
+    return blend_entity_rgb(from_entity, to_entity, percent)

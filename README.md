@@ -2,123 +2,111 @@
 
 # Scene Extrapolation (Circadian Rhythm)
 
-_TLDR: Let's you easily create a circadian rythm like lighting experience! - Meaning lighting that adapts to the sun's cycle; cool at day, warm in the evening. The plugin creates a scene in your selected area which, when activated, lights your room just the way you want it - based on the sun's elevation. The scene is best matched with an automation that triggers the scene every 5 minutes or so (match the transition time for a silky smooth experience!)._
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
+[![GitHub release](https://img.shields.io/github/release/etokheim/scene_extrapolation.svg)](https://github.com/etokheim/scene_extrapolation/releases)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=flat-square&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/etokheim)
+
+Create circadian lighting from the scenes you already have. The integration builds a Home Assistant scene that blends your day and evening looks from the sun’s cycle — cool by day, warm toward dusk — so activating it lights the room the way you want for *now*.
+
+Pair it with an automation that re-activates the scene every few minutes (match the transition time) for a smooth all-day fade.
+
+**Support the project:** [buymeacoffee.com/etokheim](https://buymeacoffee.com/etokheim)
+
+## Install
+
+1. Install via [HACS](https://hacs.xyz/) (search **Scene Extrapolation**), or copy `custom_components/scene_extrapolation` into your config.
+2. Restart Home Assistant.
+3. Add the integration once: **Settings → Devices & services → Add integration → Scene Extrapolation**.
+4. Open **Scene Extrapolation** from the sidebar to create and edit rooms.
+
+You do **not** add a new integration entry for each room — one instance covers every extrapolation scene.
 
 ## Setup
 
-Super simple to set up! Create two (or more) native Home Assistant scenes. One with how you want the lighting to be at day, and one for the evening.
+Create two (or more) **native** Home Assistant scenes for an area: how the room should look by day, and how it should look in the evening. You can also pin looks to dawn, sunrise, noon, sunset, and dusk.
 
-Then add **Scene Extrapolation** once (Settings → Devices & services). Open it from the sidebar and add an extrapolation scene per room — pick the area and the native scenes to blend. You do not add a new integration entry for each room.
+Then, in the Scene Extrapolation sidebar, add an extrapolation scene for that area and assign those native scenes to the solar events you care about.
 
-You might already have made some scenes that you prefer throughout the day. Maybe something like this:
+You might already have fixed scenes like this:
+
 ![Illustration - Scenes with hard transitions](images/Example%20-%20Fixed.png)
 
-This integration automatically blurs the lines between your scenes - Lighting you room perfectly whenever you activate it!
+Scene Extrapolation blends between them so the room looks right whenever you activate it:
+
 ![Illustration - Scenes with soft transitions](images/Example%20-%20Blurred.png)
 
-A typical result might look something like this:
+A typical result:
+
 ![Illustration of how the integration works in practice](images/Actual%20scene.png)
 
-## Advantages (compared to other solutions)
+## Why use this?
 
-1. Simple to use and understand
-2. Supports any colors - not just white and warm white!
-3. Even supports effects! Eg. turn on the `Fireplace` effect after sunset. It's also perfect for christmas lights - to make the effect adapt to the time of day!
-4. Can turn off that too bright undimmable light in the evening
-5. But can also turn ON that cozy low light lamp in the evening. (The one that doesn't need to be on during the day).
-6. Since it's just a scene, it can control all sorts of things! (Not that I'd reccommend it?)
-   - Sunshade down when the sun is out?
-   - Door locked when the sun goes down?
-7. Can use a dedicated scene at night (if an input_boolean is on)
+1. **Simple** — it is still “just a scene”: activate it when you want that look; turn lights off normally when you don’t.
+2. **Any colors** — not limited to white / warm white.
+3. **Effects** — e.g. fireplace after sunset, or Christmas lights that still follow the day.
+4. **Turn lights off or on** by time of day (bright undimmable lamp off in the evening; cozy lamp on only then).
+5. **Not only lights** — a scene can drive shades, locks, and other entities if you want.
+6. **Nightlights mode** — optionally use a dedicated scene when an `input_boolean` is on.
 
-## Disadvantages
+## Limitations
 
-1. Only works with scenes made in Home Assistant (Can't support eg. Hue scenes)
-2. Requires you to setup at least two scenes for each area you want to control.
-   - And as we all know, setting up and editing scenes in Home Assistant is TEDIOUS!
-3. Performance is not the best. Takes 1 second to activate
+1. Works with scenes created in Home Assistant (not vendor scenes such as Hue-only scenes).
+2. You need at least two native scenes per area you want to control — and HA’s scene editor is still tedious.
+3. Activation is slower than a plain scene (~1 s vs ~200 ms in practice). Debug logging shows timing for your setup.
 
-   - Around 5 times longer than a basic scene, which usually takes around 200ms.
-   - <details>
-     <summary>Click to see some performance numbers</summary>
+<details>
+<summary>Example performance numbers</summary>
 
-     _You can find these numbers for your use case as well by turning on debug logging for the integration and checking the logs_
+```
+Loaded 5 scenes from in-memory entities
+Time getting native scenes:               2.6ms
+Time calculating solar events:            0.3ms
+Time getting sun events (precalculated):  0.6ms
+Time extrapolating:                     862.5ms
+Time total applying scene:              866.3ms
+```
 
-     ```
-     	Loaded 5 scenes from in-memory entities
-     	Time getting native scenes: 				  2.6035308837890625ms
-     	Time calculating solar events: 				  0.31375885009765625ms
-     	Time getting sun events (precalculated):	  0.591278076171875ms
-     	Time extrapolating: 						862.5073432922363ms
-     	Time total applying scene: 					866.2581443786621ms
-     ```
+</details>
 
-     </details>
+### Alternatives
 
-Alternative solutions:
+| Integration | Notes |
+| --- | --- |
+| [Flux](https://www.home-assistant.io/integrations/flux/) | Built-in; drives individual lights; YAML; smaller install base. |
+| [Circadian Lighting](https://github.com/claytonjn/hass-circadian_lighting) | Drives lights/groups directly; richer options; large community. |
 
-1. [Flux (Built in Home Assistant addon)](https://next.home-assistant.io/integrations/flux)
-   - Controls invividual lights directly. YAML configuration only. Seems abandoned, but probably works fine after setting up. At the time of writing being used by 559 active installations world wide.
-2. [Circadian Rythm](https://github.com/claytonjn/hass-circadian_lighting)
-   - Controls invividual lights or groups directly. Must turn off a boolean to deactivate the effect. Advanced features. Probably has the most active users with its 846(!) stars on GitHub.
+Scene Extrapolation stays scene-based on purpose: predictable, easy to combine with motion and schedules, and no “force lights on” loop you have to fight.
 
-## Expand functionality
+## Extend it
 
-_This integration is made to be simple on purpose. Leaving it simple makes it more predictable and transparent. No lights accidentally turning on after you've turned off the lights. No struggeling to activate or deactivate the effect. It's just a scene._
+Keep the core simple, then add behavior with the rest of Home Assistant:
 
-_A simple, predictable and transparent integration makes it easier to extend its functionality reliably with other parts of Home Assistant._
+1. **Slow all-day change** — automation that activates the scene every ~5 minutes with a matching transition. A blueprint is available for this.
+2. **Motion lighting** — automation that activates the scene on motion. A blueprint is available for this too.
 
-Examples of functionality you can add:
+## Support
 
-1. Slowly changing lights throughout the day?
-   - Add an automation that repeatedly activates the scene eg. every 5 minutes, with a 5 minute transition. I have a blueprint available for this!
-2. Motion activated lights matching the time of day?
-   - Make an automation that simply activates the scene when motion is detected. I have a blueprint available for this!
+If Scene Extrapolation saves you setup time or makes your evenings nicer, you can [buy me a coffee](https://buymeacoffee.com/etokheim):
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/etokheim)
+
+Issues and ideas: [GitHub Issues](https://github.com/etokheim/scene_extrapolation/issues).
 
 ## Q&A
 
 <details>
 <summary><strong>What happens when the sun doesn't rise or set? (Polar regions, midnight sun, polar night)</strong></summary>
 
-In polar regions, there are periods when the sun never sets (midnight sun) or never rises (polar night). The integration handles these extreme cases by using **seasonal fallback times** instead of actual solar calculations.
+In polar regions the sun may never set (midnight sun) or never rise (polar night). When solar calculations fail completely, the integration uses **seasonal fallback times**:
 
-**How it works:**
+- **Winter:** Dawn 8:45, Sunrise 10:30, Noon 12:00, Sunset 13:00, Dusk 22:00
+- **Summer:** Dawn 2:15, Sunrise 4:00, Noon 13:00, Sunset 22:00, Dusk 23:55
 
-When solar calculations fail completely (e.g., during polar night when the sun never rises), the integration uses preset seasonal fallback times:
+When only some events fail, it keeps chronological order by taking the later of:
 
-- **Winter**: Dawn 8:45, Sunrise 10:30, Noon 12:00, Sunset 13:00, Dusk 22:00
-- **Summer**: Dawn 2:15, Sunrise 4:00, Noon 13:00, Sunset 22:00, Dusk 23:55
+- previous event + 30 minutes, or
+- that event’s seasonal fallback
 
-**Partial failures (when only some events fail):**
-
-Sometimes only some solar events can't be calculated. For example, dawn might work but sunrise might fail. To keep events in the correct chronological order, the integration uses whichever time is **later**:
-
-- Previous event + 30 minutes (to ensure proper ordering), or
-- The seasonal fallback time for that event
-
-**Example:** If dawn is calculated as 6:00 AM but sunrise can't be calculated, the integration will use the later of:
-
-- Dawn + 30 minutes = 6:30 AM, or
-- Summer sunrise fallback = 4:00 AM
-
-In this case, it picks 6:30 AM to keep sunrise after dawn.
-
-This ensures your lighting transitions work smoothly even in locations where solar calculations are unreliable, while maintaining logical time progression throughout the day.
+**Example:** Dawn calculates as 06:00 but sunrise fails → use the later of 06:30 and the summer sunrise fallback (04:00) → **06:30**, so sunrise stays after dawn.
 
 </details>
-
----
-
-# TSDR? (Too short, didn't read?)
-
-_For those who thought the readme was too short I've provided a more flowery description of the integration, as described by ChatGPT:_
-
-Picture this: a dynamic world where your surroundings transform seamlessly with the changing hues of the day. Imagine effortlessly orchestrating the perfect ambiance for every moment, from the golden dawn to the twilight glow. Welcome to the realm of Scene Extrapolation – where your scenes evolve with the dance of the sun!
-
-Gone are the days of static lighting setups. With this groundbreaking plugin, your meticulously crafted scenes now adapt to the current sun elevation, ensuring an immersive experience that transcends ordinary lighting control. Say goodbye to the mundane and embrace the extraordinary through the familiar embrace of the scene editor.
-
-This isn't just about lighting; it's about mastering the art of atmosphere. The plugin ingeniously conjures a bespoke scene in your chosen domain. Picture it – with a simple activation, your room comes to life, bathed in the perfect illumination tailored to your desires. It's not just smart; it's a symphony of light curated for your every mood.
-
-But the magic doesn’t stop there. Elevate your experience further by syncing the scenes with precision. An automation, synchronized to trigger the scene every 5 minutes, seamlessly aligns with the ebb and flow of the day – a choreography of light mirroring the natural transitions outside your window.
-
-Step into a world where your environment becomes an extension of your imagination. Scene Extrapolation isn't just a plugin; it's the key to unlocking a realm of possibilities, a canvas where you paint with light, and the sun becomes your collaborator in this dazzling masterpiece of ambiance. Experience lighting control like never before – it's not just about scenes; it's about creating a spectacle every time you walk into a room.

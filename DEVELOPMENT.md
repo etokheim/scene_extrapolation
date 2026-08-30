@@ -51,6 +51,16 @@ docker compose restart
 
 YAML in `dev/config/` can usually be reloaded from **Developer tools → YAML**. Translation JSON under `custom_components/` still needs a restart. After adding new lights, re-run `apply_area_map.py` with HA stopped.
 
+## Unit tests
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install pytest homeassistant
+PYTHONPATH=. .venv/bin/pytest tests/ -q
+```
+
+CI runs the same suite (see `.github/workflows/ci.yml`).
+
 ## Stop
 
 ```bash
