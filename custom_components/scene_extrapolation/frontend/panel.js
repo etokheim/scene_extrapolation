@@ -798,20 +798,25 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Registered via CSS.registerProperty (document), not @property here —
            shadow-root @property does not enable transitions. */
-        /* Soft bloom from a simple dial clone (same ring colors as the planet). */
+        /* Soft bloom from simple dial clones (same ring colors as the planet). */
         .sun-light-clock-glow {
           position: absolute;
           inset: ${CLOCK_RINGS_INSET_PCT}%;
           border-radius: 50%;
           pointer-events: none;
           z-index: 1;
-          transform: scale(2.76);
           transform-origin: center center;
           filter: blur(28px);
-          /* Doubled scale; 30% lower opacity so the bloom stays soft. */
-          opacity: 0.63;
+          /* Was 0.63; 50% less transparent → opacity 0.815 */
+          opacity: 0.815;
           overflow: visible;
           --clock-feather: 0.35%;
+        }
+        .sun-light-clock-glow.glow-lg {
+          transform: scale(2.76);
+        }
+        .sun-light-clock-glow.glow-md {
+          transform: scale(1.38);
         }
         .sun-light-clock-glow .clock-ring {
           --ring-expand: 0%;
@@ -840,11 +845,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: absolute;
           inset: ${CLOCK_RINGS_INSET_PCT}%;
           border-radius: 50%;
-          /* Below sun/path — planet no longer occludes the night sun. */
-          z-index: 2;
+          /* Above the hour handle so the planet occludes it; path/sun stay higher. */
+          z-index: 7;
           --clock-feather: ${CLOCK_FEATHER_PCT}%;
           transition: --clock-feather 220ms cubic-bezier(0.2, 0, 0, 1);
           cursor: pointer;
+          filter: drop-shadow(0 0 32px rgba(0, 0, 0, 0.4));
         }
         /* Sharpen on hover, and keep sharp while a lamp is selected (sidebar). */
         .sun-light-clock-rings:hover,
@@ -8566,21 +8572,26 @@ class SceneExtrapolationPanel extends HTMLElement {
         ringLights[0];
       openRingAt(ev, selected);
     });
-    // Large simple dial clone behind the interactive rings — bloom uses the
-    // same conic colors so the glow matches the planet (not elevation sky).
-    const glowHost = ringsHost.cloneNode(true);
-    glowHost.className = "sun-light-clock-glow";
-    glowHost.removeAttribute("tabindex");
-    glowHost.removeAttribute("role");
-    glowHost.removeAttribute("aria-label");
-    glowHost.setAttribute("aria-hidden", "true");
-    for (const ring of glowHost.querySelectorAll(".clock-ring")) {
-      ring.classList.remove("selected", "hovered");
-      ring.removeAttribute("aria-current");
-      ring.removeAttribute("title");
-    }
-    this._clockSkyGlow = glowHost;
-    core.append(glowHost, ringsHost);
+    // Soft bloom clones behind the interactive rings — same conic colors as the
+    // planet (not elevation sky). Large + half-size layers share opacity.
+    const makeGlow = (mod) => {
+      const glow = ringsHost.cloneNode(true);
+      glow.className = `sun-light-clock-glow ${mod}`;
+      glow.removeAttribute("tabindex");
+      glow.removeAttribute("role");
+      glow.removeAttribute("aria-label");
+      glow.setAttribute("aria-hidden", "true");
+      for (const ring of glow.querySelectorAll(".clock-ring")) {
+        ring.classList.remove("selected", "hovered");
+        ring.removeAttribute("aria-current");
+        ring.removeAttribute("title");
+      }
+      return glow;
+    };
+    const glowLg = makeGlow("glow-lg");
+    const glowMd = makeGlow("glow-md");
+    this._clockSkyGlow = glowLg;
+    core.append(glowLg, glowMd, ringsHost);
 
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("class", "sun-light-clock-overlay");
@@ -8634,7 +8645,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     handleHit.className = "clock-handle-hit";
     handleHit.setAttribute("aria-hidden", "true");
     this._clockHandleHitEl = handleHit;
-    // Path under sun; handle above sun so glow/shadow never cover it.
+    // Path under sun; rings above handle so the planet occludes it.
     core.append(
       overlay,
       this._clockSunEl,
