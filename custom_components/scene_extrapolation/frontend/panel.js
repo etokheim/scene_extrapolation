@@ -33,8 +33,9 @@ const CLOCK_RINGS_INSET_PCT = 50 - CLOCK_RINGS_OUTER / 2;
 /* Wedges/rays cover the square including corners; back layer is slightly
    larger than the face so they land just outside the container. */
 const CLOCK_SKY_R = (CLOCK_VIEW / 2) * Math.SQRT2;
-/* Deep night wedge tint (sun disc below horizon is pure black). */
-const CLOCK_NIGHT_BLUE = "#15224d";
+/* Night wedges: near-black shades with a slight blue tint (not deep navy). */
+const CLOCK_NIGHT_OUTER = "#101218";
+const CLOCK_NIGHT_DEEP = "#06070b";
 /* Outline diameter ≈ 3.47% of dial core (1/3 of the prior 10.4%). */
 const CLOCK_SUN_SIZE_PCT = 10.4 / 3;
 const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
@@ -393,7 +394,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           width: 100%;
           min-width: 0;
-          overflow: hidden;
+          /* Visible so date chips can extend left of the narrow rail. */
+          overflow: visible;
           opacity: 1;
           box-sizing: border-box;
           z-index: 2;
@@ -408,6 +410,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-path-stage.landscape-clock-scrub.scrub-collapsed .sun-year-scrub-rail {
           opacity: 0;
           pointer-events: none;
+          overflow: hidden;
         }
         .sun-scrub-block {
           display: flex;
@@ -423,13 +426,14 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-date-tools {
           display: flex;
-          flex-direction: row;
+          /* Table: date first (row-reverse of chips→date DOM). */
+          flex-direction: row-reverse;
           flex-wrap: wrap;
           align-items: center;
           gap: 8px;
+          justify-content: flex-end;
         }
-        /* Dial: chips left of day/month. Table: same row, date first.
-           Landscape rail is narrow — chips stack above the date instead.
+        /* Dial portrait: chips left of day/month.
            Above horizon bleed (sky/glow can extend past the face). */
         .sun-path.dial-view .sun-date-tools {
           position: relative;
@@ -437,12 +441,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-direction: row;
           flex-wrap: wrap;
           align-items: center;
+          justify-content: flex-start;
           gap: 8px;
         }
         .sun-year-scrub-rail .sun-date-tools {
+          /* Chips above date, right-aligned to the scrub column. */
           flex-direction: column;
-          align-items: stretch;
-          gap: 6px;
+          align-items: flex-end;
+          gap: 4px;
         }
         .sun-chip-row {
           display: flex;
@@ -451,17 +457,20 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 8px;
         }
         .sun-year-scrub-rail .sun-chip-row {
-          flex-direction: column;
-          align-items: stretch;
-          width: 100%;
-          gap: 4px;
+          flex-direction: row;
+          flex-wrap: nowrap;
+          justify-content: flex-end;
+          align-items: center;
+          width: max-content;
+          gap: 6px;
         }
         .sun-year-scrub-rail .sun-chip {
-          width: 100%;
+          width: auto;
           box-sizing: border-box;
           text-align: center;
-          padding: 4px 6px;
+          padding: 4px 8px;
           font-size: 11px;
+          white-space: nowrap;
         }
         .sun-scrub-date {
           position: relative;
@@ -483,6 +492,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           white-space: nowrap;
           cursor: pointer;
         }
+        .sun-year-scrub-rail .sun-scrub-date {
+          font-size: 26px;
+          line-height: 1.15;
+          padding: 2px 0;
+        }
         .sun-scrub-date:hover {
           background: color-mix(
             in srgb,
@@ -493,11 +507,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-scrub-date:focus-visible {
           outline: 2px solid var(--primary-color);
           outline-offset: 2px;
-        }
-        .sun-scrub-date ha-icon {
-          --mdc-icon-size: 16px;
-          color: var(--secondary-text-color);
-          flex-shrink: 0;
         }
         /* Visually hidden but mounted — opened via ha-date-input._openDialog.
            Keep it laid out (not clip/1×1) so the selector finishes upgrading. */
@@ -971,10 +980,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 6;
         }
         .clock-horizon-sky .clock-sky-night {
-          fill: color-mix(in srgb, #141c3a 78%, transparent);
+          fill: color-mix(in srgb, ${CLOCK_NIGHT_OUTER} 78%, transparent);
         }
         .clock-horizon-sky .clock-sky-deep {
-          fill: color-mix(in srgb, ${CLOCK_NIGHT_BLUE} 88%, transparent);
+          fill: color-mix(in srgb, ${CLOCK_NIGHT_DEEP} 88%, transparent);
         }
         .clock-horizon-sky .clock-horizon-ray {
           stroke: var(--secondary-text-color);
@@ -6036,9 +6045,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     dateBtn.tabIndex = 0;
     const dateLabel = document.createElement("span");
     dateLabel.className = "sun-scrub-date-label";
-    const dateIcon = document.createElement("ha-icon");
-    dateIcon.setAttribute("icon", "mdi:calendar-month-outline");
-    dateBtn.append(dateLabel, dateIcon, pickerHost);
+    dateBtn.append(dateLabel, pickerHost);
     dateBtn.addEventListener("click", () => this._openPreviewDatePicker());
     dateBtn.addEventListener("keydown", (ev) => {
       if (ev.key !== "Enter" && ev.key !== " ") {
@@ -6050,7 +6057,9 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const dateTools = document.createElement("div");
     dateTools.className = "sun-date-tools";
-    dateTools.append(dateBtn, chipRow);
+    // Chips first: left of the date in portrait/table row; above the date in
+    // the landscape rail (column + align-end).
+    dateTools.append(chipRow, dateBtn);
 
     const banner = document.createElement("div");
     banner.className = "sun-location-override";
