@@ -13,5 +13,139 @@
         "description": "Legger Scene Extrapolation til i sidemenyen. Opprett og rediger ekstrapoleringsscener derfra — én integrasjon, så mange rom du trenger."
       }
     }
+  },
+  "frontend": {
+    "title": "Scene Extrapolation",
+    "tabs": {
+      "extrapolation": "Ekstrapoleringsscener",
+      "created": "Opprettede scener"
+    },
+    "empty": {
+      "extrapolation": "Ingen ekstrapoleringsscener ennå. Opprett én for å styre belysningen etter solen.",
+      "created": "Ingen native scener opprettet av Scene Extrapolation ennå. De vises her når du bruker Automatisk oppsett eller Opprett ny scene."
+    },
+    "settings": {
+      "title": "Innstillinger",
+      "intro": "Disse innstillingene gjelder for alle rom. Endringer trer i kraft med en gang.",
+      "hide_created": "Skjul opprettede scener i Home Assistant",
+      "hide_created_helper": "Markerer native scener opprettet av denne integrasjonen som skjulte i HA-grensesnittet (enhetsregisteret). Du kan fortsatt administrere dem her.",
+      "scene_settings": "Sceneinnstillinger",
+      "hidden_in_ha": "Skjult i Home Assistant"
+    },
+    "common": {
+      "untitled": "Uten navn",
+      "no_area": "Ingen sone",
+      "back": "Tilbake",
+      "close": "Lukk",
+      "cancel": "Avbryt",
+      "delete": "Slett",
+      "discard": "Forkast",
+      "keep_editing": "Fortsett å redigere",
+      "choose_scene": "Velg scene",
+      "dismiss": "Avvis",
+      "change": "Endre",
+      "preview": "Forhåndsvis",
+      "search": "Søk",
+      "name": "Navn",
+      "description": "Beskrivelse",
+      "category": "Kategori",
+      "labels": "Etiketter",
+      "date": "Dato",
+      "scene": "Scene",
+      "location": "Sted",
+      "save": "Lagre",
+      "rename": "Gi nytt navn"
+    },
+    "actions": {
+      "live_edit": "Direkte redigering",
+      "table_view": "Tabellvisning",
+      "dial_view": "Urvisning",
+      "preview_location": "Forhåndsvis et annet sted",
+      "use_home_location": "Bruk hjemsted",
+      "reset_sun_now": "Tilbakestill sol til nå"
+    },
+    "draft": {
+      "title": "Fortsetter der du slapp",
+      "detail": "Ulagrede endringer fra en tidligere økt er gjenopprettet."
+    },
+    "location": {
+      "banner": "Forhåndsviser et annet sted",
+      "dialog_title": "Forhåndsvis sted",
+      "search_placeholder": "By eller adresse",
+      "no_matches": "Ingen treff. Prøv et bynavn eller flytt kartet."
+    },
+    "dialogs": {
+      "delete_scene_title": "Slette scene?",
+      "delete_scene_text": "Er du sikker på at du vil slette {name}? Dette fjerner den native Home Assistant-scenen.",
+      "linked_scenes": "Samme scene for daggry, soloppgang og solnedgang",
+      "new_scene_step": "{step}/2 Ny ekstrapoleringsscene",
+      "unsaved_title": "Ulagrede endringer",
+      "unsaved_text": "Du har ulagrede endringer. Forkaste dem?"
+    },
+    "chart": {
+      "fallback_note": "* Tiden bruker et sesongmessig fallback fordi solen ikke står opp eller går ned den dagen.",
+      "choose_scene": "Velg scene",
+      "not_in_scene": "Ikke i en tilordnet scene ennå",
+      "brightness": "Lysstyrke",
+      "brightness_sub": "0–100 % per solhendelse",
+      "overridden_dusk": "{name} bruker tidligste skumring ({solar_time} solskumring)",
+      "seasonal_fallback": "Sesongmessig fallback (ingen ekte solhendelse denne dagen)"
+    },
+    "fields": {
+      "scene_name": {
+        "label": "Scenenavn",
+        "helper": "Navn på ekstrapoleringsscene-enheten"
+      },
+      "area": {
+        "label": "Sone",
+        "helper": "Brukes til å filtrere native Home Assistant-scener og tildele den nye scenen"
+      },
+      "display_scenes_combined": {
+        "label": "Kombinere daggry / soloppgang / solnedgang-scener?",
+        "helper": "Hvis på, konfigurer 3 scener i neste steg. Hvis av, konfigurer 5"
+      },
+      "scene_dawn": {
+        "label": "Daggryscene",
+        "helper": "Første lys (solen 6° under horisonten)"
+      },
+      "scene_sunrise": {
+        "label": "Soloppgangsscene",
+        "helper": "Når solen står opp"
+      },
+      "scene_noon": {
+        "label": "Middagsscene",
+        "helper": "Når solen er på sitt høyeste"
+      },
+      "scene_sunset": {
+        "label": "Solnedgangsscene",
+        "helper": "Når solen går ned"
+      },
+      "scene_dusk": {
+        "label": "Skumringsscene",
+        "helper": "Siste lys (solen 6° under horisonten)"
+      },
+      "scene_dawn_sunrise_sunset": {
+        "label": "Daggry-, soloppgangs- og solnedgangsscene",
+        "helper": "Første lys, soloppgang og solnedgang"
+      },
+      "scene_dusk_minimum_time_of_day": {
+        "label": "Tidligste tid for skumringsscenen",
+        "helper": "For å unngå at lyset dempes for mye, for tidlig"
+      },
+      "nightlights_boolean": {
+        "label": "Nattlys-utløser",
+        "helper": "Når denne input boolean er på, brukes nattlys-scenen i stedet"
+      },
+      "nightlights_scene": {
+        "label": "Nattlys-scene",
+        "helper": "Påkrevd hvis en nattlys-utløser er satt"
+      },
+      "setup_empty_means_auto": {
+        "helper": "La stå tom for å opprette en native scene automatisk for denne hendelsen"
+      }
+    },
+    "defaults": {
+      "automatic_lighting": "Automatisk belysning"
+    }
   }
 }

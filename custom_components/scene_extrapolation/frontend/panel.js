@@ -179,6 +179,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._managedScenes = [];
     this._settings = { hide_managed_native_scenes: false };
     this._listTab = "extrapolation";
+    this._translationsReady = false;
     this._formData = emptyFormData();
     this._entityId = null;
     this._pendingNewForm = null;
@@ -240,6 +241,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._datePicker) {
       this._datePicker.hass = hass;
     }
+    void this._ensureTranslations().then(() => {
+      if (this._built && this._view === "list") {
+        // Pick up language resources once they arrive.
+        this._renderList();
+      }
+    });
     if (!this._built && this.isConnected) {
       this._build();
     }
@@ -2703,25 +2710,40 @@ class SceneExtrapolationPanel extends HTMLElement {
           width: 100%;
           height: ${CHART_HEIGHT}px;
         }
-        .sun-marker {
+        /* Dial-style event buttons anchored on the elevation curve. */
+        .sun-chart .clock-event {
           position: absolute;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          transform: translate(-50%, -100%);
+          inset: auto;
+          left: 0;
+          top: 0;
+          width: 32px;
+          height: 32px;
+          margin: 0;
+          transform: translate(-50%, -50%);
+          z-index: 2;
+        }
+        .sun-chart .clock-event.ghost {
+          width: 22px;
+          height: 22px;
+        }
+        /* List chart: same look, not interactive. */
+        .sun-chart .clock-event.inert {
+          cursor: default;
           pointer-events: none;
-          width: 44px;
+          box-shadow: none;
+          border-color: color-mix(
+            in srgb,
+            var(--divider-color) 70%,
+            var(--primary-text-color) 30%
+          );
+          background: color-mix(
+            in srgb,
+            var(--card-background-color) 88%,
+            var(--primary-text-color) 12%
+          );
         }
-        .sun-marker ha-icon {
-          --mdc-icon-size: 16px;
-          color: var(--primary-text-color);
-          filter: drop-shadow(0 0 3px var(--card-background-color));
-        }
-        .sun-marker .time {
-          font-size: 10px;
-          color: var(--secondary-text-color);
-          font-variant-numeric: tabular-nums;
-          line-height: 1.2;
+        .sun-chart .clock-event.inert.missing {
+          box-shadow: none;
         }
         .sun-hours {
           display: flex;
@@ -2836,10 +2858,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           margin-left: -4.5px;
           margin-top: -4.5px;
           border-radius: 50%;
-          background: var(--card-background-color);
-          border: 2px solid #ffb74d;
+          background: transparent;
+          border: 2px solid var(--secondary-text-color);
           box-sizing: border-box;
           pointer-events: none;
+          opacity: 0.55;
         }
         .sun-dot.clamp-tick {
           width: 6px;
@@ -2984,30 +3007,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-direction: column;
           gap: 8px;
         }
-        .list-tabs {
-          display: flex;
-          gap: 4px;
+        .list-tab-group {
+          display: block;
           margin: 0 0 12px;
-          padding: 4px;
-          border-radius: var(--ha-border-radius-lg, 12px);
-          background: var(--secondary-background-color, rgba(0, 0, 0, 0.12));
-        }
-        .list-tab {
-          flex: 1 1 0;
-          min-width: 0;
-          border: 0;
-          border-radius: var(--ha-border-radius-md, 8px);
-          padding: 10px 12px;
-          background: transparent;
-          color: var(--secondary-text-color);
-          font: inherit;
-          font-weight: 500;
-          cursor: pointer;
-        }
-        .list-tab.active {
-          background: var(--card-background-color);
-          color: var(--primary-text-color);
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+          --ha-tab-indicator-color: var(--primary-color);
         }
         .row.created-scene {
           cursor: pointer;
@@ -3400,6 +3403,40 @@ class SceneExtrapolationPanel extends HTMLElement {
     return value;
   }
 
+  /** Panel/integration string from translations/<lang>.json (frontend.* / config.*). */
+  _t(path, fallback, vars) {
+    return this._loc(`component.${DOMAIN}.${path}`, fallback, vars);
+  }
+
+  _fieldLabel(name) {
+    return this._t(
+      `frontend.fields.${name}.label`,
+      LABELS[name] || name
+    );
+  }
+
+  _fieldHelper(name) {
+    return this._t(
+      `frontend.fields.${name}.helper`,
+      HELPERS[name] || ""
+    );
+  }
+
+  async _ensureTranslations() {
+    if (!this._hass || this._translationsReady) {
+      return;
+    }
+    this._translationsReady = true;
+    try {
+      await Promise.all([
+        this._hass.loadBackendTranslation("frontend", DOMAIN),
+        this._hass.loadBackendTranslation("config", DOMAIN),
+      ]);
+    } catch (_err) {
+      // Fallback English constants remain in _t / LABELS.
+    }
+  }
+
   _render() {
     if (!this._built) {
       return;
@@ -3428,7 +3465,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._sunPath = null;
       this._sunPathKey = undefined;
     }
-    this._headerEl.textContent = "Scene Extrapolation";
+    this._headerEl.textContent = this._t(
+      "frontend.title",
+      "Scene Extrapolation"
+    );
     this._setNavigationIcon(this._menuButton());
     this._contentEl.classList.remove("wide");
     this._syncEditorChrome();
@@ -3444,40 +3484,48 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
 
     const page = document.createElement("div");
-    const tabs = document.createElement("div");
-    tabs.className = "list-tabs";
-    tabs.setAttribute("role", "tablist");
+    const tabs = document.createElement("ha-tab-group");
+    tabs.className = "list-tab-group";
+    tabs.tabOnly = true;
+    tabs.active = this._listTab;
     const tabMeta = [
-      { id: "extrapolation", label: "Extrapolation scenes" },
-      { id: "created", label: "Created scenes" },
+      {
+        id: "extrapolation",
+        label: this._t("frontend.tabs.extrapolation", "Extrapolation scenes"),
+      },
+      {
+        id: "created",
+        label: this._t("frontend.tabs.created", "Created scenes"),
+      },
     ];
     for (const tab of tabMeta) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "list-tab";
-      btn.setAttribute("role", "tab");
-      btn.setAttribute("aria-selected", String(this._listTab === tab.id));
+      const item = document.createElement("ha-tab-group-tab");
+      item.slot = "nav";
+      item.panel = tab.id;
+      item.textContent = tab.label;
       if (this._listTab === tab.id) {
-        btn.classList.add("active");
+        item.active = true;
       }
-      btn.textContent = tab.label;
-      btn.addEventListener("click", () => {
-        if (this._listTab === tab.id) {
-          return;
-        }
-        this._listTab = tab.id;
-        this._renderList();
-      });
-      tabs.appendChild(btn);
+      tabs.appendChild(item);
     }
+    tabs.addEventListener("wa-tab-show", (ev) => {
+      const next = ev.detail?.name;
+      if (!next || next === this._listTab) {
+        return;
+      }
+      this._listTab = next;
+      this._renderList();
+    });
     page.appendChild(tabs);
 
     const wrap = document.createElement("div");
     if (this._listTab === "created") {
       if (!this._managedScenes.length) {
         wrap.className = "empty";
-        wrap.textContent =
-          "No native scenes created by Scene Extrapolation yet. They appear here when you use Automatic setup or Create new scene.";
+        wrap.textContent = this._t(
+          "frontend.empty.created",
+          "No native scenes created by Scene Extrapolation yet. They appear here when you use Automatic setup or Create new scene."
+        );
       } else {
         wrap.className = "list";
         for (const item of this._managedScenes) {
@@ -3486,8 +3534,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     } else if (!this._items.length) {
       wrap.className = "empty";
-      wrap.textContent =
-        "No extrapolation scenes yet. Create one to start lighting a room from the sun.";
+      wrap.textContent = this._t(
+        "frontend.empty.extrapolation",
+        "No extrapolation scenes yet. Create one to start lighting a room from the sun."
+      );
     } else {
       wrap.className = "list";
       for (const item of this._items) {
@@ -3502,7 +3552,7 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _listSettingsButton() {
     const btn = document.createElement("ha-icon-button");
-    btn.label = "Settings";
+    btn.label = this._t("frontend.settings.title", "Settings");
     const icon = document.createElement("ha-icon");
     icon.setAttribute("icon", "mdi:cog");
     btn.appendChild(icon);
@@ -3523,10 +3573,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     meta.className = "meta";
     const name = document.createElement("div");
     name.className = "name";
-    name.textContent = item.scene_name || "Untitled";
+    name.textContent =
+      item.scene_name || this._t("frontend.common.untitled", "Untitled");
     const sub = document.createElement("div");
     sub.className = "sub";
-    sub.textContent = item.area_name || item.entity_id || "No area";
+    sub.textContent =
+      item.area_name ||
+      item.entity_id ||
+      this._t("frontend.common.no_area", "No area");
     meta.append(name, sub);
     row.appendChild(meta);
 
@@ -3551,7 +3605,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     meta.className = "meta";
     const name = document.createElement("div");
     name.className = "name";
-    name.textContent = item.name || item.entity_id || "Untitled";
+    name.textContent =
+      item.name ||
+      item.entity_id ||
+      this._t("frontend.common.untitled", "Untitled");
     const sub = document.createElement("div");
     sub.className = "sub";
     const bits = [];
@@ -3559,7 +3616,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       bits.push(item.area_name);
     }
     if (item.hidden) {
-      bits.push("Hidden in Home Assistant");
+      bits.push(
+        this._t("frontend.settings.hidden_in_ha", "Hidden in Home Assistant")
+      );
     }
     sub.textContent = bits.join(" · ") || item.entity_id || "";
     meta.append(name, sub);
@@ -3568,7 +3627,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     const actions = document.createElement("div");
     actions.className = "row-actions";
     const settingsBtn = document.createElement("ha-icon-button");
-    settingsBtn.label = "Scene settings";
+    settingsBtn.label = this._t(
+      "frontend.settings.scene_settings",
+      "Scene settings"
+    );
     const settingsIcon = document.createElement("ha-icon");
     settingsIcon.setAttribute("icon", "mdi:cog-outline");
     settingsBtn.appendChild(settingsIcon);
@@ -3607,7 +3669,7 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   async _openListSettingsSidebar() {
     const opened = await this._openSceneSidebar({
-      title: "Settings",
+      title: this._t("frontend.settings.title", "Settings"),
       className: "list-settings-dialog",
     });
     if (!opened) {
@@ -3616,8 +3678,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     const { body } = opened;
     const note = document.createElement("p");
     note.className = "sidebar-note";
-    note.textContent =
-      "These settings apply to every room. Changes take effect immediately.";
+    note.textContent = this._t(
+      "frontend.settings.intro",
+      "These settings apply to every room. Changes take effect immediately."
+    );
     body.appendChild(note);
 
     const row = document.createElement("div");
@@ -3625,12 +3689,17 @@ class SceneExtrapolationPanel extends HTMLElement {
     const labelWrap = document.createElement("div");
     const label = document.createElement("div");
     label.className = "name";
-    label.textContent = "Hide created scenes in Home Assistant";
+    label.textContent = this._t(
+      "frontend.settings.hide_created",
+      "Hide created scenes in Home Assistant"
+    );
     const helper = document.createElement("div");
     helper.className = "sidebar-note";
     helper.style.margin = "4px 0 0";
-    helper.textContent =
-      "Marks native scenes created by this integration as hidden in the HA UI (entity registry). You can still manage them here.";
+    helper.textContent = this._t(
+      "frontend.settings.hide_created_helper",
+      "Marks native scenes created by this integration as hidden in the HA UI (entity registry). You can still manage them here."
+    );
     labelWrap.append(label, helper);
     const toggle = document.createElement("ha-switch");
     toggle.checked = Boolean(this._settings?.hide_managed_native_scenes);
@@ -3767,7 +3836,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const liveToggle = document.createElement("label");
     liveToggle.className = "live-edit-toggle";
     const liveLabel = document.createElement("span");
-    liveLabel.textContent = "Live edit";
+    liveLabel.textContent = this._t("frontend.actions.live_edit", "Live edit");
     const liveSwitch = document.createElement("ha-switch");
     liveSwitch.checked = Boolean(this._liveEdit);
     liveSwitch.addEventListener("change", () => {
@@ -3977,7 +4046,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     // Label is the destination view (single toggle in the app bar).
     this._lightViewToggleBtn.textContent =
-      this._lightView === "clock" ? "Table view" : "Dial view";
+      this._lightView === "clock"
+        ? this._t("frontend.actions.table_view", "Table view")
+        : this._t("frontend.actions.dial_view", "Dial view");
     this._lightViewToggleBtn.setAttribute(
       "aria-label",
       this._lightView === "clock" ? "Switch to table view" : "Switch to dial view"
@@ -5226,8 +5297,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     form.hass = this._hass;
     form.data = this._formData;
     form.schema = this._schema();
-    form.computeLabel = (schema) => LABELS[schema.name] || schema.name;
-    form.computeHelper = (schema) => HELPERS[schema.name] || "";
+    form.computeLabel = (schema) => this._fieldLabel(schema.name);
+    form.computeHelper = (schema) => this._fieldHelper(schema.name);
     form.addEventListener("value-changed", (ev) => {
       this._commitUndo();
       this._formData = { ...this._formData, ...ev.detail.value };
@@ -5624,8 +5695,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (event.id === "dusk") {
       const timePicker = document.createElement("ha-selector");
       timePicker.hass = this._hass;
-      timePicker.label = LABELS.scene_dusk_minimum_time_of_day;
-      timePicker.helper = HELPERS.scene_dusk_minimum_time_of_day;
+      timePicker.label = this._fieldLabel("scene_dusk_minimum_time_of_day");
+      timePicker.helper = this._fieldHelper("scene_dusk_minimum_time_of_day");
       timePicker.value = data.duskMinimum;
       timePicker.selector = { time: {} };
       timePicker.addEventListener("value-changed", (ev) => {
@@ -6375,8 +6446,8 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const areaPicker = document.createElement("ha-selector");
     areaPicker.hass = this._hass;
-    areaPicker.label = LABELS.area;
-    areaPicker.helper = HELPERS.area;
+    areaPicker.label = this._fieldLabel("area");
+    areaPicker.helper = this._fieldHelper("area");
     areaPicker.required = true;
     areaPicker.value = data.area;
     areaPicker.selector = { area: {} };
@@ -6685,8 +6756,8 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const picker = document.createElement("ha-selector");
     picker.hass = this._hass;
-    picker.label = LABELS.area;
-    picker.helper = HELPERS.area;
+    picker.label = this._fieldLabel("area");
+    picker.helper = this._fieldHelper("area");
     picker.required = true;
     picker.value = state.area;
     picker.selector = { area: {} };
@@ -6749,7 +6820,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const linkRow = document.createElement("div");
     linkRow.className = "setup-link-row";
     const linkLabel = document.createElement("span");
-    linkLabel.textContent = LABELS.display_scenes_combined;
+    linkLabel.textContent = this._fieldLabel("display_scenes_combined");
     const linkSwitch = document.createElement("ha-switch");
     linkSwitch.checked = state.linked;
     linkSwitch.addEventListener("change", () => {
@@ -6760,7 +6831,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     linkRow.append(linkLabel, linkSwitch);
     const linkHelper = document.createElement("p");
     linkHelper.className = "setup-link-helper";
-    linkHelper.textContent = HELPERS.display_scenes_combined;
+    linkHelper.textContent = this._fieldHelper("display_scenes_combined");
     const slotsHost = document.createElement("div");
     slotsHost.className = "setup-step";
     step2.append(step2Intro, linkRow, linkHelper, slotsHost);
@@ -6831,46 +6902,46 @@ class SceneExtrapolationPanel extends HTMLElement {
         return [
           {
             key: "noon",
-            label: LABELS.scene_noon,
-            helper: `${HELPERS.scene_noon}. ${HELPERS.setup_empty_means_auto}`,
+            label: this._fieldLabel("scene_noon"),
+            helper: `${this._fieldHelper("scene_noon")}. ${this._fieldHelper("setup_empty_means_auto")}`,
           },
           {
             key: "linked",
-            label: LABELS.scene_dawn_sunrise_sunset,
-            helper: `${HELPERS.scene_dawn_sunrise_sunset}. ${HELPERS.setup_empty_means_auto}`,
+            label: this._fieldLabel("scene_dawn_sunrise_sunset"),
+            helper: `${this._fieldHelper("scene_dawn_sunrise_sunset")}. ${this._fieldHelper("setup_empty_means_auto")}`,
           },
           {
             key: "dusk",
-            label: LABELS.scene_dusk,
-            helper: `${HELPERS.scene_dusk}. ${HELPERS.setup_empty_means_auto}`,
+            label: this._fieldLabel("scene_dusk"),
+            helper: `${this._fieldHelper("scene_dusk")}. ${this._fieldHelper("setup_empty_means_auto")}`,
           },
         ];
       }
       return [
         {
           key: "dawn",
-          label: LABELS.scene_dawn,
-          helper: `${HELPERS.scene_dawn}. ${HELPERS.setup_empty_means_auto}`,
+          label: this._fieldLabel("scene_dawn"),
+          helper: `${this._fieldHelper("scene_dawn")}. ${this._fieldHelper("setup_empty_means_auto")}`,
         },
         {
           key: "sunrise",
-          label: LABELS.scene_sunrise,
-          helper: `${HELPERS.scene_sunrise}. ${HELPERS.setup_empty_means_auto}`,
+          label: this._fieldLabel("scene_sunrise"),
+          helper: `${this._fieldHelper("scene_sunrise")}. ${this._fieldHelper("setup_empty_means_auto")}`,
         },
         {
           key: "noon",
-          label: LABELS.scene_noon,
-          helper: `${HELPERS.scene_noon}. ${HELPERS.setup_empty_means_auto}`,
+          label: this._fieldLabel("scene_noon"),
+          helper: `${this._fieldHelper("scene_noon")}. ${this._fieldHelper("setup_empty_means_auto")}`,
         },
         {
           key: "sunset",
-          label: LABELS.scene_sunset,
-          helper: `${HELPERS.scene_sunset}. ${HELPERS.setup_empty_means_auto}`,
+          label: this._fieldLabel("scene_sunset"),
+          helper: `${this._fieldHelper("scene_sunset")}. ${this._fieldHelper("setup_empty_means_auto")}`,
         },
         {
           key: "dusk",
-          label: LABELS.scene_dusk,
-          helper: `${HELPERS.scene_dusk}. ${HELPERS.setup_empty_means_auto}`,
+          label: this._fieldLabel("scene_dusk"),
+          helper: `${this._fieldHelper("scene_dusk")}. ${this._fieldHelper("setup_empty_means_auto")}`,
         },
       ];
     };
@@ -8033,41 +8104,41 @@ class SceneExtrapolationPanel extends HTMLElement {
     const nowElev = interpolateElevation(curve, nowSeconds);
     const horizonY = yOf(0);
     const hourLabels = ["00:00", "06:00", "12:00", "18:00", "24:00"];
-    let dayMaxElev = -Infinity;
-    for (const [, elev] of curve) {
-      dayMaxElev = Math.max(dayMaxElev, elev);
-    }
-    const strokeOf = (elev) => {
-      // Below horizon: minimum. At horizon: maximum. Daytime tapers to min at peak.
-      if (elev < 0) {
-        return CLOCK_SUN_STROKE_MIN_PX;
-      }
-      const span = Math.max(dayMaxElev, 1e-6);
-      const t = Math.min(1, Math.max(0, elev / span));
-      return (
-        CLOCK_SUN_STROKE_MAX_PX -
-        t * (CLOCK_SUN_STROKE_MAX_PX - CLOCK_SUN_STROKE_MIN_PX)
-      );
-    };
+    // Table/list chart: constant stroke — solid day, dashed night.
+    const chartStrokeOf = () => 2;
+    const horizonLook = skyLookFromElevation(0);
+    const rampBottom = Math.min(CHART_HEIGHT - 4, horizonY + 56);
+    const rampHeight = Math.max(0, rampBottom - horizonY);
+    const pathRuns = sunStrokePathRuns(curve, chartStrokeOf)
+      .map((run) => {
+        const d = run.points
+          .map(([seconds, elev], index) => {
+            const x = xOf(seconds).toFixed(1);
+            const y = yOf(elev).toFixed(1);
+            return `${index === 0 ? "M" : "L"}${x} ${y}`;
+          })
+          .join("");
+        if (run.night) {
+          // Night: dashed, slightly stronger than day opacity so it stays
+          // readable over the horizon ramp.
+          return `<path d="${d}" fill="none" stroke="color-mix(in srgb, var(--primary-text-color) 55%, transparent)" stroke-width="2px" stroke-opacity="0.9" stroke-dasharray="5 6" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>`;
+        }
+        return `<path d="${d}" fill="none" stroke="var(--primary-text-color)" stroke-width="2px" stroke-opacity="1" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>`;
+      })
+      .join("");
 
     const svg = `
       <svg viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" preserveAspectRatio="none" aria-hidden="true">
-        <line x1="${PLOT_LEFT}" x2="${PLOT_RIGHT}" y1="${horizonY}" y2="${horizonY}" stroke="var(--divider-color)" stroke-dasharray="4 4" stroke-width="1"/>
-        ${sunStrokePathRuns(curve, strokeOf)
-          .map((run) => {
-            const stroke = run.night
-              ? "var(--secondary-text-color)"
-              : skyLookFromElevation(run.midElev).pathColor;
-            const d = run.points
-              .map(([seconds, elev], index) => {
-                const x = xOf(seconds).toFixed(1);
-                const y = yOf(elev).toFixed(1);
-                return `${index === 0 ? "M" : "L"}${x} ${y}`;
-              })
-              .join("");
-            return `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${run.width}px" stroke-opacity="0.5" stroke-dasharray="8 7" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>`;
-          })
-          .join("")}
+        <defs>
+          <linearGradient id="se-horizon-ramp" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${horizonLook.pathColor}" stop-opacity="0.48"/>
+            <stop offset="55%" stop-color="${horizonLook.pathColor}" stop-opacity="0.14"/>
+            <stop offset="100%" stop-color="${horizonLook.pathColor}" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <rect x="${PLOT_LEFT}" y="${horizonY.toFixed(1)}" width="${PLOT_RIGHT - PLOT_LEFT}" height="${rampHeight.toFixed(1)}" fill="url(#se-horizon-ramp)"/>
+        <line x1="${PLOT_LEFT}" x2="${PLOT_RIGHT}" y1="${horizonY.toFixed(1)}" y2="${horizonY.toFixed(1)}" stroke="color-mix(in srgb, ${horizonLook.pathColor} 55%, var(--primary-text-color) 45%)" stroke-width="1.5" stroke-opacity="0.95" vector-effect="non-scaling-stroke"/>
+        ${pathRuns}
       </svg>
     `;
 
@@ -8089,18 +8160,27 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       const bits = [];
       if (event.overridden) {
-        bits.push(`${event.name} uses the dusk minimum (${event.solar_time} solar dusk)`);
+        bits.push(
+          this._t(
+            "frontend.chart.overridden_dusk",
+            "{name} uses the dusk minimum ({solar_time} solar dusk)",
+            { name: event.name, solar_time: event.solar_time }
+          )
+        );
       }
       if (event.fallback) {
-        bits.push("Seasonal fallback (no real solar event this day)");
+        bits.push(
+          this._t(
+            "frontend.chart.seasonal_fallback",
+            "Seasonal fallback (no real solar event this day)"
+          )
+        );
       }
       if (bits.length) {
         item.title = bits.join(" · ");
       } else {
         item.title = event.name;
       }
-      const icon = document.createElement("ha-icon");
-      icon.setAttribute("icon", event.icon);
       const name = document.createElement("span");
       name.className = "name";
       name.textContent = event.name;
@@ -8119,13 +8199,15 @@ class SceneExtrapolationPanel extends HTMLElement {
       } else {
         time.textContent = event.fallback ? `${event.time}*` : event.time;
       }
-      item.append(icon, name, time);
+      item.append(name, time);
       if (editable) {
         const scene = document.createElement("span");
         scene.className = "scene";
         const sceneId = this._eventSceneId(event.id);
         const sceneName = this._sceneName(sceneId);
-        scene.textContent = sceneName || "Choose scene";
+        scene.textContent =
+          sceneName ||
+          this._t("frontend.chart.choose_scene", "Choose scene");
         if (!sceneName) {
           scene.classList.add("empty");
           item.classList.add("missing");
@@ -8140,42 +8222,62 @@ class SceneExtrapolationPanel extends HTMLElement {
     chart.innerHTML = svg;
     for (const event of events) {
       const markSeconds = this._eventMarkSeconds(event);
-      if (markSeconds == null) {
+      const buttonSeconds = this._eventButtonSeconds(event);
+      if (buttonSeconds == null && markSeconds == null) {
         continue;
       }
-      const markElev = interpolateElevation(curve, markSeconds);
-      const left = `${(xOf(markSeconds) / CHART_WIDTH) * 100}%`;
-      const top = `${yOf(markElev)}px`;
-      const dot = document.createElement("div");
-      dot.className = "sun-dot";
-      dot.style.left = left;
-      dot.style.top = top;
-      const marker = document.createElement("div");
-      marker.className = "sun-marker";
-      marker.style.left = left;
-      marker.style.top = top;
+      const placeSeconds = buttonSeconds ?? markSeconds;
+      const placeElev = interpolateElevation(curve, placeSeconds);
+      const left = `${(xOf(placeSeconds) / CHART_WIDTH) * 100}%`;
+      const top = `${yOf(placeElev)}px`;
+      const sceneId = editable ? this._eventSceneId(event.id) : null;
+      const sceneName = editable ? this._sceneName(sceneId) : null;
+      const btn = document.createElement(editable ? "button" : "div");
+      btn.className = "clock-event";
+      if (!editable) {
+        btn.classList.add("inert");
+      } else {
+        btn.type = "button";
+        btn.dataset.eventId = event.id;
+        if (!sceneName) {
+          btn.classList.add("missing");
+        }
+        if (this._sidebarEventId === event.id) {
+          btn.classList.add("selected");
+          btn.setAttribute("aria-current", "true");
+        }
+        btn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          this._toggleEventSceneDialog(event);
+        });
+      }
+      btn.style.left = left;
+      btn.style.top = top;
+      btn.title = event.name;
       const icon = document.createElement("ha-icon");
       icon.setAttribute("icon", event.icon);
-      marker.appendChild(icon);
-      chart.append(dot, marker);
-      const buttonSeconds = this._eventButtonSeconds(event);
+      btn.appendChild(icon);
+      chart.appendChild(btn);
       if (
         event.overridden &&
+        markSeconds != null &&
         buttonSeconds != null &&
         buttonSeconds !== markSeconds
       ) {
-        const clampElev = interpolateElevation(curve, buttonSeconds);
-        const clampLeftPct = (xOf(buttonSeconds) / CHART_WIDTH) * 100;
-        const clampTopPx = yOf(clampElev);
+        const markElev = interpolateElevation(curve, markSeconds);
         const markLeftPct = (xOf(markSeconds) / CHART_WIDTH) * 100;
         const markTopPx = yOf(markElev);
-        const tick = document.createElement("div");
-        tick.className = "sun-dot clamp-tick";
-        tick.title = `${event.name} scene at ${event.time}`;
-        tick.style.left = `${clampLeftPct}%`;
-        tick.style.top = `${clampTopPx}px`;
-        chart.appendChild(tick);
-        const dyPx = clampTopPx - markTopPx;
+        const ghost = document.createElement("div");
+        ghost.className = "clock-event ghost inert";
+        ghost.style.left = `${markLeftPct}%`;
+        ghost.style.top = `${markTopPx}px`;
+        ghost.setAttribute("aria-hidden", "true");
+        ghost.title = `${event.name} · solar ${event.solar_time || event.time}`;
+        const ghostIcon = document.createElement("ha-icon");
+        ghostIcon.setAttribute("icon", event.icon);
+        ghost.appendChild(ghostIcon);
+        chart.appendChild(ghost);
+        const dyPx = yOf(placeElev) - markTopPx;
         const link = document.createElement("div");
         link.className = "sun-clamp-link";
         link.style.left = `${markLeftPct}%`;
@@ -8186,7 +8288,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           if (!(w > 0)) {
             return;
           }
-          const dx = ((clampLeftPct - markLeftPct) / 100) * w;
+          const dx =
+            ((xOf(placeSeconds) / CHART_WIDTH) * 100 - markLeftPct) / 100 * w;
           link.style.width = `${Math.hypot(dx, dyPx)}px`;
           link.style.transform = `rotate(${(Math.atan2(dyPx, dx) * 180) / Math.PI}deg)`;
         });
@@ -8270,12 +8373,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     } else if (this._dateToolbar) {
       this._dateToolbar.remove();
     }
-    children.push(...(useClock ? [] : [eventsRow]));
+    // Event assignment cards only in the editor; list uses inert chart buttons.
+    children.push(...(useClock || !editable ? [] : [eventsRow]));
     if (events.some((event) => event.fallback)) {
       const note = document.createElement("p");
       note.className = "sun-fallback-note";
-      note.textContent =
-        "* Time uses a seasonal fallback because the sun does not rise or set that day.";
+      note.textContent = this._t(
+        "frontend.chart.fallback_note",
+        "* Time uses a seasonal fallback because the sun does not rise or set that day."
+      );
       children.push(note);
     }
     children.push(readout);
@@ -10202,7 +10308,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (sceneName) {
         sceneEl.textContent = sceneName;
       } else {
-        sceneEl.textContent = "Choose scene";
+        sceneEl.textContent = this._t(
+          "frontend.chart.choose_scene",
+          "Choose scene"
+        );
         sceneEl.classList.add("empty");
       }
       meta.append(heading, sceneEl);

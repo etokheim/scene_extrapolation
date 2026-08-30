@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Panel translations for English, Bokmål, Nynorsk, German, and Spanish (`frontend` + config); agent skill to keep them in sync
+- List tabs use native `ha-tab-group`; table/list sun path uses a solid day stroke, horizon ramp, and dial-style event buttons
 - List page: Extrapolation / Created scenes tabs, settings sidebar to hide created scenes in HA UI, and a fast solar-only sun path chart
 - Create wizard uses config-flow-style guidance and native scene pickers (empty = create automatically)
 - Create-scene wizard: Automatic (Bright/Dimmed/Low lights) or Manual with Automatic slots and brightness-ranked defaults

@@ -13,5 +13,139 @@
         "description": "Fügt Scene Extrapolation zur Seitenleiste hinzu. Erstellen und bearbeiten Sie Extrapolationsszenen dort — eine Integration, so viele Räume wie nötig."
       }
     }
+  },
+  "frontend": {
+    "title": "Scene Extrapolation",
+    "tabs": {
+      "extrapolation": "Extrapolationsszenen",
+      "created": "Erstellte Szenen"
+    },
+    "empty": {
+      "extrapolation": "Noch keine Extrapolationsszenen. Erstellen Sie eine, um die Beleuchtung nach der Sonne zu steuern.",
+      "created": "Noch keine nativen Szenen von Scene Extrapolation. Sie erscheinen hier bei Automatischer Einrichtung oder Neue Szene erstellen."
+    },
+    "settings": {
+      "title": "Einstellungen",
+      "intro": "Diese Einstellungen gelten für alle Räume. Änderungen wirken sofort.",
+      "hide_created": "Erstellte Szenen in Home Assistant ausblenden",
+      "hide_created_helper": "Markiert von dieser Integration erstellte native Szenen in der HA-Oberfläche als ausgeblendet (Entitätsregister). Sie können sie hier weiterhin verwalten.",
+      "scene_settings": "Szeneneinstellungen",
+      "hidden_in_ha": "In Home Assistant ausgeblendet"
+    },
+    "common": {
+      "untitled": "Unbenannt",
+      "no_area": "Kein Bereich",
+      "back": "Zurück",
+      "close": "Schließen",
+      "cancel": "Abbrechen",
+      "delete": "Löschen",
+      "discard": "Verwerfen",
+      "keep_editing": "Weiter bearbeiten",
+      "choose_scene": "Szene wählen",
+      "dismiss": "Schließen",
+      "change": "Ändern",
+      "preview": "Vorschau",
+      "search": "Suchen",
+      "name": "Name",
+      "description": "Beschreibung",
+      "category": "Kategorie",
+      "labels": "Beschriftungen",
+      "date": "Datum",
+      "scene": "Szene",
+      "location": "Standort",
+      "save": "Speichern",
+      "rename": "Umbenennen"
+    },
+    "actions": {
+      "live_edit": "Live-Bearbeitung",
+      "table_view": "Tabellenansicht",
+      "dial_view": "Zifferblattansicht",
+      "preview_location": "Anderen Standort vorschauen",
+      "use_home_location": "Heimatstandort verwenden",
+      "reset_sun_now": "Sonne auf jetzt zurücksetzen"
+    },
+    "draft": {
+      "title": "Weiter dort, wo Sie aufgehört haben",
+      "detail": "Ungespeicherte Änderungen aus einer früheren Sitzung wurden wiederhergestellt."
+    },
+    "location": {
+      "banner": "Vorschau eines anderen Standorts",
+      "dialog_title": "Standortvorschau",
+      "search_placeholder": "Stadt oder Adresse",
+      "no_matches": "Keine Treffer. Versuchen Sie einen Städtenamen oder verschieben Sie die Karte."
+    },
+    "dialogs": {
+      "delete_scene_title": "Szene löschen?",
+      "delete_scene_text": "Möchten Sie {name} wirklich löschen? Dadurch wird die native Home Assistant-Szene entfernt.",
+      "linked_scenes": "Dieselbe Szene für Dämmerung, Sonnenaufgang und Sonnenuntergang",
+      "new_scene_step": "{step}/2 Neue Extrapolationsszene",
+      "unsaved_title": "Ungespeicherte Änderungen",
+      "unsaved_text": "Sie haben ungespeicherte Änderungen. Verwerfen?"
+    },
+    "chart": {
+      "fallback_note": "* Die Zeit nutzt einen saisonalen Fallback, weil die Sonne an diesem Tag nicht auf- oder untergeht.",
+      "choose_scene": "Szene wählen",
+      "not_in_scene": "Noch keiner Szene zugewiesen",
+      "brightness": "Helligkeit",
+      "brightness_sub": "0–100 % nach Sonnenereignis",
+      "overridden_dusk": "{name} nutzt die früheste Dämmerung ({solar_time} solare Dämmerung)",
+      "seasonal_fallback": "Saisonaler Fallback (kein echtes Sonnenereignis an diesem Tag)"
+    },
+    "fields": {
+      "scene_name": {
+        "label": "Szenenname",
+        "helper": "Name der Extrapolationsszenen-Entität"
+      },
+      "area": {
+        "label": "Bereich",
+        "helper": "Filtert native Home Assistant-Szenen und weist die neue Szene zu"
+      },
+      "display_scenes_combined": {
+        "label": "Dämmerung / Sonnenaufgang / Sonnenuntergang kombinieren?",
+        "helper": "Wenn an, konfigurieren Sie 3 Szenen im nächsten Schritt. Wenn aus, 5"
+      },
+      "scene_dawn": {
+        "label": "Dämmerungsszene",
+        "helper": "Erstes Licht (Sonne 6° unter dem Horizont)"
+      },
+      "scene_sunrise": {
+        "label": "Sonnenaufgangsszene",
+        "helper": "Wenn die Sonne aufgeht"
+      },
+      "scene_noon": {
+        "label": "Mittagsszene",
+        "helper": "Wenn die Sonne am höchsten steht"
+      },
+      "scene_sunset": {
+        "label": "Sonnenuntergangsszene",
+        "helper": "Wenn die Sonne untergeht"
+      },
+      "scene_dusk": {
+        "label": "Abenddämmerungsszene",
+        "helper": "Letztes Licht (Sonne 6° unter dem Horizont)"
+      },
+      "scene_dawn_sunrise_sunset": {
+        "label": "Dämmerungs-, Sonnenaufgangs- und Sonnenuntergangsszene",
+        "helper": "Erstes Licht, Sonnenaufgang und Sonnenuntergang"
+      },
+      "scene_dusk_minimum_time_of_day": {
+        "label": "Früheste Zeit für die Abenddämmerungsszene",
+        "helper": "Damit das Licht nicht zu früh zu stark gedimmt wird"
+      },
+      "nightlights_boolean": {
+        "label": "Nachtlicht-Auslöser",
+        "helper": "Wenn dieser Input Boolean an ist, wird die Nachtlicht-Szene verwendet"
+      },
+      "nightlights_scene": {
+        "label": "Nachtlicht-Szene",
+        "helper": "Erforderlich, wenn ein Nachtlicht-Auslöser gesetzt ist"
+      },
+      "setup_empty_means_auto": {
+        "helper": "Leer lassen, um für dieses Ereignis automatisch eine native Szene zu erstellen"
+      }
+    },
+    "defaults": {
+      "automatic_lighting": "Automatische Beleuchtung"
+    }
   }
 }

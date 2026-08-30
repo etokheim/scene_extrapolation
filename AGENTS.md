@@ -11,6 +11,7 @@ Custom Home Assistant integration in `custom_components/scene_extrapolation/`. T
 - **HA Jinja templates** — follow [`.cursor/skills/home-assistant-templates/SKILL.md`](.cursor/skills/home-assistant-templates/SKILL.md); update that skill when you find new quirks.
 - **HA REST API** — local sandbox at `http://127.0.0.1:8123`; auth via `cursor_ha_token` in `dev/config/secrets.yaml`. See [`.cursor/skills/home-assistant-api/SKILL.md`](.cursor/skills/home-assistant-api/SKILL.md).
 - **Releases** — [`.cursor/skills/create-release/SKILL.md`](.cursor/skills/create-release/SKILL.md). Sidebar/store is a minor with automatic migration, not a breaking reconfigure.
+- **Translations** — panel/config copy in `translations/{en,nb,nn,de,es}.json`; keep languages in sync — [`.cursor/skills/panel-translations/SKILL.md`](.cursor/skills/panel-translations/SKILL.md).
 - **Secrets** — never dump tokens, `.env`, or HA `.storage` credentials; disclose any accidental secret read immediately. See [`.cursor/rules/secrets-handling.mdc`](.cursor/rules/secrets-handling.mdc).
 
 ## Local sandbox

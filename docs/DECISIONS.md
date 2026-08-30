@@ -381,3 +381,24 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Decision:** Panel list settings sidebar exposes `hide_managed_native_scenes`. When on, managed native scenes get `hidden_by=INTEGRATION` in the entity registry (and new creates honor it). Toggle off clears integration hides. Never override `hidden_by=USER`. Store stays at storage version 1 with additive keys — do not bump version without a Store migrate_func.
 - **Why:** HA has no per-integration “hide my entities” config entry option that covers dynamically created YAML scenes; registry `hidden_by` is the supported UI hide.
 - **Do not reverse without user ask.**
+
+## Panel copy uses HA backend translations (en/nb/nn/de/es)
+
+- **Date:** 2026-08-30
+- **Decision:** User-visible panel strings live under `translations/<lang>.json` → `frontend.*` (plus existing `config.*`). The panel loads them with `hass.loadBackendTranslation("frontend"|"config", DOMAIN)` and resolves via `_t("frontend…", englishFallback)`. Keep en/nb/nn/de/es key trees identical; see `.cursor/skills/panel-translations/SKILL.md`.
+- **Why:** Custom integrations cannot use Lokalise/`strings.json`; shipping full language files matches HA’s custom-integration i18n path and the user’s language set.
+- **Do not reverse without user ask.**
+
+## List tabs use ha-tab-group
+
+- **Date:** 2026-08-30
+- **Decision:** Scene list tabs are native `ha-tab-group` / `ha-tab-group-tab` (`tabOnly`, `wa-tab-show`), not custom buttons.
+- **Why:** Matches HA chrome (automation traces, etc.) and stays consistent when the design system moves.
+- **Do not reverse without user ask.**
+
+## Table/list sun path: solid day stroke, horizon ramp, dial event buttons
+
+- **Date:** 2026-08-30
+- **Decision:** Linear sun chart (list + table view): daytime path is a single solid `primary-text-color` stroke; night stays dashed with a stronger muted text mix for readability over the horizon wash. Horizon is a top border plus a peach ramp fading downward. Solar events are dial-style `clock-event` buttons on the curve (interactive in the editor; `inert` on the list). Dial clock path styling is unchanged.
+- **Why:** Colored/variable dashed day strokes and tiny dots read poorly; dial buttons unify event affordances across views.
+- **Do not reverse without user ask.**
