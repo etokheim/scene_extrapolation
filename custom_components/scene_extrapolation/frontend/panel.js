@@ -959,9 +959,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 0;
           pointer-events: none;
         }
-        /* Soft → sharp: no feather / soft-expand so bands sit edge-to-edge. */
+        /* Soft → sharp: no feather / soft-expand so bands sit edge-to-edge.
+           Include :has(.hovered) so touch scrub (no :hover) matches mouse. */
         .sun-light-clock-rings:hover,
-        .sun-light-clock-rings:has(.clock-ring.selected) {
+        .sun-light-clock-rings:has(.clock-ring.selected),
+        .sun-light-clock-rings:has(.clock-ring.hovered) {
           --clock-feather: 0%;
           --ring-soft-expand: 0%;
         }
@@ -1050,7 +1052,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Dim only siblings — :is/:has dimming outranked .hovered/.selected
            opacity:1 when applied to every .clock-ring. */
-        .sun-light-clock-rings:is(:hover, :has(.clock-ring.selected))
+        .sun-light-clock-rings:is(
+            :hover,
+            :has(.clock-ring.selected),
+            :has(.clock-ring.hovered)
+          )
           .clock-ring:not(.hovered):not(.selected) {
           opacity: 0.5;
         }
@@ -8900,6 +8906,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       const light = this._lightAtClockPointer(ev, ringsHost, ringLights);
       setHoveredRing(light?.entity_id || null);
     };
+    // Touch/pen: open on release (click is unreliable after preventDefault).
+    let suppressRingClick = false;
     ringsHost.addEventListener("pointerdown", (ev) => {
       // Touch has no hover: capture so move events keep updating the band.
       if (ev.pointerType === "touch" || ev.pointerType === "pen") {
@@ -8916,13 +8924,34 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
     ringsHost.addEventListener("pointermove", updateRingHover);
     ringsHost.addEventListener("pointerup", (ev) => {
-      // Touch/pen have no persistent hover — clear when the finger lifts.
       if (ev.pointerType === "touch" || ev.pointerType === "pen") {
+        const light = this._lightAtClockPointer(ev, ringsHost, ringLights);
+        if (light) {
+          openRingAt(ev, light);
+          suppressRingClick = true;
+        }
         setHoveredRing(null);
+        if (ringsHost.hasPointerCapture?.(ev.pointerId)) {
+          try {
+            ringsHost.releasePointerCapture(ev.pointerId);
+          } catch (_err) {
+            /* optional */
+          }
+        }
       }
     });
-    ringsHost.addEventListener("pointercancel", () => {
+    ringsHost.addEventListener("pointercancel", (ev) => {
       setHoveredRing(null);
+      if (
+        (ev.pointerType === "touch" || ev.pointerType === "pen") &&
+        ringsHost.hasPointerCapture?.(ev.pointerId)
+      ) {
+        try {
+          ringsHost.releasePointerCapture(ev.pointerId);
+        } catch (_err) {
+          /* optional */
+        }
+      }
     });
     ringsHost.addEventListener("pointerleave", (ev) => {
       // With capture, leave can fire mid-drag; only clear when not captured.
@@ -8959,6 +8988,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     ringsHost.addEventListener("click", (ev) => {
       // Always stop: planet clicks must not hit the outside-deselect listener.
       ev.stopPropagation();
+      if (suppressRingClick) {
+        suppressRingClick = false;
+        return;
+      }
       openRingAt(ev, this._lightAtClockPointer(ev, ringsHost, ringLights));
     });
     ringsHost.tabIndex = 0;
