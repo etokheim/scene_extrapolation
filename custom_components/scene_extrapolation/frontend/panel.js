@@ -1180,12 +1180,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-ring.selected.hovered {
           z-index: 7;
         }
-        /* Friendly name just above the light-ring planet (not the face chrome). */
+        /* Friendly name flush above the outer light-ring edge (rings are inset
+           inside the core; do not anchor to --clock-chrome / face chrome). */
         .clock-ring-hover-name {
           position: absolute;
           left: 50%;
-          top: var(--clock-chrome);
-          transform: translate(-50%, calc(-100% - 8px));
+          top: ${CLOCK_RINGS_INSET_PCT}%;
+          transform: translate(-50%, -100%);
           z-index: 10;
           pointer-events: none;
           max-width: min(80%, 14rem);
@@ -5501,6 +5502,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
 
+    // Highlight before any await (sidebar swap is ~160ms). Otherwise clearing
+    // ring hover (touch pointerup / leave) re-lights the previous .selected
+    // band for a frame and reads as a flash.
+    const previousLightId = this._sidebarLightId;
+    this._setSidebarLight(light.entity_id);
+    this._clearClockRingHover();
+
     const snapshot = this._snapshotLight(light.entity_id);
     const attrs = this._hass.states[light.entity_id]?.attributes || {};
     const supported = attrs.supported_color_modes || [];
@@ -5649,13 +5657,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       },
     });
     if (!opened) {
+      this._setSidebarLight(previousLightId);
       return;
     }
     this._liveEditSidebarHandler = onLiveEditChange;
     this._setSidebarEvent(event.id);
     const { host, header, body, footer } = opened;
     host._lightEntityId = light.entity_id;
-    this._setSidebarLight(light.entity_id);
     const subtitleEl = header.querySelector("[slot='subtitle']");
     const chipsHost = document.createElement("div");
     const brightnessGraphMount = document.createElement("div");
@@ -9201,9 +9209,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     hoverName.className = "clock-ring-hover-name";
     hoverName.setAttribute("aria-live", "polite");
     hoverName.hidden = true;
-    // On the face (above the dial), not inside the rings host — glow clones
-    // copy ringsHost and must not duplicate the label.
-    face.appendChild(hoverName);
+    // On the core (not ringsHost — glow clones copy ringsHost). Positioned at
+    // the rings inset so the pill sits flush above the outer light ring.
     const setHoveredRing = (entityId) => {
       let label = "";
       for (const ring of ringsHost.querySelectorAll(".clock-ring")) {
@@ -9296,6 +9303,11 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (!light) {
         return;
       }
+      // Clicking the already-selected ring deselects and closes the sidebar.
+      if (light.entity_id === this._sidebarLightId) {
+        this._requestCloseSceneSidebar();
+        return;
+      }
       const assigned = events.filter((item) => this._eventSceneId(item.id));
       if (!assigned.length) {
         return;
@@ -9379,7 +9391,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     glowLayer.append(glowLg, glowMd);
     this._clockSkyGlow = glowLg;
     this._clockGlowLayer = glowLayer;
-    core.append(ringsHost);
+    core.append(ringsHost, hoverName);
 
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("class", "sun-light-clock-overlay");
@@ -10385,38 +10397,41 @@ function lerpNumber(from, to, t) {
 function interpolateDraftSample(fromDraft, toDraft, t) {
   const fromKind = inferDraftColorKind(fromDraft);
   const toKind = inferDraftColorKind(toDraft);
-  const kind = t >= 0.5 ? toKind || fromKind : fromKind || toKind;
-  if (kind === "temp") {
-    const fromK = fromDraft?.color_temp_kelvin;
-    const toK = toDraft?.color_temp_kelvin;
-    const start = fromK != null ? fromK : toK;
-    const end = toK != null ? toK : fromK;
-    if (start == null || end == null) {
-      return { rgb: draftRgb(t < 0.5 ? fromDraft : toDraft) };
+  // Same kind: channel-native lerp. Different kinds: RGB-lerp endpoints so the
+  // wheel path / preview does not snap at the old 50% mode switch.
+  if (fromKind && toKind && fromKind === toKind) {
+    if (fromKind === "temp") {
+      const fromK = fromDraft?.color_temp_kelvin;
+      const toK = toDraft?.color_temp_kelvin;
+      const start = fromK != null ? fromK : toK;
+      const end = toK != null ? toK : fromK;
+      if (start == null || end == null) {
+        return { rgb: draftRgb(t < 0.5 ? fromDraft : toDraft) };
+      }
+      const kelvin = lerpNumber(start, end, t);
+      return { kelvin, rgb: hueTempToRgb(kelvin) };
     }
-    const kelvin = lerpNumber(start, end, t);
-    return { kelvin, rgb: hueTempToRgb(kelvin) };
-  }
-  if (kind === "hs") {
-    const start = fromDraft?.hs_color || toDraft?.hs_color;
-    const end = toDraft?.hs_color || fromDraft?.hs_color;
-    if (!start || !end) {
-      return { rgb: draftRgb(t < 0.5 ? fromDraft : toDraft) };
+    if (fromKind === "hs") {
+      const start = fromDraft?.hs_color || toDraft?.hs_color;
+      const end = toDraft?.hs_color || fromDraft?.hs_color;
+      if (!start || !end) {
+        return { rgb: draftRgb(t < 0.5 ? fromDraft : toDraft) };
+      }
+      const hs = [lerpNumber(start[0], end[0], t), lerpNumber(start[1], end[1], t)];
+      return { hs, rgb: hsv2rgb(hs[0], hs[1] / 100, 1) };
     }
-    const hs = [lerpNumber(start[0], end[0], t), lerpNumber(start[1], end[1], t)];
-    return { hs, rgb: hsv2rgb(hs[0], hs[1] / 100, 1) };
-  }
-  if (kind === "rgbw" && fromDraft?.rgbw_color && toDraft?.rgbw_color) {
-    const rgbw = fromDraft.rgbw_color.map((value, index) =>
-      lerpNumber(value, toDraft.rgbw_color[index], t)
-    );
-    return { rgb: rgbw.slice(0, 3) };
-  }
-  if (kind === "rgbww" && fromDraft?.rgbww_color && toDraft?.rgbww_color) {
-    const rgbww = fromDraft.rgbww_color.map((value, index) =>
-      lerpNumber(value, toDraft.rgbww_color[index], t)
-    );
-    return { rgb: rgbww.slice(0, 3) };
+    if (fromKind === "rgbw" && fromDraft?.rgbw_color && toDraft?.rgbw_color) {
+      const rgbw = fromDraft.rgbw_color.map((value, index) =>
+        lerpNumber(value, toDraft.rgbw_color[index], t)
+      );
+      return { rgb: rgbw.slice(0, 3) };
+    }
+    if (fromKind === "rgbww" && fromDraft?.rgbww_color && toDraft?.rgbww_color) {
+      const rgbww = fromDraft.rgbww_color.map((value, index) =>
+        lerpNumber(value, toDraft.rgbww_color[index], t)
+      );
+      return { rgb: rgbww.slice(0, 3) };
+    }
   }
   const start = draftRgb(fromDraft);
   const end = draftRgb(toDraft);

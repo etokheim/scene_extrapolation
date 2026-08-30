@@ -73,6 +73,12 @@ from .const import (
     SCENE_SUNRISE,
     SCENE_SUNSET,
 )
+from .color_math import (
+    blend_entity_rgb,
+    infer_color_mode,
+    normalize_color_mode,
+    same_color_mode,
+)
 from .solar import EVENT_ORDER, dusk_start_seconds, resolve_solar_events
 
 DAY_PERCENT_STEP = 100.0 / (len(EVENT_ORDER) - 1)
@@ -1022,21 +1028,26 @@ async def extrapolate_entities(
         elif ATTR_COLOR_MODE not in to_entity and ATTR_COLOR_MODE in from_entity:
             to_entity[ATTR_COLOR_MODE] = from_entity[ATTR_COLOR_MODE]
 
-        # Set the color mode we're actually going to extrapolate
-        final_color_mode = None
-        from_color_mode = from_entity.get(ATTR_COLOR_MODE)
-        to_color_mode = to_entity.get(ATTR_COLOR_MODE)
-        if ATTR_COLOR_MODE in from_entity or ATTR_COLOR_MODE in to_entity:
-            if scene_transition_progress_percent >= 50:
-                final_color_mode = to_color_mode
-            else:
-                final_color_mode = from_color_mode
+        from_color_mode = from_entity.get(ATTR_COLOR_MODE) or infer_color_mode(
+            from_entity
+        )
+        to_color_mode = to_entity.get(ATTR_COLOR_MODE) or infer_color_mode(to_entity)
+        # Same mode: channel-native lerp. Different modes: RGB-lerp endpoints and
+        # write rgb_color so live apply does not snap at the old 50% mode flip.
+        cross_mode = bool(from_color_mode or to_color_mode) and not same_color_mode(
+            from_color_mode, to_color_mode
+        )
+        final_color_mode = (
+            None
+            if cross_mode
+            else normalize_color_mode(from_color_mode or to_color_mode)
+        )
 
         if final_color_mode or from_color_mode or to_color_mode:
             _LOGGER.debug(
                 "    Color mode: %s → %s → %s",
                 from_color_mode or "?",
-                final_color_mode or "?",
+                "rgb-blend" if cross_mode else (final_color_mode or "?"),
                 to_color_mode or "?",
             )
 
@@ -1050,12 +1061,17 @@ async def extrapolate_entities(
                 brightness_modifier,
             )
 
-        if final_color_mode in (ColorMode.COLOR_TEMP, ATTR_COLOR_TEMP_KELVIN):
+        if cross_mode:
+            rgb = blend_entity_rgb(
+                from_entity, to_entity, scene_transition_progress_percent
+            )
+            final_entity[ATTR_RGB_COLOR] = list(rgb)
+        elif final_color_mode in (ColorMode.COLOR_TEMP, ATTR_COLOR_TEMP_KELVIN):
             final_entity[ATTR_COLOR_TEMP_KELVIN] = extrapolate_temp_kelvin(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
 
-        elif final_color_mode == ATTR_RGB_COLOR:
+        elif final_color_mode in (ColorMode.RGB, ATTR_RGB_COLOR):
             final_entity[ATTR_RGB_COLOR] = extrapolate_rgb(
                 from_entity, to_entity, final_entity, scene_transition_progress_percent
             )
@@ -1281,7 +1297,7 @@ def extrapolate_temp_kelvin(
         final_color_temp_kelvin,
         to_color_temp_kelvin,
         from_entity.get(ATTR_BRIGHTNESS, "?"),
-        final_entity[ATTR_BRIGHTNESS],
+        final_entity.get(ATTR_BRIGHTNESS, "?"),
         to_entity.get(ATTR_BRIGHTNESS, "?"),
     )
 
@@ -1320,7 +1336,7 @@ def extrapolate_rgb(
         rgb_extrapolated,
         to_rgb,
         from_entity.get(ATTR_BRIGHTNESS, "?"),
-        final_entity[ATTR_BRIGHTNESS],
+        final_entity.get(ATTR_BRIGHTNESS, "?"),
         to_entity.get(ATTR_BRIGHTNESS, "?"),
     )
 
@@ -1362,7 +1378,7 @@ def extrapolate_hs(
         final_hs,
         to_hs,
         from_entity.get(ATTR_BRIGHTNESS, "?"),
-        final_entity[ATTR_BRIGHTNESS],
+        final_entity.get(ATTR_BRIGHTNESS, "?"),
         to_entity.get(ATTR_BRIGHTNESS, "?"),
     )
 
@@ -1398,7 +1414,7 @@ def extrapolate_rgbw(
         rgbw_extrapolated,
         to_rgbw,
         from_entity.get(ATTR_BRIGHTNESS, "?"),
-        final_entity[ATTR_BRIGHTNESS],
+        final_entity.get(ATTR_BRIGHTNESS, "?"),
         to_entity.get(ATTR_BRIGHTNESS, "?"),
     )
 
@@ -1445,7 +1461,7 @@ def extrapolate_rgbww(
         rgbww_extrapolated,
         to_rgbww,
         from_entity.get(ATTR_BRIGHTNESS, "?"),
-        final_entity[ATTR_BRIGHTNESS],
+        final_entity.get(ATTR_BRIGHTNESS, "?"),
         to_entity.get(ATTR_BRIGHTNESS, "?"),
     )
 

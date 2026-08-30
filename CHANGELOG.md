@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Dial hover name sits flush above the outer light ring; clicking the selected ring closes the sidebar
+- Dial ring selection updates before the light-sidebar swap so the previous ring does not flash
+- Cross-mode color blends (e.g. color_temp ↔ HS/RGB) lerp in RGB instead of flipping mode at 50%
 - Dial light list uses HA-style cards with each entity’s state icon in a tinted circle (max 500px wide)
 - New extrapolation scenes with an area but no native scenes yet still show suggested area lights (dial/table no longer blank)
 - Horizon glow peach↔sky and day-wedge alpha blend smoothly with elevation (no mid-morning snap)
