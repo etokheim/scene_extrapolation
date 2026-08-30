@@ -1342,10 +1342,27 @@ class SceneExtrapolationPanel extends HTMLElement {
           padding: 2px 8px;
           border-radius: 8px;
         }
+        .clock-legend-row.interactive {
+          cursor: pointer;
+        }
+        .clock-legend-row.interactive:hover {
+          background: color-mix(
+            in srgb,
+            var(--primary-color) 10%,
+            transparent
+          );
+        }
         .clock-legend-row.selected {
           background: color-mix(
             in srgb,
             var(--primary-color) 16%,
+            transparent
+          );
+        }
+        .clock-legend-row.interactive.selected:hover {
+          background: color-mix(
+            in srgb,
+            var(--primary-color) 20%,
             transparent
           );
         }
@@ -4288,7 +4305,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     for (const row of root.querySelectorAll(
       ".clock-legend-row[data-entity-id]"
     )) {
-      row.classList.toggle("selected", row.dataset.entityId === selected);
+      const on = row.dataset.entityId === selected;
+      row.classList.toggle("selected", on);
+      if (on) {
+        row.setAttribute("aria-current", "true");
+      } else {
+        row.removeAttribute("aria-current");
+      }
     }
     for (const row of root.querySelectorAll(".light-row[data-entity-id]")) {
       const on = row.dataset.entityId === selected;
@@ -8938,6 +8961,32 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     row.appendChild(name);
     if (this._view === "edit" && !suggested) {
+      const assigned = events.filter((item) => this._eventSceneId(item.id));
+      if (assigned.length) {
+        row.classList.add("interactive");
+        row.setAttribute("role", "button");
+        row.tabIndex = 0;
+        row.setAttribute("aria-label", `Edit ${light.name}`);
+        const openClosest = (ev) => {
+          ev.stopPropagation();
+          const seconds =
+            this._clockSunDisplayedSeconds ??
+            this._clockStickySeconds ??
+            this._clockSunIdleSeconds();
+          const closest = this._closestEvent(assigned, seconds);
+          if (closest) {
+            this._openLightEditDialog(light, closest);
+          }
+        };
+        row.addEventListener("click", openClosest);
+        row.addEventListener("keydown", (ev) => {
+          if (ev.key !== "Enter" && ev.key !== " ") {
+            return;
+          }
+          ev.preventDefault();
+          openClosest(ev);
+        });
+      }
       const remove = document.createElement("ha-icon-button");
       remove.className = "light-remove";
       remove.label = `Remove ${light.name} from scenes`;
