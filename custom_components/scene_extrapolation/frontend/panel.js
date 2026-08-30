@@ -4984,15 +4984,23 @@ class SceneExtrapolationPanel extends HTMLElement {
         present = true;
         stored = { ...draftEntity };
       } else {
-        present = (light.event_states || []).some(
+        // Prefer the assigned scene id; fall back to this solar event's row so a
+        // reassigned/shared scene still resolves membership.
+        const byScene = (light.event_states || []).find(
           (row) => row.scene_entity_id === item.sceneId && row.present
         );
-        stored = present
-          ? (light.event_states || []).find(
-              (row) => row.scene_entity_id === item.sceneId && row.present
+        const byEvent =
+          byScene ||
+          (light.event_states || []).find(
+            (row) =>
+              item.events.some((ev) => ev.id === row.event) && row.present
+          );
+        present = Boolean(byEvent);
+        stored = byEvent
+          ? byEvent.state ||
+            (light.event_states || []).find(
+              (row) => row.event === item.event.id
             )?.state ||
-            (light.event_states || []).find((row) => row.event === item.event.id)
-              ?.state ||
             { state: "off" }
           : null;
       }
@@ -5166,10 +5174,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         const name = document.createElement("span");
         name.className = "name";
         name.textContent = this._sceneName(item.sceneId);
-        const when = document.createElement("span");
-        when.className = "time";
-        when.textContent = item.events.map((entry) => entry.name).join(" · ");
-        btn.append(icon, name, when);
+        btn.append(icon, name);
         btn.addEventListener("click", () => {
           if (item.sceneId !== sceneEntityId()) {
             host._switchLightEvent(item.event);
@@ -5245,11 +5250,30 @@ class SceneExtrapolationPanel extends HTMLElement {
             }
             let entry = drafts.get(sceneId);
             if (!entry) {
-              // Scene assigned but not yet in uniqueScenes snapshot — stub it.
+              // Scene assigned after sidebar open — resolve membership from
+              // preview rows / session drafts (do not stub as non-member).
+              const draftEntity =
+                this._nativeDrafts[sceneId]?.entities?.[light.entity_id];
+              let present;
+              let stored;
+              if (draftEntity === null) {
+                present = false;
+                stored = null;
+              } else if (draftEntity) {
+                present = true;
+                stored = { ...draftEntity };
+              } else {
+                const row = (light.event_states || []).find(
+                  (itemRow) =>
+                    itemRow.scene_entity_id === sceneId && itemRow.present
+                );
+                present = Boolean(row);
+                stored = row?.state || { state: "off" };
+              }
               entry = {
-                draft: null,
-                saved: "absent",
-                member: false,
+                draft: present ? { ...stored } : null,
+                saved: present ? lightDraftFingerprint(stored) : "absent",
+                member: present,
                 event: item,
                 index: drafts.size + 1,
               };
@@ -5400,7 +5424,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     noteIcon.setAttribute("icon", "mdi:information-outline");
     const noteText = document.createElement("span");
     noteText.textContent =
-      "Edits here change this lamp in the related native scene. Graphs update immediately. Save the extrapolation scene to keep the changes.";
+      "Edits here change this light in the related native scene. Graphs update immediately. Save the extrapolation scene to keep the changes.";
     note.append(noteIcon, noteText);
     footer.appendChild(note);
 
@@ -7054,12 +7078,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._hoverSeconds = undefined;
     this._clockSunLive = false;
     const now = nowSecondsSinceMidnight();
-    this._moveClockSunTo(now, { durationMs: 420 });
+    this._moveClockSunTo(now, { durationMs: 840 });
     this._fillHoverReadout(now, { hovering: false });
   }
 
   /** Ease the sun along the path when it relocates (event pin, reset, etc.). */
-  _moveClockSunTo(toSeconds, { durationMs = 380 } = {}) {
+  _moveClockSunTo(toSeconds, { durationMs = 760 } = {}) {
     if (!this._clockSunEl || toSeconds == null) {
       return;
     }
@@ -8080,7 +8104,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           )
         ) >= 1
       ) {
-        this._moveClockSunTo(finalSeconds, { durationMs: 1000 });
+        this._moveClockSunTo(finalSeconds, { durationMs: 2000 });
       } else {
         this._applyClockSunAppearance(finalSeconds);
       }
@@ -9226,14 +9250,16 @@ function createLightBrightnessGraph({
   onDragEnd,
 }) {
   // Full-bleed plot — 0/100% live in the heading subtext, not axis labels.
-  const WIDTH = 300;
+  // Height stays fixed in CSS (120px); viewBox width tracks the element so
+  // circles stay round when the sidebar grows (no aspect-ratio lock).
   const HEIGHT = 120;
   const PAD_L = 8;
   const PAD_R = 8;
   const PAD_T = 14;
   const PAD_B = 22;
-  const PLOT_W = WIDTH - PAD_L - PAD_R;
   const PLOT_H = HEIGHT - PAD_T - PAD_B;
+  let plotW = 300 - PAD_L - PAD_R;
+  let viewW = 300;
 
   const el = document.createElement("div");
   el.className = "light-brightness-graph";
@@ -9251,8 +9277,8 @@ function createLightBrightnessGraph({
   heading.append(title, sub);
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", `0 0 ${WIDTH} ${HEIGHT}`);
-  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("viewBox", `0 0 ${viewW} ${HEIGHT}`);
+  svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
 
   const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
   const gradient = document.createElementNS(
@@ -9264,7 +9290,7 @@ function createLightBrightnessGraph({
   gradient.setAttribute("gradientUnits", "userSpaceOnUse");
   gradient.setAttribute("x1", String(PAD_L));
   gradient.setAttribute("y1", "0");
-  gradient.setAttribute("x2", String(PAD_L + PLOT_W));
+  gradient.setAttribute("x2", String(PAD_L + plotW));
   gradient.setAttribute("y2", "0");
   defs.appendChild(gradient);
 
@@ -9272,7 +9298,7 @@ function createLightBrightnessGraph({
   frame.setAttribute("class", "bg-frame");
   frame.setAttribute("x", String(PAD_L));
   frame.setAttribute("y", String(PAD_T));
-  frame.setAttribute("width", String(PLOT_W));
+  frame.setAttribute("width", String(plotW));
   frame.setAttribute("height", String(PLOT_H));
   frame.setAttribute("rx", "6");
 
@@ -9292,9 +9318,17 @@ function createLightBrightnessGraph({
   let drag = null;
   let dragNode = null;
 
+  const applyLayout = (widthPx) => {
+    viewW = Math.max(Math.round(widthPx) || 300, 120);
+    plotW = Math.max(viewW - PAD_L - PAD_R, 40);
+    svg.setAttribute("viewBox", `0 0 ${viewW} ${HEIGHT}`);
+    frame.setAttribute("width", String(plotW));
+    gradient.setAttribute("x2", String(PAD_L + plotW));
+  };
+
   const xOf = (seconds, minS, maxS) => {
     const span = maxS - minS || 1;
-    return PAD_L + ((seconds - minS) / span) * PLOT_W;
+    return PAD_L + ((seconds - minS) / span) * plotW;
   };
   const yOf = (brightness) =>
     PAD_T + PLOT_H * (1 - Math.max(0, Math.min(255, brightness)) / 255);
@@ -9543,11 +9577,30 @@ function createLightBrightnessGraph({
     }
   };
 
+  const resizeObserver =
+    typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver((entries) => {
+          const width = entries[0]?.contentRect?.width;
+          if (!(width > 0)) {
+            return;
+          }
+          applyLayout(width);
+          sync();
+        })
+      : null;
+  resizeObserver?.observe(el);
+  // First paint before layout may be 0 — sync again after mount.
+  requestAnimationFrame(() => {
+    applyLayout(el.clientWidth || 300);
+    sync();
+  });
+
   sync();
   return {
     el,
     sync,
     disconnect: () => {
+      resizeObserver?.disconnect();
       unbindWindowDrag();
       drag = null;
       dragNode = null;
