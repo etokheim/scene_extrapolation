@@ -1253,6 +1253,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
           overflow: visible;
           z-index: 5;
+          /* Same soft shadow as event labels, +4px blur. */
+          filter:
+            drop-shadow(0 0 8px rgba(0, 0, 0, 0.3))
+            drop-shadow(0 1px 6px rgba(0, 0, 0, 0.3));
         }
         .clock-face-ticks .clock-tick {
           stroke: rgba(255, 255, 255, 0.28);
@@ -1274,6 +1278,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           color: rgba(255, 255, 255, 0.4);
           pointer-events: none;
           z-index: 7;
+          text-shadow:
+            0 0 8px rgba(0, 0, 0, 0.3),
+            0 1px 6px rgba(0, 0, 0, 0.3);
         }
         @media (min-width: 871px) {
           .clock-hour-label {
@@ -9167,7 +9174,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       const labelFontPx = w >= 871 ? 32 : 16;
       // Past major tick length + ~half glyph + air so digits do not sit on ticks.
       const labelInsetPx =
-        (CLOCK_TICK_MAJOR_LEN / 100) * (w / 2) + labelFontPx * 0.55 + 4 + 12;
+        (CLOCK_TICK_MAJOR_LEN / 100) * (w / 2) + labelFontPx * 0.55 + 4 + 18;
       const labelPad = tickOuterPad + labelInsetPx;
       const chromePx = Math.max(
         Math.round(
