@@ -475,12 +475,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: visible;
         }
         .sun-year-scrub-rail .sun-chip {
-          width: auto;
           flex: 0 0 auto;
-          box-sizing: border-box;
-          text-align: center;
-          padding: 3px 6px;
-          font-size: 10px;
           white-space: nowrap;
         }
         .sun-scrub-date {
@@ -712,7 +707,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 12px;
+          gap: 24px;
           width: 100%;
           /* No horizontal padding — use the full stage column for the dial. */
           padding: 8px 0 16px;
@@ -810,10 +805,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 50%;
           pointer-events: none;
           z-index: 1;
-          transform: scale(1.38);
+          transform: scale(2.76);
           transform-origin: center center;
           filter: blur(28px);
-          opacity: 0.9;
+          /* Doubled scale; 30% lower opacity so the bloom stays soft. */
+          opacity: 0.63;
           overflow: visible;
           --clock-feather: 0.35%;
         }
@@ -1277,11 +1273,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: flex;
           flex-direction: column;
           gap: 4px;
-          /* Sit over the lower dial so legend/form are not lost under 86vh face. */
           position: relative;
           z-index: 5;
-          margin-top: -56px;
-          padding-top: 8px;
           pointer-events: auto;
         }
         .clock-legend-row {
