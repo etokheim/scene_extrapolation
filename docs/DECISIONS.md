@@ -239,7 +239,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Create wizard sets up native scenes
 
 - **Date:** 2026-08-30
-- **Decision:** New-scene wizard offers **Set up automatically** (linked Bright / Dimmed / Low lights) or **Use my existing scenes** (manual picks; Automatic per slot creates). Manual pre-fills from area native scenes by average light brightness: brightest → noon, second → linked day, lowest → dusk. Unlinked creates use `{area} Dawn`… event names; noon is `{area} Bright`, dusk `{area} Low lights`, linked day `{area} Dimmed` (sunset profile, not noon). Batch create via `apply_area_setup` (one YAML reload).
+- **Decision:** New-scene wizard offers **Set up automatically** (linked Bright / Dimmed / Low lights) or **Use my existing scenes** (manual picks). Copy mirrors the old config-flow step descriptions (native scenes only; empty slot = create automatically). Manual step uses `ha-selector` entity pickers (not custom `<select>`), with field helpers from the old `data_description`s. Manual pre-fills from area native scenes by average light brightness: brightest → noon, second → linked day, lowest → dusk. Unlinked creates use `{area} Dawn`… event names; noon is `{area} Bright`, dusk `{area} Low lights`, linked day `{area} Dimmed` (sunset profile, not noon). Batch create via `apply_area_setup` (one YAML reload).
 - **Why:** Most rooms need a sensible first draft; power users want to wire existing HA scenes without leaving the flow.
 - **Do not reverse without user ask.**
 

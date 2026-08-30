@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Create wizard uses config-flow-style guidance and native scene pickers (empty = create automatically)
 - Create-scene wizard: Automatic (Bright/Dimmed/Low lights) or Manual with Automatic slots and brightness-ranked defaults
 - Block creating extrapolation scenes for areas with no lights
 - Horizon/bloom can paint under the open desktop sidebar; legend Add to … sits before X/chevron

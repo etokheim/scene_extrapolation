@@ -154,14 +154,18 @@ const LABELS = {
 const HELPERS = {
   scene_name: "Name for the extrapolation scene entity",
   area: "Used to filter native Home Assistant scenes and to assign the new scene",
-  display_scenes_combined: "On: 3 scene pickers. Off: 5 scene pickers",
+  display_scenes_combined: "If on, configure 3 scenes in the next step. If off, configure 5",
   scene_dawn: "First light (sun 6° below the horizon)",
+  scene_sunrise: "When the sun rises",
   scene_noon: "When the sun is at its highest point",
+  scene_sunset: "When the sun sets",
   scene_dusk: "Last light (sun 6° below the horizon)",
-  scene_dawn_sunrise_sunset: "Used at first light, sunrise, and sunset",
-  scene_dusk_minimum_time_of_day: "Avoids dimming too early in winter",
+  scene_dawn_sunrise_sunset: "First light, sunrise, and sunset",
+  scene_dusk_minimum_time_of_day: "To avoid lights dimming too much, too early",
   nightlights_boolean: "When this input boolean is on, the nightlights scene is used instead",
   nightlights_scene: "Required if a nightlights trigger is set",
+  setup_empty_means_auto:
+    "Leave empty to create a native scene automatically for this event",
 };
 
 class SceneExtrapolationPanel extends HTMLElement {
@@ -3101,37 +3105,41 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-size: 13px;
           line-height: 1.35;
         }
+        .area-dialog .setup-intro {
+          margin: 0;
+          color: var(--primary-text-color);
+          font-size: 14px;
+          line-height: 1.45;
+        }
+        .area-dialog .setup-intro .muted {
+          color: var(--secondary-text-color);
+          font-size: 13px;
+        }
         .area-dialog .setup-slot {
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 0;
         }
-        .area-dialog .setup-slot label {
-          font-size: 13px;
-          font-weight: 500;
-          color: var(--primary-text-color);
-        }
-        .area-dialog .setup-slot select {
-          width: 100%;
-          box-sizing: border-box;
-          min-height: 40px;
-          padding: 8px 12px;
-          border-radius: var(--ha-border-radius-md, 8px);
-          border: 1px solid var(--divider-color);
-          background: var(--card-background-color);
-          color: var(--primary-text-color);
-          font: inherit;
+        .area-dialog .setup-slot ha-selector {
+          display: block;
+          margin-top: 0;
         }
         .area-dialog .setup-link-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 12px;
-          padding: 4px 0;
+          padding: 4px 0 8px;
         }
         .area-dialog .setup-link-row span {
           font-size: 14px;
           line-height: 1.3;
+        }
+        .area-dialog .setup-link-helper {
+          margin: -4px 0 8px;
+          font-size: 12px;
+          line-height: 1.35;
+          color: var(--secondary-text-color);
         }
         .save-dialog ha-chip-set {
           margin-top: 16px;
@@ -6398,12 +6406,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       step: 1,
       linked: true,
       assignments: {
-        noon: SETUP_AUTOMATIC,
-        linked: SETUP_AUTOMATIC,
-        dusk: SETUP_AUTOMATIC,
-        dawn: SETUP_AUTOMATIC,
-        sunrise: SETUP_AUTOMATIC,
-        sunset: SETUP_AUTOMATIC,
+        noon: null,
+        linked: null,
+        dusk: null,
+        dawn: null,
+        sunrise: null,
+        sunset: null,
       },
       info: null,
       busy: false,
@@ -6412,11 +6420,18 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const dialog = document.createElement("ha-dialog");
     dialog.className = "area-dialog";
-    dialog.setAttribute("header-title", "New extrapolation scene");
+    dialog.setAttribute("header-title", "1/2 New extrapolation scene");
     dialog.open = true;
 
     const step1 = document.createElement("div");
     step1.className = "setup-step";
+    const step1Intro = document.createElement("p");
+    step1Intro.className = "setup-intro";
+    step1Intro.innerHTML =
+      "Creates a scene which, when activated, lights your room based on the sun. Best paired with an automation that triggers it every few minutes.<br><br>" +
+      "<span class=\"muted\">Only <strong>native Home Assistant scenes</strong> are supported (not Hue/integration scenes). All settings can be changed later.</span>";
+    step1.appendChild(step1Intro);
+
     const picker = document.createElement("ha-selector");
     picker.hass = this._hass;
     picker.label = LABELS.area;
@@ -6434,14 +6449,14 @@ class SceneExtrapolationPanel extends HTMLElement {
         icon: "mdi:auto-fix",
         title: "Set up automatically",
         detail:
-          "Creates Bright, Dimmed, and Low lights scenes for every light in the area.",
+          "Finds lights in the area and creates Bright, Dimmed, and Low lights scenes for noon, day, and dusk.",
       },
       {
         id: "manual",
         icon: "mdi:playlist-edit",
         title: "Use my existing scenes",
         detail:
-          "Pick scenes for each solar event, or leave Automatic to create them.",
+          "Match solar events to scenes you already have. Empty fields create new scenes automatically.",
       },
     ];
     const modeButtons = {};
@@ -6475,10 +6490,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     const step2 = document.createElement("div");
     step2.className = "setup-step";
     step2.hidden = true;
+    const step2Intro = document.createElement("p");
+    step2Intro.className = "setup-intro";
+    step2Intro.innerHTML =
+      "Match solar events with a scene. At each event that scene is fully active, then the lights transition toward the next.<br><br>" +
+      "<span class=\"muted\">Selectors only show <strong>native Home Assistant scenes</strong> in this area. Leave a field empty to create one automatically.</span>";
     const linkRow = document.createElement("div");
     linkRow.className = "setup-link-row";
     const linkLabel = document.createElement("span");
-    linkLabel.textContent = "Same scene for dawn, sunrise, and sunset";
+    linkLabel.textContent = LABELS.display_scenes_combined;
     const linkSwitch = document.createElement("ha-switch");
     linkSwitch.checked = state.linked;
     linkSwitch.addEventListener("change", () => {
@@ -6487,9 +6507,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       paintSlots();
     });
     linkRow.append(linkLabel, linkSwitch);
+    const linkHelper = document.createElement("p");
+    linkHelper.className = "setup-link-helper";
+    linkHelper.textContent = HELPERS.display_scenes_combined;
     const slotsHost = document.createElement("div");
     slotsHost.className = "setup-step";
-    step2.append(linkRow, slotsHost);
+    step2.append(step2Intro, linkRow, linkHelper, slotsHost);
 
     const errorEl = document.createElement("p");
     errorEl.className = "setup-error";
@@ -6541,32 +6564,63 @@ class SceneExtrapolationPanel extends HTMLElement {
       step2.hidden = state.step !== 2;
       dialog.setAttribute(
         "header-title",
-        state.step === 1 ? "New extrapolation scene" : "Assign scenes"
+        state.step === 1
+          ? "1/2 New extrapolation scene"
+          : "2/2 Scenes configuration"
       );
     };
     const syncFooter = () => {
       backBtn.hidden = state.step !== 2;
       cancel.hidden = state.step === 2;
       nextBtn.disabled = state.busy || !state.area;
-      nextBtn.textContent =
-        state.step === 2 || state.mode === "automatic"
-          ? this._loc("ui.common.continue", "Next")
-          : this._loc("ui.common.continue", "Next");
+      nextBtn.textContent = this._loc("ui.common.continue", "Next");
     };
     const slotDefs = () => {
       if (state.linked) {
         return [
-          { key: "noon", label: "Noon" },
-          { key: "linked", label: "Dawn, sunrise & sunset" },
-          { key: "dusk", label: "Dusk" },
+          {
+            key: "noon",
+            label: LABELS.scene_noon,
+            helper: `${HELPERS.scene_noon}. ${HELPERS.setup_empty_means_auto}`,
+          },
+          {
+            key: "linked",
+            label: LABELS.scene_dawn_sunrise_sunset,
+            helper: `${HELPERS.scene_dawn_sunrise_sunset}. ${HELPERS.setup_empty_means_auto}`,
+          },
+          {
+            key: "dusk",
+            label: LABELS.scene_dusk,
+            helper: `${HELPERS.scene_dusk}. ${HELPERS.setup_empty_means_auto}`,
+          },
         ];
       }
       return [
-        { key: "dawn", label: "Dawn" },
-        { key: "sunrise", label: "Sunrise" },
-        { key: "noon", label: "Noon" },
-        { key: "sunset", label: "Sunset" },
-        { key: "dusk", label: "Dusk" },
+        {
+          key: "dawn",
+          label: LABELS.scene_dawn,
+          helper: `${HELPERS.scene_dawn}. ${HELPERS.setup_empty_means_auto}`,
+        },
+        {
+          key: "sunrise",
+          label: LABELS.scene_sunrise,
+          helper: `${HELPERS.scene_sunrise}. ${HELPERS.setup_empty_means_auto}`,
+        },
+        {
+          key: "noon",
+          label: LABELS.scene_noon,
+          helper: `${HELPERS.scene_noon}. ${HELPERS.setup_empty_means_auto}`,
+        },
+        {
+          key: "sunset",
+          label: LABELS.scene_sunset,
+          helper: `${HELPERS.scene_sunset}. ${HELPERS.setup_empty_means_auto}`,
+        },
+        {
+          key: "dusk",
+          label: LABELS.scene_dusk,
+          helper: `${HELPERS.scene_dusk}. ${HELPERS.setup_empty_means_auto}`,
+        },
       ];
     };
     const applySuggestions = () => {
@@ -6574,37 +6628,32 @@ class SceneExtrapolationPanel extends HTMLElement {
         ? state.info?.suggestions_linked || {}
         : state.info?.suggestions_unlinked || {};
       for (const { key } of slotDefs()) {
-        state.assignments[key] = suggestions[key] || SETUP_AUTOMATIC;
+        state.assignments[key] = suggestions[key] || null;
       }
     };
     const paintSlots = () => {
       slotsHost.replaceChildren();
-      const scenes = state.info?.scenes || [];
-      for (const { key, label } of slotDefs()) {
+      for (const { key, label, helper } of slotDefs()) {
         const row = document.createElement("div");
         row.className = "setup-slot";
-        const lab = document.createElement("label");
-        lab.textContent = label;
-        const select = document.createElement("select");
-        const autoOpt = document.createElement("option");
-        autoOpt.value = SETUP_AUTOMATIC;
-        autoOpt.textContent = "Automatic";
-        select.appendChild(autoOpt);
-        for (const scene of scenes) {
-          const opt = document.createElement("option");
-          opt.value = scene.entity_id;
-          opt.textContent = scene.name;
-          select.appendChild(opt);
-        }
-        const current = state.assignments[key] || SETUP_AUTOMATIC;
-        select.value = [...select.options].some((o) => o.value === current)
-          ? current
-          : SETUP_AUTOMATIC;
-        state.assignments[key] = select.value;
-        select.addEventListener("change", () => {
-          state.assignments[key] = select.value;
+        const scenePicker = document.createElement("ha-selector");
+        scenePicker.hass = this._hass;
+        scenePicker.label = label;
+        scenePicker.helper = helper;
+        scenePicker.required = false;
+        scenePicker.selector = entitySelector(
+          this._hass,
+          "scene",
+          state.area,
+          true,
+          [state.assignments[key]].filter(Boolean)
+        );
+        scenePicker.value = state.assignments[key] || null;
+        scenePicker.addEventListener("value-changed", (ev) => {
+          ev.stopPropagation();
+          state.assignments[key] = ev.detail?.value || null;
         });
-        row.append(lab, select);
+        row.appendChild(scenePicker);
         slotsHost.appendChild(row);
       }
     };
