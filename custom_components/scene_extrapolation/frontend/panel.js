@@ -750,6 +750,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-path.dial-view {
           --dial-timeline-h: 0px;
+          /* Flush under the app bar so horizon/bloom/ramp share one top edge
+             (margin left a strip where only some bleed painted). */
+          margin-top: 0;
+          overflow: hidden;
           /* Square dial face budget: viewport minus app bar, portrait timeline,
              and this container’s vertical padding. */
           --dial-face-max: calc(
