@@ -3456,8 +3456,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._syncDraftBanner();
   }
 
-  _renderList() {
-    this._closeSceneSidebar();
+  _renderList({ keepSidebar = false } = {}) {
+    if (!keepSidebar) {
+      this._closeSceneSidebar();
+    }
     // Allow clock enter again the next time an editor opens.
     this._clockEnterPlayed = false;
     this._clockStickySeconds = undefined;
@@ -3552,7 +3554,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     page.appendChild(wrap);
     this._contentEl.replaceChildren(page);
     this._setActionItems(this._listSettingsButton());
-    this._setFab(this._listTab === "extrapolation" ? this._addButton() : null);
+    this._setFab(this._addButton());
   }
 
   _listSettingsButton() {
@@ -3765,8 +3767,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._managedScenes = await this._hass.callWS({
           type: `${DOMAIN}/list_managed_native_scenes`,
         });
+        // Refresh list badges without dismissing this settings sidebar.
         if (this._view === "list") {
-          this._renderList();
+          this._renderList({ keepSidebar: true });
         }
       } catch (err) {
         toggle.checked = !next;
@@ -6742,6 +6745,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._clearPersistedDraft();
       this._clearPersistedDraft("new");
       this._clearPreviewCache();
+      // Saving creates the entity — do not treat #new → #edit/id as discard.
+      this._leaveConfirmDone = true;
+      this._editId = saved.id;
       this._go(`edit/${saved.id}`);
     } catch (err) {
       this._error = err.message || String(err);
