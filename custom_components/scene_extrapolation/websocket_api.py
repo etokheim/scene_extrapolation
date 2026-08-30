@@ -20,6 +20,7 @@ from .const import (
     DOMAIN,
 )
 from .native_scene import (
+    apply_managed_native_scene_visibility,
     async_apply_area_setup,
     async_apply_native_drafts,
     async_create_native_scene,
@@ -28,6 +29,7 @@ from .native_scene import (
     async_update_native_scene_entities,
     async_update_native_scene_entity,
     area_setup_info,
+    list_managed_native_scenes,
 )
 from .preview import build_preview
 from .scene import async_create_or_update_entity, async_remove_entity
@@ -53,6 +55,9 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_apply_native_drafts)
     websocket_api.async_register_command(hass, ws_area_setup_info)
     websocket_api.async_register_command(hass, ws_apply_area_setup)
+    websocket_api.async_register_command(hass, ws_list_managed_native_scenes)
+    websocket_api.async_register_command(hass, ws_get_settings)
+    websocket_api.async_register_command(hass, ws_update_settings)
 
 
 def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
@@ -531,3 +536,56 @@ async def ws_apply_area_setup(
         connection.send_error(msg["id"], "area_setup_failed", str(err))
         return
     connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/list_managed_native_scenes"}
+)
+@websocket_api.require_admin
+@callback
+def ws_list_managed_native_scenes(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """List native scenes created by this integration."""
+    connection.send_result(msg["id"], list_managed_native_scenes(hass))
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_settings"})
+@websocket_api.require_admin
+@callback
+def ws_get_settings(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return integration-wide settings."""
+    connection.send_result(msg["id"], dict(_store(hass).settings))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/update_settings",
+        vol.Required("settings"): dict,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_update_settings(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Update integration-wide settings and apply visibility side effects."""
+    store = _store(hass)
+    before_hide = bool(store.settings.get("hide_managed_native_scenes"))
+    settings = await store.async_update_settings(dict(msg.get("settings") or {}))
+    after_hide = bool(settings.get("hide_managed_native_scenes"))
+    updated = 0
+    if before_hide != after_hide:
+        updated = apply_managed_native_scene_visibility(hass, hidden=after_hide)
+    connection.send_result(
+        msg["id"],
+        {"settings": settings, "visibility_updated": updated},
+    )

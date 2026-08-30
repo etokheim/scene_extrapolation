@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- List page: Extrapolation / Created scenes tabs, settings sidebar to hide created scenes in HA UI, and a fast solar-only sun path chart
 - Create wizard uses config-flow-style guidance and native scene pickers (empty = create automatically)
 - Create-scene wizard: Automatic (Bright/Dimmed/Low lights) or Manual with Automatic slots and brightness-ranked defaults
 - Block creating extrapolation scenes for areas with no lights
@@ -122,6 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🚨 `scene_extrapolation.turn_on` replaces `transition_modifier` (−100…100 time shift) with `transition_percent` (0–100 along the day: dawn 0, sunrise 25, noon 50, sunset 75, dusk 100). Scene entities expose `transition_percent` and `transition_percent_manual` instead of `transition_modifier`
 
 ### Fixed
+- List sun path chart loads via the lightweight solar API instead of racing a full editor preview
 - Earliest dusk no longer snaps back to the floor when solar dusk is after midnight; it stays at end of day
 - Idle graph readout always shows current clock time and sun elevation on the selected date (not “Hover a graph…”)
 - Stacked light band clicks always opened the first lamp (pass-through hit the top row); opaque hit layers fix it

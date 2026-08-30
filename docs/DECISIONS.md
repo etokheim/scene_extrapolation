@@ -360,3 +360,24 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Decision:** Create and edit both show the native scene overflow (`ha-dropdown` + dots). Items: Activate, Information, Settings, Assign/Edit category, Rename, Duplicate, Delete. Actions that need a saved entity are disabled on `#new`. Skip Edit YAML — this panel has no YAML mode. Category opens our Save dialog with the category field visible so the store and registry stay in sync. Delete uses an `ha-dialog` with the native confirm strings, not `window.confirm`.
 - **Why:** Users already know that menu from Settings → Scenes. A shorter custom menu hid Apply / info / duplicate.
 - **Do not reverse without user ask.**
+
+## List sun path uses the lightweight solar API
+
+- **Date:** 2026-08-30
+- **Decision:** The list page chart calls `scene_extrapolation/sun_path` (solar events + elevation only). The editor keeps `scene_extrapolation/preview` (lights + overlays). Leaving the editor clears dial preview state; the 30s redraw only paints when `_sunPathKey === _chartKey()` so a late preview cannot unhide a dial on the list.
+- **Why:** Full preview is slow and raced with navigation, so the list chart felt intermittent or stuck.
+- **Do not reverse without user ask.**
+
+## List tabs: Extrapolation scenes vs Created scenes
+
+- **Date:** 2026-08-30
+- **Decision:** The list has two tabs — **Extrapolation scenes** (default) and **Created scenes** (native HA scenes this integration created, tracked in store `managed_native_scene_ids`). Created-scene rows open that entity’s settings more-info; delete uses the existing confirm dialog. Only scenes registered at create time appear (no historical backfill of every YAML scene that looks related).
+- **Why:** Mixing extrapolation configs with native scenes in one list was confusing; users still need a place to manage scenes the wizard/setup created.
+- **Do not reverse without user ask.**
+
+## Global setting: hide created scenes in HA UI
+
+- **Date:** 2026-08-30
+- **Decision:** Panel list settings sidebar exposes `hide_managed_native_scenes`. When on, managed native scenes get `hidden_by=INTEGRATION` in the entity registry (and new creates honor it). Toggle off clears integration hides. Never override `hidden_by=USER`. Store stays at storage version 1 with additive keys — do not bump version without a Store migrate_func.
+- **Why:** HA has no per-integration “hide my entities” config entry option that covers dynamically created YAML scenes; registry `hidden_by` is the supported UI hide.
+- **Do not reverse without user ask.**

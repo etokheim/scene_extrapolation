@@ -176,6 +176,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._view = "list";
     this._editId = null;
     this._items = [];
+    this._managedScenes = [];
+    this._settings = { hide_managed_native_scenes: false };
+    this._listTab = "extrapolation";
     this._formData = emptyFormData();
     this._entityId = null;
     this._pendingNewForm = null;
@@ -294,7 +297,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         if (this._clockStickySeconds != null) {
           this._updateOverrideArc(this._clockStickySeconds);
         }
-        this._drawSunPath();
+        // Only redraw when cached payload matches this view (avoids unhiding
+        // a stale dial chart on the list after leaving the editor).
+        if (this._sunPath && this._sunPathKey === this._chartKey()) {
+          this._drawSunPath();
+        }
       }, 30000);
     }
   }
@@ -2977,6 +2984,55 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-direction: column;
           gap: 8px;
         }
+        .list-tabs {
+          display: flex;
+          gap: 4px;
+          margin: 0 0 12px;
+          padding: 4px;
+          border-radius: var(--ha-border-radius-lg, 12px);
+          background: var(--secondary-background-color, rgba(0, 0, 0, 0.12));
+        }
+        .list-tab {
+          flex: 1 1 0;
+          min-width: 0;
+          border: 0;
+          border-radius: var(--ha-border-radius-md, 8px);
+          padding: 10px 12px;
+          background: transparent;
+          color: var(--secondary-text-color);
+          font: inherit;
+          font-weight: 500;
+          cursor: pointer;
+        }
+        .list-tab.active {
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+        }
+        .row.created-scene {
+          cursor: pointer;
+        }
+        .list-settings-dialog .setup-link-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 12px 0;
+        }
+        .list-settings-dialog .setup-link-row ha-switch {
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+        .row .row-actions {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          flex-shrink: 0;
+        }
+        .row .row-actions ha-icon-button {
+          --mdc-icon-button-size: 40px;
+          color: var(--secondary-text-color);
+        }
         .row {
           display: flex;
           align-items: center;
@@ -3293,10 +3349,22 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   async _loadList() {
     try {
-      this._items = await this._hass.callWS({ type: `${DOMAIN}/list` });
+      const [items, managed, settings] = await Promise.all([
+        this._hass.callWS({ type: `${DOMAIN}/list` }),
+        this._hass.callWS({ type: `${DOMAIN}/list_managed_native_scenes` }),
+        this._hass.callWS({ type: `${DOMAIN}/get_settings` }),
+      ]);
+      this._items = items;
+      this._managedScenes = managed || [];
+      this._settings = {
+        hide_managed_native_scenes: false,
+        ...(settings || {}),
+      };
+      this._error = null;
     } catch (err) {
       this._error = err.message || String(err);
       this._items = [];
+      this._managedScenes = [];
     }
     this._render();
   }
@@ -3355,6 +3423,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._liveEditSidebarHandler = null;
     this._cancelClockSunArc();
     this._form = undefined;
+    // Drop dial preview state so the list chart uses the light sun_path API.
+    if (this._sunPathKey && !String(this._sunPathKey).startsWith("list-sun:")) {
+      this._sunPath = null;
+      this._sunPathKey = undefined;
+    }
     this._headerEl.textContent = "Scene Extrapolation";
     this._setNavigationIcon(this._menuButton());
     this._contentEl.classList.remove("wide");
@@ -3365,13 +3438,53 @@ class SceneExtrapolationPanel extends HTMLElement {
       error.className = "error";
       error.textContent = this._error;
       this._contentEl.replaceChildren(error);
-      this._setActionItems();
+      this._setActionItems(this._listSettingsButton());
       this._setFab(this._addButton());
       return;
     }
 
+    const page = document.createElement("div");
+    const tabs = document.createElement("div");
+    tabs.className = "list-tabs";
+    tabs.setAttribute("role", "tablist");
+    const tabMeta = [
+      { id: "extrapolation", label: "Extrapolation scenes" },
+      { id: "created", label: "Created scenes" },
+    ];
+    for (const tab of tabMeta) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "list-tab";
+      btn.setAttribute("role", "tab");
+      btn.setAttribute("aria-selected", String(this._listTab === tab.id));
+      if (this._listTab === tab.id) {
+        btn.classList.add("active");
+      }
+      btn.textContent = tab.label;
+      btn.addEventListener("click", () => {
+        if (this._listTab === tab.id) {
+          return;
+        }
+        this._listTab = tab.id;
+        this._renderList();
+      });
+      tabs.appendChild(btn);
+    }
+    page.appendChild(tabs);
+
     const wrap = document.createElement("div");
-    if (!this._items.length) {
+    if (this._listTab === "created") {
+      if (!this._managedScenes.length) {
+        wrap.className = "empty";
+        wrap.textContent =
+          "No native scenes created by Scene Extrapolation yet. They appear here when you use Automatic setup or Create new scene.";
+      } else {
+        wrap.className = "list";
+        for (const item of this._managedScenes) {
+          wrap.appendChild(this._managedSceneRow(item));
+        }
+      }
+    } else if (!this._items.length) {
       wrap.className = "empty";
       wrap.textContent =
         "No extrapolation scenes yet. Create one to start lighting a room from the sun.";
@@ -3381,9 +3494,20 @@ class SceneExtrapolationPanel extends HTMLElement {
         wrap.appendChild(this._listRow(item));
       }
     }
-    this._contentEl.replaceChildren(wrap);
-    this._setActionItems();
-    this._setFab(this._addButton());
+    page.appendChild(wrap);
+    this._contentEl.replaceChildren(page);
+    this._setActionItems(this._listSettingsButton());
+    this._setFab(this._listTab === "extrapolation" ? this._addButton() : null);
+  }
+
+  _listSettingsButton() {
+    const btn = document.createElement("ha-icon-button");
+    btn.label = "Settings";
+    const icon = document.createElement("ha-icon");
+    icon.setAttribute("icon", "mdi:cog");
+    btn.appendChild(icon);
+    btn.addEventListener("click", () => this._openListSettingsSidebar());
+    return btn;
   }
 
   _listRow(item) {
@@ -3410,6 +3534,133 @@ class SceneExtrapolationPanel extends HTMLElement {
     chevron.setAttribute("icon", "mdi:chevron-right");
     row.appendChild(chevron);
     return row;
+  }
+
+  _managedSceneRow(item) {
+    const row = document.createElement("div");
+    row.className = "row created-scene";
+    row.addEventListener("click", () => {
+      this._showEntityMoreInfo(item.entity_id, "settings");
+    });
+
+    const icon = document.createElement("ha-icon");
+    icon.setAttribute("icon", "mdi:palette");
+    row.appendChild(icon);
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = item.name || item.entity_id || "Untitled";
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    const bits = [];
+    if (item.area_name) {
+      bits.push(item.area_name);
+    }
+    if (item.hidden) {
+      bits.push("Hidden in Home Assistant");
+    }
+    sub.textContent = bits.join(" · ") || item.entity_id || "";
+    meta.append(name, sub);
+    row.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
+    const settingsBtn = document.createElement("ha-icon-button");
+    settingsBtn.label = "Scene settings";
+    const settingsIcon = document.createElement("ha-icon");
+    settingsIcon.setAttribute("icon", "mdi:cog-outline");
+    settingsBtn.appendChild(settingsIcon);
+    settingsBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this._showEntityMoreInfo(item.entity_id, "settings");
+    });
+    const deleteBtn = document.createElement("ha-icon-button");
+    deleteBtn.label = `Delete ${item.name || "scene"}`;
+    const deleteIcon = document.createElement("ha-icon");
+    deleteIcon.setAttribute("icon", "mdi:delete-outline");
+    deleteBtn.appendChild(deleteIcon);
+    deleteBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      const confirmed = await this._confirmNativeSceneDelete(
+        item.name || item.entity_id
+      );
+      if (!confirmed) {
+        return;
+      }
+      try {
+        await this._hass.callWS({
+          type: `${DOMAIN}/delete_native_scene`,
+          scene_entity_id: item.entity_id,
+        });
+        await this._loadList();
+      } catch (err) {
+        this._error = err.message || String(err);
+        this._renderList();
+      }
+    });
+    actions.append(settingsBtn, deleteBtn);
+    row.appendChild(actions);
+    return row;
+  }
+
+  async _openListSettingsSidebar() {
+    const opened = await this._openSceneSidebar({
+      title: "Settings",
+      className: "list-settings-dialog",
+    });
+    if (!opened) {
+      return;
+    }
+    const { body } = opened;
+    const note = document.createElement("p");
+    note.className = "sidebar-note";
+    note.textContent =
+      "These settings apply to every room. Changes take effect immediately.";
+    body.appendChild(note);
+
+    const row = document.createElement("div");
+    row.className = "setup-link-row";
+    const labelWrap = document.createElement("div");
+    const label = document.createElement("div");
+    label.className = "name";
+    label.textContent = "Hide created scenes in Home Assistant";
+    const helper = document.createElement("div");
+    helper.className = "sidebar-note";
+    helper.style.margin = "4px 0 0";
+    helper.textContent =
+      "Marks native scenes created by this integration as hidden in the HA UI (entity registry). You can still manage them here.";
+    labelWrap.append(label, helper);
+    const toggle = document.createElement("ha-switch");
+    toggle.checked = Boolean(this._settings?.hide_managed_native_scenes);
+    toggle.addEventListener("change", async () => {
+      const next = Boolean(toggle.checked);
+      toggle.disabled = true;
+      try {
+        const result = await this._hass.callWS({
+          type: `${DOMAIN}/update_settings`,
+          settings: { hide_managed_native_scenes: next },
+        });
+        this._settings = {
+          hide_managed_native_scenes: false,
+          ...(result?.settings || {}),
+        };
+        this._managedScenes = await this._hass.callWS({
+          type: `${DOMAIN}/list_managed_native_scenes`,
+        });
+        if (this._view === "list") {
+          this._renderList();
+        }
+      } catch (err) {
+        toggle.checked = !next;
+        window.alert(err.message || String(err));
+      } finally {
+        toggle.disabled = false;
+      }
+    });
+    row.append(labelWrap, toggle);
+    body.appendChild(row);
   }
 
   _addButton() {
@@ -6824,7 +7075,8 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _chartKey() {
     if (this._view !== "edit") {
-      return "list";
+      // List chart is solar-only and always “today” — not the editor date scrub.
+      return `list-sun:${todayIso()}`;
     }
     return JSON.stringify({
       date: this._previewDate,
@@ -6863,11 +7115,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!this._hass || !this._sunPathEl) {
       return;
     }
-    // List view: do not leave a stale dial/chart from the last editor visit.
-    if (this._view !== "edit") {
-      this._sunPathEl.hidden = true;
-      return;
-    }
     if (this._previewInFlight) {
       this._previewQueued = true;
       return;
@@ -6877,6 +7124,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       do {
         this._previewQueued = false;
         const key = this._chartKey();
+        const listView = this._view !== "edit";
         if (this._sunPath && this._sunPathKey === key) {
           this._drawSunPath();
           continue;
@@ -6890,32 +7138,41 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         try {
           let payload;
-          const msg = {
-            type: `${DOMAIN}/preview`,
-            date: this._previewDate,
-            scenes: this._sceneIdsFromForm(),
-          };
-          if (this._formData.area) {
-            msg.area = this._formData.area;
+          if (listView) {
+            // Lightweight solar-only chart — full DOMAIN/preview is too heavy
+            // for the list and used to race in after leaving the editor.
+            payload = await this._hass.callWS({
+              type: `${DOMAIN}/sun_path`,
+              date: todayIso(),
+            });
+          } else {
+            const msg = {
+              type: `${DOMAIN}/preview`,
+              date: this._previewDate,
+              scenes: this._sceneIdsFromForm(),
+            };
+            if (this._formData.area) {
+              msg.area = this._formData.area;
+            }
+            const dusk = this._duskMinimumSeconds();
+            if (dusk != null) {
+              msg.dusk_minimum = dusk;
+            }
+            if (this._previewOverlay) {
+              msg.overlay = this._previewOverlay;
+            }
+            if (this._previewLocation) {
+              msg.location = this._previewLocation;
+            }
+            payload = await this._hass.callWS(msg);
           }
-          const dusk = this._duskMinimumSeconds();
-          if (dusk != null) {
-            msg.dusk_minimum = dusk;
-          }
-          if (this._previewOverlay) {
-            msg.overlay = this._previewOverlay;
-          }
-          if (this._previewLocation) {
-            msg.location = this._previewLocation;
-          }
-          payload = await this._hass.callWS(msg);
-          if (this._chartKey() !== key) {
+          if (this._chartKey() !== key || (listView !== (this._view !== "edit"))) {
             this._previewQueued = true;
             continue;
           }
           this._sunPath = payload;
           this._sunPathKey = key;
-          if (!this._previewOverlay) {
+          if (listView || !this._previewOverlay) {
             this._rememberPreview(key, payload);
           }
           this._drawSunPath();

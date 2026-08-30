@@ -32,8 +32,11 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-STORAGE_VERSION = 1
+STORAGE_VERSION = 1  # Additive settings/managed ids; do not bump without migrate_func.
 DEFAULT_DUSK_MINIMUM_SECONDS = 22 * 3600
+DEFAULT_SETTINGS = {
+    "hide_managed_native_scenes": False,
+}
 
 
 def time_to_seconds(value: Any) -> int:
@@ -168,16 +171,32 @@ class SceneExtrapolationStore:
         self.hass = hass
         self._store = Store(hass, STORAGE_VERSION, STORE_KEY)
         self.scenes: dict[str, dict[str, Any]] = {}
+        self.settings: dict[str, Any] = dict(DEFAULT_SETTINGS)
+        # YAML scene CONF_ID values created by this integration.
+        self.managed_native_scene_ids: list[str] = []
 
     async def async_load(self) -> None:
         """Load scenes from disk."""
         data = await self._store.async_load()
-        items = (data or {}).get("scenes", [])
+        raw = data or {}
+        items = raw.get("scenes", [])
         self.scenes = {item["id"]: item for item in items if "id" in item}
+        self.settings = {
+            **DEFAULT_SETTINGS,
+            **(raw.get("settings") or {}),
+        }
+        ids = raw.get("managed_native_scene_ids") or []
+        self.managed_native_scene_ids = [str(item) for item in ids if item]
 
     async def async_save(self) -> None:
         """Write scenes to disk."""
-        await self._store.async_save({"scenes": list(self.scenes.values())})
+        await self._store.async_save(
+            {
+                "scenes": list(self.scenes.values()),
+                "settings": dict(self.settings),
+                "managed_native_scene_ids": list(self.managed_native_scene_ids),
+            }
+        )
 
     def list(self) -> list[dict[str, Any]]:
         """Return all scene configs."""
@@ -202,6 +221,32 @@ class SceneExtrapolationStore:
         self.scenes.pop(scene_id)
         await self.async_save()
         return True
+
+    async def async_update_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
+        """Merge integration-wide settings and persist."""
+        for key, value in patch.items():
+            if key in DEFAULT_SETTINGS:
+                self.settings[key] = value
+        await self.async_save()
+        return dict(self.settings)
+
+    async def async_register_managed_native_scene(self, config_id: str) -> None:
+        """Remember a YAML scene id this integration created."""
+        cid = str(config_id)
+        if cid in self.managed_native_scene_ids:
+            return
+        self.managed_native_scene_ids.append(cid)
+        await self.async_save()
+
+    async def async_unregister_managed_native_scene(self, config_id: str) -> None:
+        """Drop a managed YAML scene id after delete."""
+        cid = str(config_id)
+        if cid not in self.managed_native_scene_ids:
+            return
+        self.managed_native_scene_ids = [
+            item for item in self.managed_native_scene_ids if item != cid
+        ]
+        await self.async_save()
 
     async def async_import_legacy(
         self, entry_data: dict[str, Any], options: dict[str, Any]

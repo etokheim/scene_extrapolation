@@ -22,6 +22,9 @@ from homeassistant.util.yaml import dump, load_yaml
 
 from .solar import EVENT_META, EVENT_ORDER
 
+# Avoid circular import of DOMAIN store at module load — resolve via hass.data.
+from .const import DATA_STORE, DOMAIN
+
 _LOGGER = logging.getLogger(__name__)
 
 # Same keys HA's scene editor writes. color_mode is live-only.
@@ -271,6 +274,74 @@ def _native_scene_entity_id(hass: HomeAssistant, config_id: str) -> str | None:
     return None
 
 
+async def _async_register_and_maybe_hide(
+    hass: HomeAssistant, config_id: str, entity_id: str
+) -> None:
+    """Track a created YAML scene and honor the hide-from-UI setting."""
+    store = hass.data[DOMAIN][DATA_STORE]
+    await store.async_register_managed_native_scene(config_id)
+    if store.settings.get("hide_managed_native_scenes"):
+        er.async_get(hass).async_update_entity(
+            entity_id, hidden_by=er.RegistryEntryHider.INTEGRATION
+        )
+
+
+def apply_managed_native_scene_visibility(hass: HomeAssistant, *, hidden: bool) -> int:
+    """Hide or unhide all managed native scenes in the entity registry."""
+    store = hass.data[DOMAIN][DATA_STORE]
+    entity_reg = er.async_get(hass)
+    hide_value = er.RegistryEntryHider.INTEGRATION if hidden else None
+    updated = 0
+    for config_id in list(store.managed_native_scene_ids):
+        entity_id = _native_scene_entity_id(hass, config_id)
+        if not entity_id:
+            continue
+        entry = entity_reg.async_get(entity_id)
+        if entry is None:
+            continue
+        # Never override a user-hidden entity.
+        if entry.hidden_by == er.RegistryEntryHider.USER:
+            continue
+        if entry.hidden_by == hide_value:
+            continue
+        entity_reg.async_update_entity(entity_id, hidden_by=hide_value)
+        updated += 1
+    return updated
+
+
+def list_managed_native_scenes(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """Return native scenes this integration created (still present)."""
+    store = hass.data[DOMAIN][DATA_STORE]
+    area_reg = ar.async_get(hass)
+    entity_reg = er.async_get(hass)
+    rows: list[dict[str, Any]] = []
+    for config_id in list(store.managed_native_scene_ids):
+        entity_id = _native_scene_entity_id(hass, config_id)
+        if not entity_id:
+            continue
+        entry = entity_reg.async_get(entity_id)
+        scene = native_scene_by_entity_id(hass, entity_id)
+        area_id = entry.area_id if entry else None
+        area_name = None
+        if area_id and area_id in area_reg.areas:
+            area_name = area_reg.areas[area_id].name
+        rows.append(
+            {
+                "id": config_id,
+                "entity_id": entity_id,
+                "name": (scene or {}).get("name")
+                or (entry.name if entry else None)
+                or (entry.original_name if entry else None)
+                or entity_id,
+                "area_id": area_id,
+                "area_name": area_name,
+                "hidden": bool(entry.hidden_by) if entry else False,
+            }
+        )
+    rows.sort(key=lambda row: str(row.get("name") or "").casefold())
+    return rows
+
+
 def _scene_base_name(area_name: str, event_id: str, *, linked: bool) -> str:
     """Name for a newly created native scene."""
     if linked and event_id in _DAY_EVENTS:
@@ -500,6 +571,7 @@ async def async_apply_area_setup(
                     "did not register it"
                 )
             entity_reg.async_update_entity(entity_id, area_id=area_id)
+            await _async_register_and_maybe_hide(hass, planned["id"], entity_id)
             created_by_slot[slot] = {
                 "entity_id": entity_id,
                 "name": planned["name"],
@@ -556,6 +628,7 @@ async def async_create_native_scene(
             f"Created scene {name!r} but Home Assistant did not register it"
         )
     er.async_get(hass).async_update_entity(entity_id, area_id=area_id)
+    await _async_register_and_maybe_hide(hass, planned["id"], entity_id)
     return {
         **planned,
         "entity_id": entity_id,
@@ -658,6 +731,7 @@ async def async_apply_native_drafts(
             )
         if area_id:
             entity_reg.async_update_entity(entity_id, area_id=area_id)
+        await _async_register_and_maybe_hide(hass, config_id, entity_id)
         created[draft_id] = entity_id
     return {"created": created}
 
@@ -727,6 +801,8 @@ async def async_delete_native_scene(
         await hass.async_add_executor_job(_write_scenes, path, updated)
 
     await hass.services.async_call(SCENE_DOMAIN, SERVICE_RELOAD, blocking=True)
+    store = hass.data[DOMAIN][DATA_STORE]
+    await store.async_unregister_managed_native_scene(str(config_key))
     return {"scene_entity_id": scene_entity_id}
 
 
