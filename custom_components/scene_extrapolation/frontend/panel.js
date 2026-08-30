@@ -45,12 +45,13 @@ const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
 /* Scale: 1 at daytime zenith (smallest); CLOCK_SUN_SCALE_MAX at
    sunrise/sunset and fixed through the night until sunrise. */
 const CLOCK_SUN_SCALE_MAX = 2;
-/* Handle tip / major tick outer radius in viewBox units.
-   Hourly ticks stay near the path; hour labels live on the face chrome
-   (outermost), with solar-event buttons between labels and the core. */
+/* Handle tip radius in the dial-core viewBox (path-adjacent). Face chrome
+   carries the hour ticks + numbers; solar-event buttons sit inside that ring. */
 const CLOCK_TICK_OUTER = 94;
-const CLOCK_TICK_INNER_MAJOR = 89;
-const CLOCK_TICK_INNER_MINOR = 91;
+const CLOCK_TICK_MAJOR_LEN = 5;
+const CLOCK_TICK_MINOR_LEN = 3;
+/* Numbers sit this far inside the tick outer tip (viewBox units on r=100). */
+const CLOCK_LABEL_INSIDE_TICK = 8;
 /* Override scrub arc sits on the outer tip of the hour ticks. */
 const CLOCK_OVERRIDE_R = CLOCK_TICK_OUTER;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
@@ -1236,18 +1237,25 @@ class SceneExtrapolationPanel extends HTMLElement {
           touch-action: none;
           z-index: 7;
         }
-        /* Hourly ticks; majors every 6h. White at differing opacities. */
-        .sun-light-clock-overlay .clock-tick {
+        /* Hourly ticks on the face (with hour numbers); majors every 6h. */
+        .clock-face-ticks {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          overflow: visible;
+          z-index: 5;
+        }
+        .clock-face-ticks .clock-tick {
           stroke: rgba(255, 255, 255, 0.28);
           stroke-width: 3px;
           vector-effect: non-scaling-stroke;
           stroke-linecap: round;
         }
-        .sun-light-clock-overlay .clock-tick.major {
+        .clock-face-ticks .clock-tick.major {
           stroke: rgba(255, 255, 255, 0.5);
           stroke-width: 4px;
         }
-        /* HTML hour labels on the face (outermost chrome); events sit inside. */
+        /* HTML hour labels on the face, just inside the tick tips. */
         .clock-hour-label {
           position: absolute;
           transform: translate(-50%, -50%);
@@ -8776,31 +8784,38 @@ class SceneExtrapolationPanel extends HTMLElement {
     overlay.setAttribute("aria-hidden", "true");
     const cx = CLOCK_CX;
     const cy = CLOCK_CY;
-    // Hourly ticks (majors every 6h). Hour numbers are HTML on the face
-    // (outermost chrome) so font-size stays screen-fixed.
+    // Hour ticks + numbers live on the face (outer chrome). Core overlay is
+    // path / sun / handle only.
     const hourLabels = [];
+    const faceTicks = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg"
+    );
+    faceTicks.setAttribute("class", "clock-face-ticks");
+    faceTicks.setAttribute("viewBox", `0 0 ${CLOCK_VIEW} ${CLOCK_VIEW}`);
+    faceTicks.setAttribute("aria-hidden", "true");
+    const faceTickLines = [];
     for (let hour = 0; hour < 24; hour += 1) {
       const seconds = hour * 3600;
       const deg = this._clockAngleDeg(seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
       const major = hour % 6 === 0;
-      const inner = major ? CLOCK_TICK_INNER_MAJOR : CLOCK_TICK_INNER_MINOR;
-      const x1 = cx + Math.cos(rad) * inner;
-      const y1 = cy + Math.sin(rad) * inner;
-      const x2 = cx + Math.cos(rad) * CLOCK_TICK_OUTER;
-      const y2 = cy + Math.sin(rad) * CLOCK_TICK_OUTER;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
       const tick = document.createElementNS("http://www.w3.org/2000/svg", "line");
       tick.setAttribute("class", major ? "clock-tick major" : "clock-tick");
-      tick.setAttribute("x1", x1.toFixed(2));
-      tick.setAttribute("y1", y1.toFixed(2));
-      tick.setAttribute("x2", x2.toFixed(2));
-      tick.setAttribute("y2", y2.toFixed(2));
-      overlay.appendChild(tick);
+      faceTicks.appendChild(tick);
+      faceTickLines.push({
+        el: tick,
+        cos,
+        sin,
+        len: major ? CLOCK_TICK_MAJOR_LEN : CLOCK_TICK_MINOR_LEN,
+      });
       if (major) {
         const label = document.createElement("div");
         label.className = "clock-hour-label";
         label.textContent = String(hour).padStart(2, "0");
-        label._clockPolar = { cos: Math.cos(rad), sin: Math.sin(rad) };
+        label._clockPolar = { cos, sin };
         hourLabels.push(label);
       }
     }
@@ -8821,7 +8836,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     handleHit.setAttribute("aria-hidden", "true");
     this._clockHandleHitEl = handleHit;
     // Path under sun; rings above handle so the planet occludes it.
-    // Hour labels live on the face (appended after events) — not in the core.
     core.append(
       overlay,
       this._clockSunEl,
@@ -8829,8 +8843,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._clockSunHitEl,
       handleHit
     );
-    // Horizon → light bloom → planet (bloom must cover the horizon wash).
-    face.append(horizonBack, glowLayer, core);
+    // Horizon → light bloom → planet; face ticks under event buttons / labels.
+    face.append(horizonBack, glowLayer, core, faceTicks);
 
     const editable = this._view === "edit";
     const eventAnchors = [];
@@ -8930,7 +8944,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         eventAnchors.push(ghost);
       }
     }
-    // Hour labels outermost on the face (above event anchors in paint order).
+    // Hour labels on the face (above event anchors in paint order).
     for (const label of hourLabels) {
       face.appendChild(label);
     }
@@ -8940,10 +8954,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (!w) {
         return;
       }
-      // Outer → inner on the face: hour numbers, solar-event buttons, then core.
+      // Outer → inner: tick tips + numbers (numbers inside the tips), then
+      // solar-event buttons, then the dial core. Same tick lengths as before.
       const t = Math.min(1, Math.max(0, (w - 300) / (720 - 300)));
-      const labelPad = w >= 871 ? 18 : 10;
-      const eventPad = labelPad + CLOCK_EVENT_BTN_PX / 2 + 10;
+      const tickOuterPad = w >= 871 ? 10 : 6;
+      const labelPad =
+        tickOuterPad + (CLOCK_LABEL_INSIDE_TICK / 100) * (w / 2);
+      const eventPad = labelPad + CLOCK_EVENT_BTN_PX / 2 + 8;
       const chromePx = Math.max(
         Math.round(
           CLOCK_CHROME_PX_MIN + t * (CLOCK_CHROME_PX - CLOCK_CHROME_PX_MIN)
@@ -8951,6 +8968,16 @@ class SceneExtrapolationPanel extends HTMLElement {
         Math.ceil(eventPad + 4)
       );
       face.style.setProperty("--clock-chrome", `${chromePx}px`);
+      // Face SVG viewBox radius 100 ≡ half the face; pad → viewBox r.
+      const tickOuterR = 100 * (1 - (2 * tickOuterPad) / w);
+      for (const tick of faceTickLines) {
+        const outer = tickOuterR;
+        const inner = tickOuterR - tick.len;
+        tick.el.setAttribute("x1", (cx + tick.cos * inner).toFixed(2));
+        tick.el.setAttribute("y1", (cy + tick.sin * inner).toFixed(2));
+        tick.el.setAttribute("x2", (cx + tick.cos * outer).toFixed(2));
+        tick.el.setAttribute("y2", (cy + tick.sin * outer).toFixed(2));
+      }
       const labelR = ((w / 2 - labelPad) / w) * 100;
       for (const label of hourLabels) {
         const { cos, sin } = label._clockPolar;
