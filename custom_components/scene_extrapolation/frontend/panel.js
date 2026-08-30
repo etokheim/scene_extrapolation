@@ -4423,6 +4423,22 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._syncClockLightSelection();
   }
 
+  /** Drop ring hover highlight (touch scrub / mouse leave). */
+  _clearClockRingHover() {
+    const root = this.shadowRoot;
+    if (!root) {
+      return;
+    }
+    for (const ring of root.querySelectorAll(".clock-ring.hovered")) {
+      ring.classList.remove("hovered");
+    }
+    const name = root.querySelector(".clock-ring-hover-name");
+    if (name) {
+      name.textContent = "";
+      name.hidden = true;
+    }
+  }
+
   _syncClockLightSelection() {
     const root = this.shadowRoot;
     if (!root) {
@@ -4482,6 +4498,7 @@ class SceneExtrapolationPanel extends HTMLElement {
   _closeSceneSidebar({ animate = false } = {}) {
     this._setSidebarEvent(null);
     this._setSidebarLight(null);
+    this._clearClockRingHover();
     const el = this.shadowRoot?.querySelector(".scene-sidebar");
     if (!el) {
       this._setSidebarDocked(false);
@@ -4506,6 +4523,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._setSidebarEvent(null);
     this._setSidebarLight(null);
+    this._clearClockRingHover();
     el._closing = true;
     el.classList.remove("open");
     this._setSidebarDocked(false);
@@ -4549,6 +4567,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (target?.localName === "ha-bottom-sheet") {
       target.open = false;
       this._setSidebarLight(null);
+      this._clearClockRingHover();
       return;
     }
     this._closeSceneSidebar({ animate: true });
@@ -4640,6 +4659,15 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (this._sidebarEventId && this._sidebarEventId === host._eventId) {
         this._setSidebarEvent(null);
       }
+      // Mobile bottom-sheet swipe/backdrop dismiss fires closed without always
+      // going through _requestCloseSceneSidebar — clear the ring selection too.
+      if (
+        host._lightEntityId &&
+        this._sidebarLightId === host._lightEntityId
+      ) {
+        this._setSidebarLight(null);
+      }
+      this._clearClockRingHover();
       if (!host._committed && this.isConnected) {
         host._onDismiss?.();
       }
