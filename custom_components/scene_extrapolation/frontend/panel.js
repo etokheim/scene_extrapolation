@@ -103,14 +103,16 @@ function registerFeatherProperties() {
     },
     {
       name: "--ring-expand",
+      // Must inherit: the sharp hover/selected rim is a ::after mask that
+      // reads these on the pseudo, and the fill mask lives on a child.
       syntax: "<percentage>",
-      inherits: false,
+      inherits: true,
       initialValue: "0%",
     },
     {
       name: "--ring-border-w",
       syntax: "<percentage>",
-      inherits: false,
+      inherits: true,
       initialValue: "0%",
     },
   ]) {
