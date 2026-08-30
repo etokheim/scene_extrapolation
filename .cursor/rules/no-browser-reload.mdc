@@ -12,6 +12,8 @@ Do **not** hard-reload the Cursor-owned HA tab. CDP `Page.reload` with `ignoreCa
 - Pick up new `panel.js` by bumping `PANEL_ASSET_REV` in `panel.py` and `docker compose restart`. The versioned asset URL is the cache-bust — see [`docs/DECISIONS.md`](../../docs/DECISIONS.md).
 - Keep using the **already-open** sandbox tab.
 - In-page Home Assistant navigation is fine (sidebar, hash routes, `browser_navigate` to an HA URL).
-- A **normal** refresh (`browser_navigate` to the same page, or the user hitting reload) is fine. Do not add `ignoreCache` / hard-reload flags.
+- A **normal** refresh is often **required** after a rev bump: `location.reload()` (no `ignoreCache`), or the user hitting reload. Soft hash-only navigation frequently keeps the old `scene-extrapolation-panel` custom element registered, so you can still be looking at pre-restart JS.
+- After reload, **verify the new build** before debugging layout (shadow DOM / CSS marker for your change, or absence of removed nodes). Wait until HA finishes startup (“Wrapping up startup…”) — early loads 404 or show a spinner.
+- Landscape checks: CDP `Emulation.setDeviceMetricsOverride` (wide × short) + `resize` / `_syncYearScrubLayout()`; pierce shadow to find `scene-extrapolation-panel`.
 
-Prefer measuring the already-open sandbox tab after a restart plus a normal navigation.
+Prefer measuring the already-open sandbox tab after a restart plus a normal document reload.
