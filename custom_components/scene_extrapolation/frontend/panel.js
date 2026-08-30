@@ -1039,7 +1039,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           background: transparent;
           box-sizing: border-box;
         }
-        /* Two tick styles only: 6-hour majors (2px) and 15-min minors (1px). */
+        /* Two tick styles only: 6-hour majors (2px) and all others (1px).
+           Stroke is CSS px + non-scaling so weight does not grow with the dial. */
         .sun-light-clock-overlay .clock-tick {
           stroke: var(--divider-color);
           stroke-width: 1px;
@@ -1050,15 +1051,19 @@ class SceneExtrapolationPanel extends HTMLElement {
           stroke: var(--secondary-text-color);
           stroke-width: 2px;
         }
-        .sun-light-clock-overlay .clock-label {
-          fill: var(--secondary-text-color);
+        /* HTML labels (not SVG text) so 10/14px stay screen-fixed. */
+        .clock-hour-label {
+          position: absolute;
+          transform: translate(-50%, -50%);
           font-size: 10px;
           font-variant-numeric: tabular-nums;
-          text-anchor: middle;
-          dominant-baseline: middle;
+          line-height: 1;
+          color: var(--secondary-text-color);
+          pointer-events: none;
+          z-index: 4;
         }
         @media (min-width: 871px) {
-          .sun-light-clock-overlay .clock-label {
+          .clock-hour-label {
             font-size: 14px;
           }
         }
@@ -7559,11 +7564,15 @@ class SceneExtrapolationPanel extends HTMLElement {
       "line"
     );
     handleInner.setAttribute("class", "clock-handle");
+    handleInner.setAttribute("vector-effect", "non-scaling-stroke");
+    handleInner.setAttribute("stroke-width", "1.5px");
     const handleOuter = document.createElementNS(
       "http://www.w3.org/2000/svg",
       "line"
     );
     handleOuter.setAttribute("class", "clock-handle");
+    handleOuter.setAttribute("vector-effect", "non-scaling-stroke");
+    handleOuter.setAttribute("stroke-width", "1.5px");
     overlay.append(handleInner, handleOuter);
     this._clockHandleInnerEl = handleInner;
     this._clockHandleOuterEl = handleOuter;
@@ -7792,8 +7801,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._paintSunDayClip(overlay, events);
     const cx = CLOCK_CX;
     const cy = CLOCK_CY;
-    // 15-minute ticks; only 6-hour marks use the major style.
-    for (let seconds = 0; seconds < SECONDS_PER_DAY; seconds += 15 * 60) {
+    // 7.5-minute ticks (2× denser than 15-min); 6-hour marks stay major.
+    // Hour numbers every 2h as HTML so font-size does not scale with the face.
+    const hourLabels = [];
+    const labelRpct = (CLOCK_LABEL_R / CLOCK_VIEW) * 100;
+    for (let seconds = 0; seconds < SECONDS_PER_DAY; seconds += 7.5 * 60) {
       const deg = this._clockAngleDeg(seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
       const major = seconds % (6 * 3600) === 0;
@@ -7808,20 +7820,17 @@ class SceneExtrapolationPanel extends HTMLElement {
       tick.setAttribute("y1", y1.toFixed(2));
       tick.setAttribute("x2", x2.toFixed(2));
       tick.setAttribute("y2", y2.toFixed(2));
+      tick.setAttribute("vector-effect", "non-scaling-stroke");
+      tick.setAttribute("stroke-width", major ? "2px" : "1px");
       overlay.appendChild(tick);
-      if (major) {
+      if (seconds % (2 * 3600) === 0) {
         const hour = seconds / 3600;
-        const label = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "text"
-        );
-        label.setAttribute("class", "clock-label");
-        const lx = cx + Math.cos(rad) * CLOCK_LABEL_R;
-        const ly = cy + Math.sin(rad) * CLOCK_LABEL_R;
-        label.setAttribute("x", lx.toFixed(2));
-        label.setAttribute("y", ly.toFixed(2));
+        const label = document.createElement("div");
+        label.className = "clock-hour-label";
         label.textContent = String(hour).padStart(2, "0");
-        overlay.appendChild(label);
+        label.style.left = `${50 + Math.cos(rad) * labelRpct}%`;
+        label.style.top = `${50 + Math.sin(rad) * labelRpct}%`;
+        hourLabels.push(label);
       }
     }
     this._paintClockSunPath(overlay, core, cx, cy);
@@ -7830,7 +7839,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     handleHit.className = "clock-handle-hit";
     handleHit.setAttribute("aria-hidden", "true");
     this._clockHandleHitEl = handleHit;
-    core.append(overlay, handleHit);
+    core.append(overlay, handleHit, ...hourLabels);
     face.append(horizonBack, core);
 
     const editable = this._view === "edit";
