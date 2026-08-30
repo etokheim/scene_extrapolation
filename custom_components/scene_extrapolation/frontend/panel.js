@@ -1,3 +1,8 @@
+import {
+  buildClientSunDay,
+  resampleLightsForEvents,
+} from "./client_solar.js";
+
 const DOMAIN = "scene_extrapolation";
 const SECONDS_PER_DAY = 24 * 3600;
 const CHART_WIDTH = 1000;
@@ -6269,10 +6274,48 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     // Keep sticky scrub time across date changes (curve updates underneath).
     this._sunPathKey = undefined;
+    // Dial year scrub: client sun + in-place patch (no mid-drag HA preview).
+    if (this._yearScrubbing && this._lightView === "clock") {
+      this._applyClientScrubDay(iso);
+      return;
+    }
     if (debounce) {
       this._schedulePreview();
     } else {
       this._ensureSunPath();
+    }
+  }
+
+  /**
+   * Mid-drag year scrub: local sun geometry + resampled rings. HA Astral
+   * preview reconciles on pointer-up via _ensureSunPath.
+   */
+  _applyClientScrubDay(iso) {
+    const loc = this._previewLocation || this._homeLocation();
+    if (!loc || !this._sunPath?.lights) {
+      return;
+    }
+    const timeZone = this._hass?.config?.time_zone || "UTC";
+    const sunDay = buildClientSunDay({
+      isoDate: iso,
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      timeZone,
+      duskMinimum: this._duskMinimumSeconds() ?? null,
+    });
+    const lights = resampleLightsForEvents(
+      this._sunPath.lights,
+      sunDay.events,
+      draftRgb
+    );
+    this._sunPath = {
+      ...sunDay,
+      lights,
+      warnings: this._sunPath.warnings || [],
+    };
+    if (!this._patchLightClock(this._sunPath)) {
+      // Face not built yet — thumb still moves; full draw on release.
+      return;
     }
   }
 
@@ -8595,6 +8638,111 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Update an existing dial face for year scrub without replaceChildren.
+   * Returns false when the light set changed and a full rebuild is required.
+   */
+  _patchLightClock(payload) {
+    const ringsHost = this._clockRingsHost;
+    const overlay = this._clockOverlayEl;
+    if (!ringsHost || !overlay || !payload?.events) {
+      return false;
+    }
+    const ringLights = (payload.lights || []).filter((light) => !light.suggested);
+    const rings = [...ringsHost.querySelectorAll(":scope > .clock-ring")];
+    if (rings.length !== ringLights.length) {
+      return false;
+    }
+    for (let index = 0; index < rings.length; index += 1) {
+      if (rings[index].dataset.entityId !== ringLights[index].entity_id) {
+        return false;
+      }
+    }
+    for (let index = 0; index < rings.length; index += 1) {
+      const bg = conicGradientFromSamples(ringLights[index].samples || []);
+      const fill = rings[index].querySelector(".clock-ring-fill");
+      if (fill) {
+        fill.style.background = bg;
+      }
+    }
+    for (const glow of this._clockGlowLayer?.querySelectorAll(
+      ":scope > .sun-light-clock-glow"
+    ) || []) {
+      const glowRings = glow.querySelectorAll(":scope > .clock-ring");
+      for (let index = 0; index < glowRings.length; index += 1) {
+        const fill = glowRings[index].querySelector(".clock-ring-fill");
+        if (fill && ringLights[index]) {
+          fill.style.background = conicGradientFromSamples(
+            ringLights[index].samples || []
+          );
+        }
+      }
+    }
+    for (const sel of [
+      ".clock-sun-day",
+      ".clock-sun-path-night",
+      ".clock-event-dot",
+      ".clock-event-ray",
+      ".clock-event-clamp-link",
+    ]) {
+      overlay.querySelectorAll(sel).forEach((el) => el.remove());
+    }
+    this._paintClockSunPath(overlay, payload.events);
+    const sky = this._clockHorizonSkyEl;
+    if (sky) {
+      while (sky.firstChild) {
+        sky.removeChild(sky.firstChild);
+      }
+      this._paintHorizonShadow(sky, payload.events);
+    }
+    this._syncClockEventAnchorsForScrub(payload.events);
+    this._layoutDialChromeFn?.();
+    const seconds =
+      this._clockStickySeconds ??
+      this._clockSunDisplayedSeconds ??
+      this._clockSunIdleSeconds();
+    this._applyClockSunAppearance(seconds);
+    if (this._hoverReadout) {
+      this._fillHoverReadout(seconds, { hovering: false });
+    }
+    return true;
+  }
+
+  /** Reposition / relabel event buttons mid-scrub (ghosts reconciled on release). */
+  _syncClockEventAnchorsForScrub(events) {
+    const anchors = this._clockEventAnchors || [];
+    for (const anchor of anchors) {
+      if (anchor.classList.contains("ghost")) {
+        continue;
+      }
+      const eventId = anchor.dataset.eventId;
+      const event = (events || []).find((item) => item.id === eventId);
+      const buttonSeconds = this._eventButtonSeconds(event);
+      if (event == null || buttonSeconds == null) {
+        continue;
+      }
+      const deg = this._clockAngleDeg(buttonSeconds);
+      const rad = ((deg - 90) * Math.PI) / 180;
+      anchor._clockPolar = { cos: Math.cos(rad), sin: Math.sin(rad) };
+      const timeText = event.fallback ? `${event.time}*` : event.time;
+      const heading = anchor.querySelector(".clock-event-heading");
+      if (heading) {
+        heading.textContent = `${event.name} · ${timeText}`;
+      }
+      const btn = anchor.querySelector(".clock-event");
+      if (btn) {
+        const sceneName = this._sceneName(this._eventSceneId(event.id));
+        const solarHint =
+          event.overridden && event.solar_time
+            ? ` (solar ${event.solar_time})`
+            : "";
+        btn.title = sceneName
+          ? `${event.name} · ${timeText}${solarHint} · ${sceneName}`
+          : `${event.name} · ${timeText}${solarHint}`;
+      }
+    }
+  }
+
   _buildLightClock(events) {
     this._lightNameLabels = [];
     const lights = this._sunPath.lights || [];
@@ -8631,12 +8779,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     skyOverlay.setAttribute("viewBox", `0 0 ${CLOCK_VIEW} ${CLOCK_VIEW}`);
     this._paintHorizonShadow(skyOverlay, events);
     horizonBack.append(horizonGlow, skyOverlay);
+    this._clockHorizonSkyEl = skyOverlay;
 
     const core = document.createElement("div");
     core.className = "sun-light-clock-core";
 
     const ringsHost = document.createElement("div");
     ringsHost.className = "sun-light-clock-rings";
+    this._clockRingsHost = ringsHost;
     const n = ringLights.length;
     const hole = 0;
     const usable = 100 - hole;
@@ -8823,12 +8973,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     const glowMd = makeGlow("glow-md");
     glowLayer.append(glowLg, glowMd);
     this._clockSkyGlow = glowLg;
+    this._clockGlowLayer = glowLayer;
     core.append(ringsHost);
 
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("class", "sun-light-clock-overlay");
     overlay.setAttribute("viewBox", `0 0 ${CLOCK_VIEW} ${CLOCK_VIEW}`);
     overlay.setAttribute("aria-hidden", "true");
+    this._clockOverlayEl = overlay;
     const cx = CLOCK_CX;
     const cy = CLOCK_CY;
     // Hour ticks + numbers live on the face (outer chrome). Core overlay is
@@ -8913,6 +9065,7 @@ class SceneExtrapolationPanel extends HTMLElement {
 
       const anchor = document.createElement("div");
       anchor.className = "clock-event-anchor";
+      anchor.dataset.eventId = event.id;
       anchor._clockPolar = { cos, sin };
 
       const meta = document.createElement("div");
@@ -9060,12 +9213,16 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._clockEventIconR = iconR;
       this._layoutClockEventSpokes();
     };
-    layoutEventAnchors();
-    const layoutDialChrome = () => {
+    this._clockEventAnchors = eventAnchors;
+    this._layoutDialChromeFn = () => {
       layoutEventAnchors();
       this._layoutClockEventDots();
       this._layoutClockHorizonBack();
       this._alignYearScrubRail();
+    };
+    layoutEventAnchors();
+    const layoutDialChrome = () => {
+      this._layoutDialChromeFn();
     };
     layoutDialChrome();
     if (typeof ResizeObserver === "function") {

@@ -260,14 +260,18 @@ async def ws_preview(
 ) -> None:
     """Return sun path plus per-light brightness/color samples."""
     scenes = msg.get("scenes") or {}
-    payload = build_preview(
-        hass,
-        dusk_minimum=msg.get("dusk_minimum"),
-        target_date=msg.get("date"),
-        scene_ids=scenes,
-        overlay=msg.get("overlay"),
-        location=msg.get("location"),
-        area_id=msg.get("area") or None,
+    # Executor: preview samples are CPU-heavy; keep the event loop responsive
+    # (year scrub settles with one of these after a client-side drag).
+    payload = await hass.async_add_executor_job(
+        lambda: build_preview(
+            hass,
+            dusk_minimum=msg.get("dusk_minimum"),
+            target_date=msg.get("date"),
+            scene_ids=scenes,
+            overlay=msg.get("overlay"),
+            location=msg.get("location"),
+            area_id=msg.get("area") or None,
+        )
     )
     connection.send_result(msg["id"], payload)
 
