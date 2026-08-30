@@ -1063,6 +1063,37 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-ring.selected.hovered {
           z-index: 7;
         }
+        /* Friendly name while pointing at a band (center of the planet). */
+        .clock-ring-hover-name {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 10;
+          pointer-events: none;
+          max-width: min(70%, 12rem);
+          padding: 6px 12px;
+          border-radius: 999px;
+          background: color-mix(
+            in srgb,
+            var(--card-background-color) 88%,
+            transparent
+          );
+          color: var(--primary-text-color);
+          box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--divider-color) 70%, transparent),
+            0 4px 14px rgba(0, 0, 0, 0.28);
+          font-size: 14px;
+          font-weight: 600;
+          line-height: 1.2;
+          text-align: center;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .clock-ring-hover-name[hidden] {
+          display: none;
+        }
         .sun-light-clock-overlay {
           position: absolute;
           inset: 0;
@@ -8666,12 +8697,27 @@ class SceneExtrapolationPanel extends HTMLElement {
       ring.title = light.name;
       ringsHost.appendChild(ring);
     }
+    const hoverName = document.createElement("div");
+    hoverName.className = "clock-ring-hover-name";
+    hoverName.setAttribute("aria-live", "polite");
+    hoverName.hidden = true;
+    ringsHost.appendChild(hoverName);
     const setHoveredRing = (entityId) => {
+      let label = "";
       for (const ring of ringsHost.querySelectorAll(".clock-ring")) {
-        ring.classList.toggle(
-          "hovered",
-          Boolean(entityId) && ring.dataset.entityId === entityId
-        );
+        const on =
+          Boolean(entityId) && ring.dataset.entityId === entityId;
+        ring.classList.toggle("hovered", on);
+        if (on) {
+          label = ring.title || "";
+        }
+      }
+      if (label) {
+        hoverName.textContent = label;
+        hoverName.hidden = false;
+      } else {
+        hoverName.textContent = "";
+        hoverName.hidden = true;
       }
     };
     ringsHost.addEventListener("pointermove", (ev) => {
