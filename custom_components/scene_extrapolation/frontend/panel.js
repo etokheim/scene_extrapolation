@@ -26,7 +26,7 @@ const CLOCK_DRAG_CLICK_PX = 7;
 /* Event spokes aim near the face edge; buttons sit in chrome outside the core. */
 const CLOCK_EVENT_ICON_R = 92;
 /* Fixed px band around the dial for event buttons + labels (do not scale). */
-const CLOCK_CHROME_PX = 56;
+const CLOCK_CHROME_PX = 78;
 const CLOCK_SCRUB_RAIL_PX = 88;
 /* Rings host inset so CSS outer edge matches CLOCK_RINGS_OUTER in viewBox. */
 const CLOCK_RINGS_INSET_PCT = 50 - CLOCK_RINGS_OUTER / 2;
@@ -696,9 +696,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-face {
           position: relative;
-          /* Full stage width, up to ~viewport height (square). */
-          width: min(100%, 100vh);
-          max-width: 100vh;
+          /* Leave headroom for the app bar + event labels around the dial. */
+          width: min(100%, 86vh);
+          max-width: 86vh;
           aspect-ratio: 1;
           flex: 0 0 auto;
           /* Allow page scroll over the dial; only the sun/handle capture. */
@@ -1067,11 +1067,12 @@ class SceneExtrapolationPanel extends HTMLElement {
             transparent 70%
           );
           filter: blur(18px);
-          opacity: 0.7;
+          /* Above horizon the HTML shadow sat on top of the white SVG fill. */
+          opacity: 0;
           z-index: 0;
         }
         .clock-sun.below-horizon .clock-sun-shadow {
-          opacity: 0;
+          opacity: 0.7;
         }
         .clock-sun-ring {
           inset: 0;
@@ -1229,7 +1230,7 @@ class SceneExtrapolationPanel extends HTMLElement {
             0 2px 8px rgba(0, 0, 0, 0.22);
         }
         .sun-light-clock-legend {
-          width: min(100%, 100vh);
+          width: min(100%, 86vh);
           display: flex;
           flex-direction: column;
           gap: 4px;
@@ -7237,7 +7238,9 @@ class SceneExtrapolationPanel extends HTMLElement {
   _clockSunPathRadius() {
     const sunClear = CLOCK_SUN_R_VIEW * CLOCK_SUN_SCALE_MAX;
     const rMin = CLOCK_RINGS_OUTER + CLOCK_SUN_PATH_PAD + sunClear;
-    const rMax = CLOCK_VIEW / 2 - CLOCK_SUN_PATH_PAD - sunClear;
+    // Max is 10% inside the padded face limit (min stays as-is).
+    const rMax =
+      (CLOCK_VIEW / 2 - CLOCK_SUN_PATH_PAD - sunClear) * 0.9;
     const lo = Math.min(rMin, rMax);
     const hi = Math.max(rMin, rMax);
     const annual = Math.max(this._sunPath?.max_elevation || 0, 1e-6);
@@ -8387,8 +8390,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (!w) {
         return;
       }
-      // Sit near the face edge (outside the inset core) with clear gap.
-      const iconR = ((w / 2 - 18) / w) * 100;
+      // Outside the inset core; slight overhang past the face edge for clearance.
+      const iconR = ((w / 2 + 10) / w) * 100;
       for (const anchor of eventAnchors) {
         const { cos, sin } = anchor._clockPolar;
         anchor.style.left = `${50 + cos * iconR}%`;
