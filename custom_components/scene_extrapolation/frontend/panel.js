@@ -804,8 +804,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           width: min(100%, 86vh, var(--dial-face-max, 86vh));
           pointer-events: auto;
         }
-        /* Landscape: legend in the left centering column over horizon bleed.
-           Grow right into the dial (rail is only timeline-width for centering). */
+        /* Landscape: left column stays a centering gutter; light list anchors
+           to its dial edge and grows into the dial (same idea as chips
+           growing left from the timeline rail). */
         .sun-light-clock-legend-rail {
           display: none;
           grid-column: 1;
@@ -819,6 +820,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 4px;
           padding: 12px 0 16px;
           overflow: visible;
+          pointer-events: none;
         }
         .sun-path-stage.landscape-clock-scrub .sun-light-clock-legend-rail {
           display: flex;
@@ -828,9 +830,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
         }
         .sun-light-clock-legend-rail .sun-light-clock-legend {
+          position: absolute;
+          top: 12px;
+          left: 100%;
           width: max-content;
-          min-width: 100%;
-          max-width: none;
+          max-width: min(280px, 36vw);
+          pointer-events: auto;
+        }
+        .sun-light-clock-legend-rail .clock-legend-name {
+          overflow: visible;
+          text-overflow: clip;
+          flex: 0 1 auto;
         }
         .sun-light-clock-face {
           position: relative;
