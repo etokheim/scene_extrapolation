@@ -444,13 +444,15 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 8px;
         }
         .sun-year-scrub-rail .sun-date-tools {
-          /* Chips above date; chips grow left into the page from the rail. */
+          /* Chips above date; pack to the rail’s right edge. */
           flex-direction: column;
-          align-items: flex-end;
+          align-items: stretch;
           width: 100%;
-          max-width: none;
+          max-width: 100%;
           overflow: visible;
           gap: 4px;
+          box-sizing: border-box;
+          padding-inline-end: 2px;
         }
         .sun-chip-row {
           display: flex;
@@ -459,15 +461,18 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 8px;
         }
         .sun-year-scrub-rail .sun-chip-row {
+          /* width:100% + flex-end: right edge stays in the rail; overflow grows
+             left into the dial. (max-content + margin-left:auto left-aligns when
+             chips are wider than the 88px rail and spills off-screen.) */
           flex-direction: row;
           flex-wrap: nowrap;
           justify-content: flex-end;
           align-items: center;
-          width: max-content;
-          max-width: none;
-          margin-left: auto;
-          gap: 4px;
+          width: 100%;
+          max-width: 100%;
           box-sizing: border-box;
+          gap: 4px;
+          overflow: visible;
         }
         .sun-year-scrub-rail .sun-chip {
           width: auto;
@@ -499,6 +504,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           cursor: pointer;
         }
         .sun-year-scrub-rail .sun-scrub-date {
+          align-self: flex-end;
           font-size: 26px;
           line-height: 1.15;
           padding: 2px 0;
@@ -1018,6 +1024,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         /* Match night sun-path dash + opacity. */
         .sun-light-clock-overlay .clock-event-ray,
         .sun-light-clock-overlay .clock-event-clamp-link {
+          fill: none;
           stroke: #d8e0ff;
           stroke-width: 1px;
           vector-effect: non-scaling-stroke;
@@ -1270,6 +1277,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: flex;
           flex-direction: column;
           gap: 4px;
+          /* Sit over the lower dial so legend/form are not lost under 86vh face. */
+          position: relative;
+          z-index: 5;
+          margin-top: -56px;
+          padding-top: 8px;
+          pointer-events: auto;
         }
         .clock-legend-row {
           display: flex;
@@ -2602,6 +2615,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           margin-inline-end: -4px;
         }
         .content {
+          position: relative;
+          z-index: 5;
           padding: var(--ha-space-3) 0 88px;
         }
         .content.wide {
@@ -8033,13 +8048,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       ) {
         const link = document.createElementNS(
           "http://www.w3.org/2000/svg",
-          "line"
+          "path"
         );
         link.setAttribute("class", "clock-event-clamp-link");
-        link.setAttribute("x1", outer.x.toFixed(2));
-        link.setAttribute("y1", outer.y.toFixed(2));
-        link.setAttribute("x2", outer.x.toFixed(2));
-        link.setAttribute("y2", outer.y.toFixed(2));
+        link.setAttribute("fill", "none");
         link.dataset.eventId = event.id;
         overlay.appendChild(link);
         this._clockEventClampLinkEls.push(link);
@@ -8252,10 +8264,24 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       const from = chromePoint(markSeconds);
       const to = chromePoint(buttonSeconds);
-      link.setAttribute("x1", from.x.toFixed(2));
-      link.setAttribute("y1", from.y.toFixed(2));
-      link.setAttribute("x2", to.x.toFixed(2));
-      link.setAttribute("y2", to.y.toFixed(2));
+      // Arc along the event-button circle (same radius), shortest way.
+      const r = Math.hypot(from.x - CLOCK_CX, from.y - CLOCK_CY);
+      if (!(r > 1)) {
+        continue;
+      }
+      const delta = this._shortestSecondsDelta(markSeconds, buttonSeconds);
+      const absSpan = Math.abs(delta);
+      if (absSpan < 30) {
+        link.setAttribute("d", "");
+        continue;
+      }
+      const large = absSpan / SECONDS_PER_DAY > 0.5 ? 1 : 0;
+      // Positive delta = clockwise on this dial (matches override arc).
+      const sweep = delta >= 0 ? 1 : 0;
+      link.setAttribute(
+        "d",
+        `M ${from.x.toFixed(2)} ${from.y.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${large} ${sweep} ${to.x.toFixed(2)} ${to.y.toFixed(2)}`
+      );
     }
   }
 
