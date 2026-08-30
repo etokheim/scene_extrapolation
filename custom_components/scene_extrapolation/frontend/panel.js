@@ -794,18 +794,21 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Registered via CSS.registerProperty (document), not @property here —
            shadow-root @property does not enable transitions. */
-        /* Soft elevation glow around the light rings (master-scale bloom).
-           Sized to the core so blur reaches past the planet into the chrome. */
+        /* Halo around the light rings — transparent center (rings cover it),
+           bright rim scaled past the planet so it stays visible without blur. */
         .sun-light-clock-glow {
           position: absolute;
-          inset: var(--clock-chrome);
+          inset: calc(
+            var(--clock-chrome) + (100% - 2 * var(--clock-chrome)) *
+              ${CLOCK_RINGS_INSET_PCT / 100}
+          );
           border-radius: 50%;
           pointer-events: none;
           z-index: 1;
-          transform: scale(1.75);
+          transform: scale(1.45);
           transform-origin: center center;
           filter: none;
-          opacity: 0.9;
+          opacity: 1;
         }
         /* Warmth along sunrise/sunset — not clipped to the planet rim. */
         .clock-horizon-glow {
@@ -1147,8 +1150,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
           white-space: nowrap;
         }
-        /* Sunrise/sunset sit under the icon so they do not collide with
-           dawn (above) / dusk (above) on the same side of the dial. */
+        /* Collision placement: below the button (see _layoutClockEventMetas). */
         .clock-event-meta.below {
           bottom: auto;
           top: calc(100% + 4px);
@@ -7393,9 +7395,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const glow = this._clockSkyGlow;
     if (glow) {
-      glow.style.background = glowLook.glowBackground;
-      // Keep the ring bloom clearly visible over night wedges / horizon.
-      glow.style.opacity = String(Math.max(0.85, glowLook.glowOpacity));
+      glow.style.background = glowLook.glowHaloBackground;
+      glow.style.opacity = "1";
     }
     this._updateHorizonGlow(elev, glowLook);
     this._updateOverrideArc(this._clockStickySeconds);
@@ -7937,6 +7938,51 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Place event labels to avoid collisions around the dial.
+   * Top → above; bottom → below; left/right → first (topmost) above, rest below.
+   */
+  _layoutClockEventMetas(anchors) {
+    if (!anchors?.length) {
+      return;
+    }
+    const TOP = -0.4;
+    const BOTTOM = 0.4;
+    const top = [];
+    const bottom = [];
+    const left = [];
+    const right = [];
+    for (const anchor of anchors) {
+      const { cos, sin } = anchor._clockPolar || {};
+      if (sin == null || cos == null) {
+        continue;
+      }
+      if (sin <= TOP) {
+        top.push(anchor);
+      } else if (sin >= BOTTOM) {
+        bottom.push(anchor);
+      } else if (cos < 0) {
+        left.push(anchor);
+      } else {
+        right.push(anchor);
+      }
+    }
+    const setBelow = (anchor, below) => {
+      anchor.querySelector(".clock-event-meta")?.classList.toggle("below", below);
+    };
+    for (const anchor of top) {
+      setBelow(anchor, false);
+    }
+    for (const anchor of bottom) {
+      setBelow(anchor, true);
+    }
+    // Topmost first on each side — that one keeps the label above.
+    left.sort((a, b) => a._clockPolar.sin - b._clockPolar.sin);
+    right.sort((a, b) => a._clockPolar.sin - b._clockPolar.sin);
+    left.forEach((anchor, index) => setBelow(anchor, index !== 0));
+    right.forEach((anchor, index) => setBelow(anchor, index !== 0));
+  }
+
   /** Retarget dashed spokes from path dots to the event button centers. */
   _layoutClockEventSpokes() {
     const spokes = this._clockEventSpokeEls;
@@ -8352,9 +8398,6 @@ class SceneExtrapolationPanel extends HTMLElement {
 
       const meta = document.createElement("div");
       meta.className = "clock-event-meta";
-      if (event.id === "sunrise" || event.id === "sunset") {
-        meta.classList.add("below");
-      }
       meta.setAttribute("aria-hidden", "true");
       const heading = document.createElement("span");
       heading.className = "clock-event-heading";
@@ -8424,6 +8467,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         anchor.style.left = `${50 + cos * iconR}%`;
         anchor.style.top = `${50 + sin * iconR}%`;
       }
+      this._layoutClockEventMetas(eventAnchors);
       this._clockEventIconR = iconR;
       this._layoutClockEventSpokes();
     };
@@ -10602,6 +10646,9 @@ function skyLookFromElevation(elev) {
   };
   return {
     glowBackground: `radial-gradient(closest-side circle at center, ${rgb(mid, 1)} 0%, ${rgb(mid, 0.85)} 28%, ${rgb(outer, 0.55)} 58%, ${rgb(outer, 0)} 100%)`,
+    /* Annular halo: center stays clear (under opaque rings); bright rim peeks
+       past the planet when the glow element is scaled up (no blur needed). */
+    glowHaloBackground: `radial-gradient(closest-side circle at center, transparent 0%, transparent 52%, ${rgb(mid, 0.55)} 64%, ${rgb(mid, 0.95)} 74%, ${rgb(outer, 0.75)} 86%, transparent 100%)`,
     glowOpacity: lerp(lo.glowOpacity, hi.glowOpacity),
     sunCore: mixHex(lo.sunCore, hi.sunCore),
     sunCorona: mixHex(lo.sunCorona, hi.sunCorona),
