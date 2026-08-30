@@ -1535,7 +1535,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           max-width: 500px;
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 8px;
           position: relative;
           z-index: 5;
           pointer-events: auto;
@@ -1543,10 +1543,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-legend-row {
           display: flex;
           align-items: center;
-          gap: 6px;
-          min-height: 36px;
-          padding: 2px 8px;
-          border-radius: 8px;
+          gap: 12px;
+          min-height: 56px;
+          padding: 10px 12px 10px 10px;
+          border-radius: var(--ha-border-radius-lg, 12px);
+          box-sizing: border-box;
+          background: var(--card-background-color, var(--ha-card-background, #1c1c1c));
+          box-shadow: var(--ha-card-box-shadow, none);
         }
         .clock-legend-row.interactive {
           cursor: pointer;
@@ -1555,51 +1558,77 @@ class SceneExtrapolationPanel extends HTMLElement {
           background: color-mix(
             in srgb,
             var(--primary-color) 10%,
-            transparent
+            var(--card-background-color, #1c1c1c)
           );
         }
         .clock-legend-row.selected {
-          background: color-mix(
-            in srgb,
-            var(--primary-color) 16%,
-            transparent
-          );
+          outline: 2px solid
+            color-mix(in srgb, var(--primary-color) 55%, transparent);
+          outline-offset: -2px;
         }
         .clock-legend-row.interactive.selected:hover {
           background: color-mix(
             in srgb,
-            var(--primary-color) 20%,
-            transparent
+            var(--primary-color) 14%,
+            var(--card-background-color, #1c1c1c)
           );
         }
-        .clock-legend-row.out-of-area .clock-legend-name {
+        .clock-legend-row.out-of-area .clock-legend-title {
           color: var(--warning-color, var(--error-color));
         }
         .clock-legend-row.suggested {
-          color: var(--secondary-text-color);
+          opacity: 0.92;
         }
-        .clock-legend-icon {
+        .clock-legend-icon-wrap {
           flex-shrink: 0;
-          width: 20px;
-          height: 20px;
-          --mdc-icon-size: 20px;
-          color: var(--secondary-text-color);
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: color-mix(
+            in srgb,
+            var(--clock-legend-accent, var(--state-light-color, var(--amber-color, #ff9800)))
+              20%,
+            transparent
+          );
+          color: var(
+            --clock-legend-accent,
+            var(--state-light-color, var(--amber-color, #ff9800))
+          );
         }
-        .clock-legend-row.selected .clock-legend-icon {
-          color: var(--primary-text-color);
+        .clock-legend-icon-wrap .clock-legend-icon {
+          --mdc-icon-size: 22px;
+          width: 22px;
+          height: 22px;
+          color: inherit;
         }
-        .clock-legend-name {
+        .clock-legend-meta {
           flex: 1 1 auto;
           min-width: 0;
-          font-size: 13px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .clock-legend-title {
+          font-size: 15px;
           font-weight: 500;
+          line-height: 1.25;
+          color: var(--primary-text-color);
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
-        .clock-legend-name .light-brightness {
+        .clock-legend-sub {
+          font-size: 13px;
           font-weight: 400;
+          line-height: 1.25;
+          color: var(--secondary-text-color);
           font-variant-numeric: tabular-nums;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .clock-legend-row .light-warn {
           position: static;
@@ -1612,6 +1641,15 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform: none;
           flex-shrink: 0;
           margin: 0;
+          --mdc-icon-button-size: 36px;
+        }
+        .clock-legend-chevron {
+          flex-shrink: 0;
+          --mdc-icon-size: 20px;
+          width: 20px;
+          height: 20px;
+          color: var(--secondary-text-color);
+          opacity: 0.7;
         }
         .sun-location-override {
           display: flex;
@@ -7668,18 +7706,20 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _updateLightNameBrightness(seconds) {
-    for (const { light, el } of this._lightNameLabels || []) {
+    for (const { light, titleEl, subEl } of this._lightNameLabels || []) {
+      if (!titleEl) {
+        continue;
+      }
+      titleEl.textContent = light.name;
+      if (!subEl) {
+        continue;
+      }
       if (seconds == null) {
-        el.textContent = light.name;
+        subEl.textContent = "";
         continue;
       }
       const sample = interpolateLightSample(light.samples || [], seconds);
-      el.replaceChildren();
-      el.appendChild(document.createTextNode(`${light.name} `));
-      const pct = document.createElement("span");
-      pct.className = "light-brightness";
-      pct.textContent = `${Math.round(sample.brightness)}%`;
-      el.appendChild(pct);
+      subEl.textContent = `${Math.round(sample.brightness)}%`;
     }
   }
 
@@ -9635,17 +9675,36 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (light.entity_id === this._sidebarLightId) {
       row.classList.add("selected");
     }
-    row.appendChild(this._lightEntityIcon(light.entity_id));
-    const name = document.createElement("span");
-    name.className = "clock-legend-name";
-    name.textContent = light.name;
+
+    const accent = this._lightLegendAccent(light);
+    if (accent) {
+      row.style.setProperty("--clock-legend-accent", accent);
+    }
+
+    const iconWrap = document.createElement("div");
+    iconWrap.className = "clock-legend-icon-wrap";
+    iconWrap.appendChild(this._lightEntityIcon(light.entity_id));
+    row.appendChild(iconWrap);
+
+    const meta = document.createElement("div");
+    meta.className = "clock-legend-meta";
+    const title = document.createElement("div");
+    title.className = "clock-legend-title";
+    title.textContent = light.name;
     if (light.in_area === false) {
-      name.title = "This light is not in the selected area";
+      title.title = "This light is not in the selected area";
     }
+    const sub = document.createElement("div");
+    sub.className = "clock-legend-sub";
+    if (suggested) {
+      sub.textContent = "Not in an assigned scene yet";
+    }
+    meta.append(title, sub);
+    row.appendChild(meta);
     if (!suggested) {
-      this._lightNameLabels.push({ light, el: name });
+      this._lightNameLabels.push({ light, titleEl: title, subEl: sub });
     }
-    row.appendChild(name);
+
     if (this._view === "edit" && !suggested) {
       const assigned = events.filter((item) => this._eventSceneId(item.id));
       if (assigned.length) {
@@ -9684,6 +9743,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._removeLightFromAssignedScenes(light.entity_id);
       });
       row.appendChild(remove);
+      if (assigned.length) {
+        const chevron = document.createElement("ha-icon");
+        chevron.className = "clock-legend-chevron";
+        chevron.setAttribute("icon", "mdi:chevron-right");
+        row.appendChild(chevron);
+      }
     }
     const missingScenes = this._missingSceneRows(light);
     if (this._view === "edit" && missingScenes.length) {
@@ -9717,18 +9782,48 @@ class SceneExtrapolationPanel extends HTMLElement {
     return row;
   }
 
+  _lightLegendAccent(light) {
+    const samples = light.samples || [];
+    const mid =
+      samples[Math.floor(samples.length / 2)] || samples[0] || null;
+    if (mid && (mid[1] > 0 || mid[2] || mid[3] || mid[4])) {
+      return darkenedRgb(mid);
+    }
+    const state = this._hass?.states?.[light.entity_id];
+    const rgb = state?.attributes?.rgb_color;
+    if (Array.isArray(rgb) && rgb.length >= 3) {
+      return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    }
+    return null;
+  }
+
   _lightEntityIcon(entityId) {
     const state = this._hass?.states?.[entityId];
-    if (customElements.get("ha-state-icon") && state) {
+    const entry = this._hass?.entities?.[entityId];
+    // Prefer HA’s state icon so device-class / registry icons win over a
+    // generic lightbulb fallback.
+    if (customElements.get("ha-state-icon")) {
       const icon = document.createElement("ha-state-icon");
       icon.className = "clock-legend-icon";
       icon.hass = this._hass;
-      icon.stateObj = state;
+      if (state) {
+        icon.stateObj = state;
+      }
+      if (entityId) {
+        icon.entityId = entityId;
+      }
       return icon;
     }
     const icon = document.createElement("ha-icon");
     icon.className = "clock-legend-icon";
-    icon.setAttribute("icon", state?.attributes?.icon || "mdi:lightbulb");
+    const named =
+      entry?.icon || state?.attributes?.icon || state?.attributes?.entity_picture;
+    icon.setAttribute(
+      "icon",
+      typeof named === "string" && named.startsWith("mdi:")
+        ? named
+        : "mdi:lightbulb"
+    );
     return icon;
   }
 
