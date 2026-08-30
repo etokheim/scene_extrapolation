@@ -847,6 +847,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: visible;
           /* Match soft-mode bleed so the bloom still overlaps between bands. */
           --clock-feather: ${CLOCK_FEATHER_PCT}%;
+          --ring-soft-expand: ${(CLOCK_FEATHER_PCT * 1.35).toFixed(2)}%;
           backface-visibility: hidden;
         }
         .sun-light-clock-glow.glow-lg {
@@ -856,10 +857,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform: translateZ(0) scale(1.38);
         }
         .sun-light-clock-glow .clock-ring {
-          --ring-expand: 0%;
+          --ring-expand: var(--ring-soft-expand);
           --ring-border-w: 0%;
           transition: none;
           filter: none;
+          opacity: 1;
+          transform: none;
         }
         .sun-light-clock-glow .clock-ring::after {
           content: none;
@@ -887,7 +890,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Above the hour handle so the planet occludes it; path/sun stay higher. */
           z-index: 7;
           --clock-feather: ${CLOCK_FEATHER_PCT}%;
-          transition: --clock-feather 220ms cubic-bezier(0.2, 0, 0, 1);
+          /* Soft mode: expand bands into neighbors so opaque cores overlap —
+             feather alone only overlaps fades and the surface disc shows through. */
+          --ring-soft-expand: ${(CLOCK_FEATHER_PCT * 1.35).toFixed(2)}%;
+          transition:
+            --clock-feather 220ms cubic-bezier(0.2, 0, 0, 1),
+            --ring-soft-expand 220ms cubic-bezier(0.2, 0, 0, 1);
           cursor: pointer;
           /* Filled circular planet: box-shadow matches the old drop-shadow look
              without filter-rasterizing masked conics every frame. */
@@ -906,10 +914,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 0;
           pointer-events: none;
         }
-        /* Soft → sharp: drop feather so bands sit edge-to-edge (no overlap). */
+        /* Soft → sharp: no feather / soft-expand so bands sit edge-to-edge. */
         .sun-light-clock-rings:hover,
         .sun-light-clock-rings:has(.clock-ring.selected) {
           --clock-feather: 0%;
+          --ring-soft-expand: 0%;
         }
         .clock-ring {
           position: absolute;
@@ -919,7 +928,7 @@ class SceneExtrapolationPanel extends HTMLElement {
              radial pick on the host instead of per-ring clicks. */
           pointer-events: none;
           z-index: 1;
-          --ring-expand: 0%;
+          --ring-expand: var(--ring-soft-expand);
           --ring-border-w: 0%;
           transform-origin: center center;
           transition:
