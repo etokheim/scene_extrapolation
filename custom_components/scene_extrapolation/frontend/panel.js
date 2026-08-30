@@ -1043,6 +1043,21 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-ring.selected::after {
           opacity: 1;
         }
+        /* Only one band highlighted: while hovering another ring, the
+           selected ring yields (still .selected for sidebar sync). */
+        .sun-light-clock-rings:has(.clock-ring.hovered)
+          .clock-ring.selected:not(.hovered) {
+          --ring-expand: 0%;
+          --ring-rim-w: 0px;
+          opacity: 0.5;
+          transform: none;
+          filter: none;
+          z-index: 1;
+        }
+        .sun-light-clock-rings:has(.clock-ring.hovered)
+          .clock-ring.selected:not(.hovered)::after {
+          opacity: 0;
+        }
         .clock-ring.selected.hovered {
           z-index: 7;
         }
@@ -8714,7 +8729,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (!light) {
         return;
       }
-      ev.stopPropagation();
       const assigned = events.filter((item) => this._eventSceneId(item.id));
       if (!assigned.length) {
         return;
@@ -8729,6 +8743,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     };
     ringsHost.addEventListener("click", (ev) => {
+      // Always stop: planet clicks must not hit the outside-deselect listener.
+      ev.stopPropagation();
       openRingAt(ev, this._lightAtClockPointer(ev, ringsHost, ringLights));
     });
     ringsHost.tabIndex = 0;
@@ -8744,6 +8760,29 @@ class SceneExtrapolationPanel extends HTMLElement {
         ringLights[0];
       openRingAt(ev, selected);
     });
+    // Click outside the rings (and outside light-pickers / the sidebar)
+    // clears the selection by closing the light editor.
+    if (this._clockOutsideClick) {
+      this.shadowRoot?.removeEventListener("click", this._clockOutsideClick);
+    }
+    this._clockOutsideClick = (ev) => {
+      if (!this._sidebarLightId) {
+        return;
+      }
+      const t = ev.target;
+      if (!(t instanceof Element)) {
+        return;
+      }
+      if (
+        t.closest(
+          ".scene-sidebar, .sun-light-clock-rings, .clock-legend-row.interactive, .clock-event, .sun-event"
+        )
+      ) {
+        return;
+      }
+      this._requestCloseSceneSidebar();
+    };
+    this.shadowRoot.addEventListener("click", this._clockOutsideClick);
     // Soft bloom clones behind the interactive rings — same conic colors as the
     // planet (not elevation sky). Large + half-size layers share opacity.
     // Face-level layer (not inside core) so bloom paints over the horizon wash.
