@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Horizon glow peach↔sky and day-wedge alpha blend smoothly with elevation (no mid-morning snap)
 - Document dial light-list layout and stricter panel.js reload/verify guidance for agents
 - README refresh with clearer install/setup and Buy Me a Coffee badge
 - Dial ring hover name sits 8px above the light-ring planet (not above the face chrome)

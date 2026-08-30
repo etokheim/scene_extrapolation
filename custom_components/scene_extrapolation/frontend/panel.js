@@ -8196,26 +8196,27 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       return;
     }
-    const nearHorizon =
-      elev < 0
-        ? 1
-        : 1 -
-          Math.min(
-            1,
-            elev / Math.max(this._sunPath?.max_elevation || 0, 1e-6)
-          );
+    const maxElev = Math.max(this._sunPath?.max_elevation || 0, 1e-6);
+    // Climb 0 at/below horizon → 1 at that day's peak (smooth; no hard palette cut).
+    const climb = Math.min(1, Math.max(0, elev) / maxElev);
+    const nearHorizon = elev < 0 ? 1 : 1 - climb;
     const strength = 0.35 + 0.65 * nearHorizon;
     // Narrower rim band than the prior ~4.2h window.
     const band = 2.5 * 3600;
     // Cosine ramp is smooth enough at 36 stops; half the scrub-time string work.
     const steps = 36;
     const stops = [];
-    // Daytime rim uses sky blue; near sunrise/sunset the peach mid still wins
-    // via the cosine band (same stops, warmer fill when nearHorizon is high).
+    // Peach → sky as the sun climbs. A binary nearHorizon threshold flipped the
+    // whole conic in one frame mid-morning.
+    const peach = glowLook.horizonFill || glowLook.pathColor;
+    const sky = glowLook.skyColor || glowLook.pathColor;
+    const peachPct = Math.round(100 * nearHorizon);
     const rimFill =
-      elev >= 0 && nearHorizon < 0.55
-        ? glowLook.skyColor || glowLook.pathColor
-        : glowLook.horizonFill || glowLook.pathColor;
+      peachPct >= 100
+        ? peach
+        : peachPct <= 0
+          ? sky
+          : `color-mix(in srgb, ${peach} ${peachPct}%, ${sky})`;
     for (let i = 0; i <= steps; i += 1) {
       const seconds = (i / steps) * SECONDS_PER_DAY;
       let weight = 0;
@@ -8235,11 +8236,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Day wedge (sunrise→sunset): Apple Solar–style sky blue behind the planet.
     const dayEl = this._clockSkyDayEl;
     if (dayEl) {
-      const sky = glowLook.skyColor || glowLook.pathColor;
-      // Stronger when the sun is up; keep a faint wash below the horizon so
-      // the sector still reads before civil dawn paints the rim.
-      const dayAlpha =
-        elev < 0 ? 0.16 : 0.42 + 0.38 * (1 - nearHorizon);
+      // Bridge civil twilight so fill alpha does not jump at elev=0.
+      const twilight =
+        elev >= 0 ? 1 : Math.min(1, Math.max(0, (elev + 6) / 6));
+      const dayAlpha = 0.16 + 0.26 * twilight + 0.38 * climb;
       dayEl.setAttribute(
         "fill",
         `color-mix(in srgb, ${sky} ${Math.round(dayAlpha * 100)}%, transparent)`
