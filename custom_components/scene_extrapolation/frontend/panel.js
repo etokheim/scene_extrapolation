@@ -891,6 +891,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform-origin: center center;
           animation: clock-overlay-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
         }
+        /* Cancel overlay spin on the sun fill/glow so it stays locked to the
+           HTML outline (both follow the JS enter arc only). */
+        .sun-light-clock-face.clock-face-enter .clock-sun-day-group {
+          transform-box: view-box;
+          transform-origin: center;
+          animation: clock-sun-counter-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
+        }
         .sun-light-clock-face.clock-face-enter .clock-event-anchor {
           animation: clock-event-spin 2250ms cubic-bezier(0.2, 0, 0, 1) both;
         }
@@ -916,6 +923,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           }
           to {
             transform: translateZ(0) rotate(0deg);
+          }
+        }
+        @keyframes clock-sun-counter-spin {
+          from {
+            transform: rotate(12deg);
+          }
+          to {
+            transform: rotate(0deg);
           }
         }
         @keyframes clock-event-spin {
