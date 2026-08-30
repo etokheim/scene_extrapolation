@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 - Dial ring hover name sits 8px above the light-ring planet (not above the face chrome)
-- Dial face keeps full scale; light list uses leftover portrait height or the landscape left rail (does not shrink the graphic)
+- Dial face keeps full scale; light list always flows under the face (portrait and landscape; does not shrink the graphic)
 - Desktop dial chrome is fixed (no face-size lerp that slid event buttons inward)
 - Landscape dial rail gets the same 12px top inset under the header as portrait
 - Enter animation keeps SVG sun fill locked to the HTML outline (counter-spin)

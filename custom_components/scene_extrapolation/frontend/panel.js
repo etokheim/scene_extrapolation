@@ -390,9 +390,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-path-stage {
           display: block;
         }
-        /* Landscape clock: timeline in the right column; matching left column
-           (light list) keeps the dial optically centered while the rail still
-           reduces the width available for the dial. */
+        /* Landscape clock: timeline in the right column; matching empty left
+           column keeps the dial optically centered in the full stage while
+           the rail still reduces the width available for the dial. */
         .sun-path-stage.landscape-clock-scrub {
           --scrub-rail-width: ${CLOCK_SCRUB_RAIL_PX}px;
           display: grid;
@@ -768,10 +768,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Flush under the app bar so horizon/bloom/ramp share one top edge
              (margin left a strip where only some bleed painted). */
           margin-top: 0;
-          overflow: hidden;
-          /* Full dial scale — legend must not shrink the face. Portrait keeps
-             the list under the face in leftover height; landscape uses the
-             left rail (matching the timeline column). */
+          /* Clip horizon bleed horizontally; allow the light list below the
+             face to extend so the page can scroll to it (landscape + portrait). */
+          overflow-x: hidden;
+          overflow-y: visible;
+          /* Full dial scale — legend flows under the face and must not shrink it. */
           --dial-face-max: calc(
             100vh - var(--header-height, 64px) - var(--dial-timeline-h, 0px) -
               56px
@@ -791,9 +792,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-path.dial-view .sun-light-clock {
           position: relative;
-          max-height: calc(
-            100vh - var(--header-height, 64px) - var(--dial-timeline-h, 0px)
-          );
+          /* Do not cap height to the viewport — face size comes from
+             --dial-face-max; the legend stacks under and scrolls into view. */
           min-height: 0;
           gap: 16px;
           padding-bottom: 16px;
@@ -802,45 +802,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           z-index: 5;
           width: min(100%, 86vh, var(--dial-face-max, 86vh));
+          flex: 0 0 auto;
           pointer-events: auto;
-        }
-        /* Landscape: left column stays a centering gutter; light list anchors
-           to its dial edge and grows into the dial (same idea as chips
-           growing left from the timeline rail). */
-        .sun-light-clock-legend-rail {
-          display: none;
-          grid-column: 1;
-          position: relative;
-          width: 100%;
-          min-width: 0;
-          box-sizing: border-box;
-          z-index: 5;
-          flex-direction: column;
-          align-items: stretch;
-          gap: 4px;
-          padding: 12px 0 16px;
-          overflow: visible;
-          pointer-events: none;
-        }
-        .sun-path-stage.landscape-clock-scrub .sun-light-clock-legend-rail {
-          display: flex;
-        }
-        .sun-path-stage.landscape-clock-scrub.scrub-collapsed .sun-light-clock-legend-rail {
-          opacity: 0;
-          pointer-events: none;
-        }
-        .sun-light-clock-legend-rail .sun-light-clock-legend {
-          position: absolute;
-          top: 12px;
-          left: 100%;
-          width: max-content;
-          max-width: min(280px, 36vw);
-          pointer-events: auto;
-        }
-        .sun-light-clock-legend-rail .clock-legend-name {
-          overflow: visible;
-          text-overflow: clip;
-          flex: 0 1 auto;
         }
         .sun-light-clock-face {
           position: relative;
@@ -3052,7 +3015,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           </div>
           <div class="sun-path" hidden>
             <div class="sun-path-stage">
-              <div class="sun-light-clock-legend-rail" hidden></div>
               <div class="sun-path-body"></div>
               <div class="sun-year-scrub-rail" hidden></div>
             </div>
@@ -3070,9 +3032,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sunPathStage = this.shadowRoot.querySelector(".sun-path-stage");
     this._sunPathBodyEl = this.shadowRoot.querySelector(".sun-path-body");
     this._clockScrubRail = this.shadowRoot.querySelector(".sun-year-scrub-rail");
-    this._clockLegendRail = this.shadowRoot.querySelector(
-      ".sun-light-clock-legend-rail"
-    );
     this._contentEl = this.shadowRoot.querySelector(".content");
     this._fabEl = this.shadowRoot.querySelector(".fab");
     this._draftBanner = this.shadowRoot.querySelector(".draft-restore");
@@ -7196,23 +7155,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     }
 
-    const legend =
-      this._clockLegendEl ||
-      this.shadowRoot?.querySelector(".sun-light-clock-legend");
-    const clockWrap = this.shadowRoot?.querySelector(".sun-light-clock");
-
     if (landscapeClock) {
       this._clockScrubRail.hidden = false;
       // Stay in the rail while collapsed so width can animate; do not use hidden.
       this._scrubBlock.hidden = false;
       if (this._scrubBlock.parentNode !== this._clockScrubRail) {
         this._clockScrubRail.appendChild(this._scrubBlock);
-      }
-      if (this._clockLegendRail) {
-        this._clockLegendRail.hidden = false;
-        if (legend && legend.parentNode !== this._clockLegendRail) {
-          this._clockLegendRail.appendChild(legend);
-        }
       }
     } else {
       this._sunPathStage?.classList.remove("scrub-collapsed");
@@ -7229,14 +7177,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       this._scrubBlock.hidden = hideToolbarScrub;
       this._yearScrub.classList.remove("vertical");
-      // Portrait: legend under the face in leftover vertical space.
-      if (this._clockLegendRail) {
-        this._clockLegendRail.hidden = true;
-        this._clockLegendRail.style.height = "";
-      }
-      if (legend && clockWrap && legend.parentNode !== clockWrap) {
-        clockWrap.appendChild(legend);
-      }
     }
     this._syncYearScrub();
     if (landscapeClock) {
@@ -7255,9 +7195,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       path.style.removeProperty("--dial-timeline-h");
       return;
     }
-    // Portrait date/scrub overlay the dial — do not shrink the face for them
-    // or for the light list (portrait uses leftover height; landscape uses the
-    // left rail).
+    // Portrait date/scrub overlay the dial — do not shrink the face for them.
+    // Light list always flows under the face (same in landscape) and must not
+    // reduce --dial-face-max.
     path.style.setProperty("--dial-timeline-h", "0px");
   }
 
@@ -7298,9 +7238,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._clockScrubRail.style.top = "";
     this._clockScrubRail.style.left = "";
     this._clockScrubRail.style.marginTop = "";
-    if (this._clockLegendRail && !this._clockLegendRail.hidden) {
-      this._clockLegendRail.style.height = `${faceRect.height}px`;
-    }
   }
 
   _drawSunPath() {
