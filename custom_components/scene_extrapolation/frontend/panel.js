@@ -800,14 +800,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
           mix-blend-mode: screen;
         }
-        /* Elevation-tinted sky behind the planet (not card/page gray). */
+        /* Elevation-tinted sky behind the planet (outer blues, not white mid). */
         .clock-sky-wash {
           position: absolute;
           inset: -8%;
           pointer-events: none;
           mix-blend-mode: screen;
-          opacity: 0.62;
-          filter: blur(32px);
+          opacity: 0.72;
+          filter: blur(24px);
         }
         .clock-horizon-sky {
           position: absolute;
@@ -1079,11 +1079,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-overlay .clock-sun-glow-disc {
           pointer-events: none;
+          /* Soften the halo edge so it reads outside the white disc. */
+          filter: blur(2.5px);
         }
         .sun-light-clock-overlay .clock-sun-shadow-disc {
-          fill: rgba(0, 0, 0, 0.45);
+          fill: rgba(0, 0, 0, 0.2);
           pointer-events: none;
-          filter: blur(3.5px);
+          filter: blur(6px);
         }
         .clock-sun-hit {
           position: absolute;
@@ -7577,16 +7579,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     el.style.background = `conic-gradient(from 180deg, ${stops.join(", ")})`;
   }
 
-  /** Soft sky wash from elevation (radial at the dial, not card/page gray). */
+  /** Soft sky wash — daytime uses outer sky blues, not the white mid flare. */
   _updateSkyWash(elev, glowLook) {
     const el = this._clockSkyWashEl;
     if (!el) {
       return;
     }
     const look = glowLook || skyLookFromElevation(elev ?? 0);
-    const mid = look.horizonFill || look.pathColor || "#7eb6ff";
-    const outer = look.pathColor || mid;
-    el.style.background = `radial-gradient(circle closest-side at center, ${mid} 0%, ${outer} 55%, transparent 100%)`;
+    const sky = look.skyColor || look.pathColor || "#7eb6ff";
+    const light = look.skyLight || sky;
+    el.style.background = `radial-gradient(circle closest-side at center, ${light} 0%, ${sky} 42%, ${sky} 68%, transparent 100%)`;
   }
 
   _layoutClockSunFill(pos, scale) {
@@ -7608,7 +7610,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       glow.setAttribute("r", glowR.toFixed(2));
     }
     if (shadow) {
-      const shadowR = r * 2.4;
+      // Keep shadow inside the glow so the halo stays visible around it.
+      const shadowR = r * 1.85;
       shadow.setAttribute("cx", pos.x.toFixed(2));
       shadow.setAttribute("cy", pos.y.toFixed(2));
       shadow.setAttribute("r", shadowR.toFixed(2));
@@ -7864,10 +7867,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       stop.setAttribute("stop-opacity", String(opacity));
       glowGrad.appendChild(stop);
     };
-    // Pure white halo — fill stays #fff; both are day-wedge clipped.
-    mkGlow("0%", "#ffffff", 0.85);
-    mkGlow("42%", "#ffffff", 0.28);
-    mkGlow("100%", "#ffffff", 0);
+    // Soft warm halo — stronger than a flat white so it reads past the shadow.
+    mkGlow("0%", "#ffffff", 0.2);
+    mkGlow("28%", "#ffffff", 0.95);
+    mkGlow("55%", "#fff1c2", 0.65);
+    mkGlow("78%", "#ffd27a", 0.35);
+    mkGlow("100%", "#ffc878", 0);
 
     const clipUrl = this._clockSunDayClipId
       ? `url(#${this._clockSunDayClipId})`
@@ -10637,6 +10642,16 @@ function skyLookFromElevation(elev) {
     sunStreak: mixHex(lo.sunStreak, hi.sunStreak),
     pathColor: `rgb(${mid[0]},${mid[1]},${mid[2]})`,
     horizonFill: `rgb(${mid[0]},${mid[1]},${mid[2]})`,
+    /* Outer keyframe is the sky tone (blue by day); mid is for sun flare / horizon. */
+    skyColor: `rgb(${outer[0]},${outer[1]},${outer[2]})`,
+    skyLight: rgb(
+      [
+        Math.round(outer[0] + (220 - outer[0]) * 0.35),
+        Math.round(outer[1] + (235 - outer[1]) * 0.4),
+        Math.round(outer[2] + (255 - outer[2]) * 0.25),
+      ],
+      1
+    ),
     streakOpacity: lerp(lo.streakOpacity, hi.streakOpacity),
     rayOpacity: lerp(lo.rayOpacity, hi.rayOpacity),
     ghostOpacity: lerp(lo.ghostOpacity, hi.ghostOpacity),
