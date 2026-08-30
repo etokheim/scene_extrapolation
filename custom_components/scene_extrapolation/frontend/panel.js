@@ -7711,7 +7711,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._applyClockSunAppearance(from);
     const tick = (now) => {
       const u = Math.min(1, (now - started) / durationMs);
-      const eased = 1 - (1 - u) ** 3;
+      // Strong ease-out so the pin settles softly (quintic).
+      const eased = 1 - (1 - u) ** 5;
       let s = from + delta * eased;
       s = ((s % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
       this._applyClockSunAppearance(s);
@@ -10484,9 +10485,10 @@ function interpolateElevation(curve, seconds) {
   return curve[curve.length - 1][1];
 }
 
-/** Sky glow + sun flare palette from solar elevation (degrees). */
+/** Sky glow + sun flare palette from solar elevation (degrees).
+ *  Aligned with Apple Solar-style faces: day = sky blue / periwinkle;
+ *  horizon = narrow muted peach (never hot pink); night = deep navy. */
 function skyLookFromElevation(elev) {
-  // Keyframes: horizon pink/red near 0°, white high day, blue then dark night.
   const keys = [
     {
       e: -90,
@@ -10502,8 +10504,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: -18,
-      outer: [10, 14, 36],
-      mid: [16, 22, 55],
+      outer: [12, 18, 42],
+      mid: [18, 26, 58],
       glowOpacity: 0.22,
       sunCore: "#d0daf0",
       sunCorona: "#7a8ab0",
@@ -10514,87 +10516,90 @@ function skyLookFromElevation(elev) {
     },
     {
       e: -12,
-      outer: [22, 40, 110],
-      mid: [40, 70, 160],
-      glowOpacity: 0.38,
-      sunCore: "#e8eeff",
-      sunCorona: "#6b8fd4",
+      outer: [28, 48, 108],
+      mid: [48, 72, 140],
+      glowOpacity: 0.34,
+      sunCore: "#e4ecff",
+      sunCorona: "#7a94c8",
       sunStreak: "#b0c4ff",
-      streakOpacity: 0.35,
-      rayOpacity: 0.22,
-      ghostOpacity: 0.22,
+      streakOpacity: 0.3,
+      rayOpacity: 0.18,
+      ghostOpacity: 0.2,
     },
     {
+      // Civil twilight — cool periwinkle, only a hint of warmth.
       e: -4,
-      outer: [90, 45, 95],
-      mid: [200, 80, 100],
-      glowOpacity: 0.52,
-      sunCore: "#ffd0b8",
-      sunCorona: "#ff6b6b",
-      sunStreak: "#ffb0a0",
-      streakOpacity: 0.75,
-      rayOpacity: 0.45,
-      ghostOpacity: 0.4,
-    },
-    {
-      e: 0,
-      outer: [220, 70, 70],
-      mid: [255, 140, 90],
-      glowOpacity: 0.62,
-      sunCore: "#fff0d0",
-      sunCorona: "#ff7a4d",
-      sunStreak: "#ffc4a0",
-      streakOpacity: 0.95,
-      rayOpacity: 0.65,
-      ghostOpacity: 0.5,
-    },
-    {
-      e: 4,
-      outer: [255, 120, 90],
-      mid: [255, 190, 140],
-      glowOpacity: 0.58,
-      sunCore: "#fff6e0",
-      sunCorona: "#ff9a5c",
-      sunStreak: "#ffd4a8",
-      streakOpacity: 0.9,
-      rayOpacity: 0.6,
-      ghostOpacity: 0.42,
-    },
-    {
-      e: 8,
-      outer: [160, 190, 255],
-      mid: [255, 235, 210],
-      glowOpacity: 0.52,
-      sunCore: "#fffaf0",
-      sunCorona: "#ffc878",
-      sunStreak: "#ffe8c0",
-      streakOpacity: 0.8,
-      rayOpacity: 0.5,
-      ghostOpacity: 0.32,
-    },
-    {
-      e: 25,
-      outer: [140, 185, 255],
-      mid: [255, 255, 250],
-      glowOpacity: 0.5,
-      sunCore: "#ffffff",
-      sunCorona: "#ffe08a",
-      sunStreak: "#fff4c8",
-      streakOpacity: 0.85,
-      rayOpacity: 0.55,
+      outer: [88, 108, 168],
+      mid: [140, 148, 188],
+      glowOpacity: 0.42,
+      sunCore: "#f0eef8",
+      sunCorona: "#c8b8d8",
+      sunStreak: "#ddd0e8",
+      streakOpacity: 0.45,
+      rayOpacity: 0.28,
       ghostOpacity: 0.28,
     },
     {
+      // Horizon — muted peach / apricot band, not saturated pink-red.
+      e: 0,
+      outer: [150, 138, 178],
+      mid: [220, 186, 168],
+      glowOpacity: 0.5,
+      sunCore: "#fff4ea",
+      sunCorona: "#e8c4a8",
+      sunStreak: "#f0d8c4",
+      streakOpacity: 0.55,
+      rayOpacity: 0.35,
+      ghostOpacity: 0.32,
+    },
+    {
+      // Just above — soft peach into dusty lavender-blue.
+      e: 4,
+      outer: [130, 155, 210],
+      mid: [210, 200, 205],
+      glowOpacity: 0.48,
+      sunCore: "#fff8f2",
+      sunCorona: "#e8d0b8",
+      sunStreak: "#f2e4d4",
+      streakOpacity: 0.5,
+      rayOpacity: 0.32,
+      ghostOpacity: 0.28,
+    },
+    {
+      e: 8,
+      outer: [120, 168, 235],
+      mid: [188, 210, 240],
+      glowOpacity: 0.5,
+      sunCore: "#f7fbff",
+      sunCorona: "#d8e6f8",
+      sunStreak: "#e8f0fa",
+      streakOpacity: 0.55,
+      rayOpacity: 0.35,
+      ghostOpacity: 0.26,
+    },
+    {
+      e: 25,
+      outer: [110, 175, 245],
+      mid: [200, 225, 250],
+      glowOpacity: 0.5,
+      sunCore: "#ffffff",
+      sunCorona: "#e8f2ff",
+      sunStreak: "#f0f6ff",
+      streakOpacity: 0.6,
+      rayOpacity: 0.4,
+      ghostOpacity: 0.24,
+    },
+    {
       e: 90,
-      outer: [120, 170, 255],
-      mid: [255, 255, 255],
+      outer: [95, 160, 240],
+      mid: [210, 230, 255],
       glowOpacity: 0.48,
       sunCore: "#ffffff",
-      sunCorona: "#ffe9a0",
-      sunStreak: "#fff8dc",
-      streakOpacity: 0.88,
-      rayOpacity: 0.58,
-      ghostOpacity: 0.3,
+      sunCorona: "#e4efff",
+      sunStreak: "#f2f7ff",
+      streakOpacity: 0.62,
+      rayOpacity: 0.42,
+      ghostOpacity: 0.26,
     },
   ];
   let lo = keys[0];
