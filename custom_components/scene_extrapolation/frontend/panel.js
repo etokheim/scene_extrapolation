@@ -17,11 +17,8 @@ const CLOCK_RINGS_OUTER = 52;
 /* Path stays a perfect circle between planet + pad and face − pad. */
 const CLOCK_SUN_PATH_PAD = 3;
 const CLOCK_SUN_PATH_WIDTH_PX = 1;
-/* Magnetic scrub: capture / rubber-break windows around solar events (seconds). */
-const CLOCK_SNAP_CAPTURE_SEC = 12 * 60;
-const CLOCK_SNAP_RELEASE_SEC = Math.round(48 * 60 * 0.6);
-/* How far the sun follows the pointer while stuck (same direction, never reverses). */
-const CLOCK_SNAP_RUBBER = 0.34;
+/* Magnetic scrub: snap only on pointer-up if within this window (no mid-drag magnet). */
+const CLOCK_SNAP_CAPTURE_SEC = Math.round(12 * 60 * 1.3);
 const CLOCK_DRAG_CLICK_PX = 7;
 /* Event spokes aim near the face edge; buttons sit in chrome outside the core. */
 const CLOCK_EVENT_ICON_R = 92;
@@ -44,11 +41,12 @@ const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
 /* Scale: 1 at daytime zenith (smallest); CLOCK_SUN_SCALE_MAX at
    sunrise/sunset and fixed through the night until sunrise. */
 const CLOCK_SUN_SCALE_MAX = 2;
-/* Handle tip / major tick outer radius in viewBox units. */
-const CLOCK_TICK_OUTER = 98;
-const CLOCK_TICK_INNER_MAJOR = 90;
-const CLOCK_TICK_INNER_MINOR = 94;
-const CLOCK_LABEL_R = 86;
+/* Handle tip / major tick outer radius in viewBox units.
+   Hourly ticks (master proportions); labels sit inside the marks. */
+const CLOCK_TICK_OUTER = 96;
+const CLOCK_TICK_INNER_MAJOR = 86;
+const CLOCK_TICK_INNER_MINOR = 90;
+const CLOCK_LABEL_R = 76;
 /* Override scrub arc sits on the outer tip of the hour ticks. */
 const CLOCK_OVERRIDE_R = CLOCK_TICK_OUTER;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
@@ -431,8 +429,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 8px;
         }
         /* Dial: chips left of day/month. Table: same row, date first.
-           Landscape rail is narrow — chips stack above the date instead. */
+           Landscape rail is narrow — chips stack above the date instead.
+           Above horizon bleed (sky/glow can extend past the face). */
         .sun-path.dial-view .sun-date-tools {
+          position: relative;
+          z-index: 3;
           flex-direction: row;
           flex-wrap: wrap;
           align-items: center;
@@ -788,10 +789,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 50%;
           pointer-events: none;
           z-index: 0;
-          transform: scale(1.2);
+          /* Master dial glow: larger spread + softer blur. */
+          transform: scale(1.35);
           transform-origin: center center;
-          filter: blur(64px);
-          opacity: 0.4;
+          filter: blur(81px);
+          opacity: 0.55;
         }
         /* Warmth along sunrise/sunset rays — not clipped to the planet rim. */
         .clock-horizon-glow {
@@ -1098,32 +1100,31 @@ class SceneExtrapolationPanel extends HTMLElement {
           touch-action: none;
           z-index: 7;
         }
-        /* Ticks: labeled hours use long majors; others short.
-           Opacity is half the prior 60% white; majors are 50% stronger. */
+        /* Hourly ticks (master stroke tokens); majors every 6h. */
         .sun-light-clock-overlay .clock-tick {
-          stroke: rgba(255, 255, 255, 0.3);
-          stroke-width: 1px;
+          stroke: var(--divider-color);
+          stroke-width: 1;
           vector-effect: non-scaling-stroke;
           stroke-linecap: round;
         }
         .sun-light-clock-overlay .clock-tick.major {
-          stroke: rgba(255, 255, 255, 0.45);
-          stroke-width: 2px;
+          stroke: var(--secondary-text-color);
+          stroke-width: 1.5;
         }
-        /* HTML labels (not SVG text) so 10/14px stay screen-fixed. */
+        /* HTML labels so 16/32px stay screen-fixed; sit inside the ticks. */
         .clock-hour-label {
           position: absolute;
           transform: translate(-50%, -50%);
-          font-size: 10px;
+          font-size: 16px;
           font-variant-numeric: tabular-nums;
           line-height: 1;
-          color: rgba(255, 255, 255, 0.3);
+          color: var(--secondary-text-color);
           pointer-events: none;
           z-index: 4;
         }
         @media (min-width: 871px) {
           .clock-hour-label {
-            font-size: 14px;
+            font-size: 32px;
           }
         }
         .clock-event-anchor {
@@ -2490,6 +2491,9 @@ class SceneExtrapolationPanel extends HTMLElement {
             padding-right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         }
         .draft-restore {
+          position: relative;
+          /* Above dial sky/horizon bleed that paints past the face. */
+          z-index: 5;
           display: flex;
           align-items: center;
           gap: 8px;
@@ -7039,7 +7043,6 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _resetClockSunToNow() {
     this._clockStickySeconds = undefined;
-    this._clockMagnetEventId = null;
     this._clockSunDragging = false;
     this._hoverSeconds = undefined;
     this._clockSunLive = false;
@@ -7360,7 +7363,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const glow = this._clockSkyGlow;
     if (glow) {
       glow.style.background = glowLook.glowBackground;
-      glow.style.opacity = String(Math.min(0.42, glowLook.glowOpacity));
+      glow.style.opacity = String(Math.min(0.55, glowLook.glowOpacity));
     }
     this._updateHorizonGlow(elev, glowLook);
     this._updateSkyWash(elev, glowLook);
@@ -8018,38 +8021,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     return best;
   }
 
-  /** Map pointer time → display time with snap / rubber-band around events. */
-  _clockMagnetDisplaySeconds(pointerSeconds) {
+  /** Snap to a solar event only when the pointer is within the capture window. */
+  _clockSnapTargetSeconds(pointerSeconds) {
     const nearest = this._nearestClockMagnet(pointerSeconds);
-    if (!nearest) {
-      this._clockMagnetEventId = null;
-      return pointerSeconds;
-    }
-    const magnetId = this._clockMagnetEventId;
-    if (magnetId) {
-      const stuck = this._clockMagnetEvents().find((e) => e.id === magnetId);
-      if (!stuck) {
-        this._clockMagnetEventId = null;
-      } else {
-        const pull = this._shortestSecondsDelta(stuck.seconds, pointerSeconds);
-        const absPull = Math.abs(pull);
-        if (absPull >= CLOCK_SNAP_RELEASE_SEC) {
-          this._clockMagnetEventId = null;
-          this._clockMagnetReleaseFrom = this._clockSunDisplayedSeconds;
-          return pointerSeconds;
-        }
-        // Same direction as the pull, compressed — never reverses toward the event.
-        let display = stuck.seconds + pull * CLOCK_SNAP_RUBBER;
-        display =
-          ((display % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
-        return display;
-      }
-    }
-    if (nearest.abs <= CLOCK_SNAP_CAPTURE_SEC) {
-      if (this._clockMagnetEventId !== nearest.event.id) {
-        this._clockMagnetEventId = nearest.event.id;
-        this._clockMagnetSnapFrom = this._clockSunDisplayedSeconds;
-      }
+    if (nearest && nearest.abs <= CLOCK_SNAP_CAPTURE_SEC) {
       return nearest.event.seconds;
     }
     return pointerSeconds;
@@ -8093,41 +8068,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           this._pendingClockHover,
           face
         );
-        const prevMagnet = this._clockMagnetEventId;
-        const display = this._clockMagnetDisplaySeconds(pointer);
-        // Animate onto a newly captured event.
-        if (
-          this._clockMagnetEventId &&
-          this._clockMagnetEventId !== prevMagnet &&
-          this._clockMagnetSnapFrom != null
-        ) {
-          const from = this._clockMagnetSnapFrom;
-          this._clockMagnetSnapFrom = null;
-          this._animateClockSunArc(from, display, 240);
-          this._hoverSeconds = display;
-          this._clockStickySeconds = display;
-          this._fillHoverReadout(display, { hovering: true });
-          return;
-        }
-        // Release: ease from the rubber-band pose to the cursor (no reverse).
-        if (
-          !this._clockMagnetEventId &&
-          prevMagnet &&
-          this._clockMagnetReleaseFrom != null
-        ) {
-          const from = this._clockMagnetReleaseFrom;
-          this._clockMagnetReleaseFrom = null;
-          this._animateClockSunArc(from, pointer, 220);
-          this._hoverSeconds = pointer;
-          this._clockStickySeconds = pointer;
-          this._fillHoverReadout(pointer, { hovering: true });
-          return;
-        }
-        // Do not fight snap/release arcs — applying live mid-ease catapults.
-        if (this._clockSunArcRaf) {
-          return;
-        }
-        applyLive(display);
+        applyLive(pointer);
       });
     };
     const onUp = (ev) => {
@@ -8153,22 +8094,24 @@ class SceneExtrapolationPanel extends HTMLElement {
         return;
       }
       const pointer = this._secondsFromClockPointer(ev, face);
-      const display = this._clockMagnetDisplaySeconds(pointer);
-      // Prefer the event itself if still magnetized after rubber band.
-      let finalSeconds = display;
-      if (this._clockMagnetEventId) {
-        const stuck = this._clockMagnetEvents().find(
-          (e) => e.id === this._clockMagnetEventId
-        );
-        if (stuck) {
-          finalSeconds = stuck.seconds;
-        }
-      }
+      const finalSeconds = this._clockSnapTargetSeconds(pointer);
       this._cancelClockSunArc();
       this._clockStickySeconds = finalSeconds;
       this._hoverSeconds = undefined;
       this._clockSunLive = false;
-      this._applyClockSunAppearance(finalSeconds);
+      // Snap only after release: 1s quintic ease-out (same curve as event pin).
+      if (
+        Math.abs(
+          this._shortestSecondsDelta(
+            this._clockSunDisplayedSeconds ?? pointer,
+            finalSeconds
+          )
+        ) >= 1
+      ) {
+        this._moveClockSunTo(finalSeconds, { durationMs: 1000 });
+      } else {
+        this._applyClockSunAppearance(finalSeconds);
+      }
       this._fillHoverReadout(finalSeconds, { hovering: false });
       if (this._clockCloseSidebarAfterDrag) {
         this._clockCloseSidebarAfterDrag = false;
@@ -8185,7 +8128,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._clockSunDragging = false;
       this._clockCloseSidebarAfterDrag = false;
       this._clockPointerOrigin = { x: ev.clientX, y: ev.clientY };
-      this._clockMagnetEventId = null;
       this._cancelClockSunArc();
       this._clockSunLive = true;
       ev.currentTarget.setPointerCapture?.(ev.pointerId);
@@ -8344,14 +8286,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     overlay.setAttribute("aria-hidden", "true");
     const cx = CLOCK_CX;
     const cy = CLOCK_CY;
-    // 7.5-minute ticks; long majors at every labeled hour (2h).
-    // Hour numbers every 2h as HTML so font-size does not scale with the face.
+    // Hourly ticks (majors every 6h); hour numbers inside as HTML so font-size
+    // does not scale with the face.
     const hourLabels = [];
     const labelRpct = (CLOCK_LABEL_R / CLOCK_VIEW) * 100;
-    for (let seconds = 0; seconds < SECONDS_PER_DAY; seconds += 7.5 * 60) {
+    for (let hour = 0; hour < 24; hour += 1) {
+      const seconds = hour * 3600;
       const deg = this._clockAngleDeg(seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
-      const major = seconds % (2 * 3600) === 0;
+      const major = hour % 6 === 0;
       const inner = major ? CLOCK_TICK_INNER_MAJOR : CLOCK_TICK_INNER_MINOR;
       const x1 = cx + Math.cos(rad) * inner;
       const y1 = cy + Math.sin(rad) * inner;
@@ -8363,11 +8306,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       tick.setAttribute("y1", y1.toFixed(2));
       tick.setAttribute("x2", x2.toFixed(2));
       tick.setAttribute("y2", y2.toFixed(2));
-      tick.setAttribute("vector-effect", "non-scaling-stroke");
-      tick.setAttribute("stroke-width", major ? "2px" : "1px");
       overlay.appendChild(tick);
       if (major) {
-        const hour = seconds / 3600;
         const label = document.createElement("div");
         label.className = "clock-hour-label";
         label.textContent = String(hour).padStart(2, "0");
