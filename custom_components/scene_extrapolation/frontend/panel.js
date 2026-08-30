@@ -1259,13 +1259,13 @@ class SceneExtrapolationPanel extends HTMLElement {
             drop-shadow(0 1px 6px rgba(0, 0, 0, 0.3));
         }
         .clock-face-ticks .clock-tick {
-          stroke: rgba(255, 255, 255, 0.28);
+          stroke: rgba(255, 255, 255, 0.21);
           stroke-width: 4.5px;
           vector-effect: non-scaling-stroke;
           stroke-linecap: round;
         }
         .clock-face-ticks .clock-tick.major {
-          stroke: rgba(255, 255, 255, 0.5);
+          stroke: rgba(255, 255, 255, 0.375);
           stroke-width: 6px;
         }
         /* HTML hour labels on the face, just inside the tick tips. */
