@@ -1256,13 +1256,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .clock-face-ticks .clock-tick {
           stroke: rgba(255, 255, 255, 0.28);
-          stroke-width: 3px;
+          stroke-width: 4.5px;
           vector-effect: non-scaling-stroke;
           stroke-linecap: round;
         }
         .clock-face-ticks .clock-tick.major {
           stroke: rgba(255, 255, 255, 0.5);
-          stroke-width: 4px;
+          stroke-width: 6px;
         }
         /* HTML hour labels on the face, just inside the tick tips. */
         .clock-hour-label {
@@ -9167,7 +9167,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       const labelFontPx = w >= 871 ? 32 : 16;
       // Past major tick length + ~half glyph + air so digits do not sit on ticks.
       const labelInsetPx =
-        (CLOCK_TICK_MAJOR_LEN / 100) * (w / 2) + labelFontPx * 0.55 + 4;
+        (CLOCK_TICK_MAJOR_LEN / 100) * (w / 2) + labelFontPx * 0.55 + 4 + 12;
       const labelPad = tickOuterPad + labelInsetPx;
       const chromePx = Math.max(
         Math.round(
