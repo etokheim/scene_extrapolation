@@ -577,6 +577,20 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           z-index: 3;
         }
+        /* Portrait dial: date chips / day-month / year scrub float over the
+           dial graphics (same idea as the hover readout + legend). */
+        .sun-path.dial-view .sun-toolbar:not(.toolbar-rail-only) {
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 0;
+          z-index: 6;
+          box-sizing: border-box;
+          pointer-events: none;
+        }
+        .sun-path.dial-view .sun-toolbar:not(.toolbar-rail-only) > * {
+          pointer-events: auto;
+        }
         /* Scrub/date live in the right rail — do not leave empty toolbar padding
            above the dial (would push the face down). */
         .sun-toolbar.toolbar-rail-only {
@@ -754,8 +768,8 @@ class SceneExtrapolationPanel extends HTMLElement {
              (margin left a strip where only some bleed painted). */
           margin-top: 0;
           overflow: hidden;
-          /* Square dial face budget: viewport minus app bar, portrait timeline,
-             and this container’s vertical padding. */
+          /* Square dial face budget: viewport minus app bar (portrait date/scrub
+             overlay the dial and no longer consume vertical budget). */
           --dial-face-max: calc(
             100vh - var(--header-height, 64px) - var(--dial-timeline-h, 0px) -
               56px
@@ -7156,12 +7170,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (landscapeClock) {
       requestAnimationFrame(() => this._alignYearScrubRail());
     }
-    // Portrait timeline sits above the dial — subtract its height from the
-    // graphics max-height. Landscape rail does not consume vertical space.
+    // Portrait timeline overlays the dial; landscape rail is beside it.
     requestAnimationFrame(() => this._syncDialHeightBudget(landscapeClock));
   }
 
-  _syncDialHeightBudget(landscapeClock) {
+  _syncDialHeightBudget(_landscapeClock) {
     const path = this._sunPathEl;
     if (!path) {
       return;
@@ -7170,11 +7183,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       path.style.removeProperty("--dial-timeline-h");
       return;
     }
-    let timelineH = 0;
-    if (!landscapeClock && this._dateToolbar && !this._scrubBlock?.hidden) {
-      timelineH = Math.ceil(this._dateToolbar.getBoundingClientRect().height);
-    }
-    path.style.setProperty("--dial-timeline-h", `${Math.max(0, timelineH)}px`);
+    // Portrait date/scrub overlay the dial (absolute) — do not shrink the face.
+    // Landscape rail is beside the dial and never consumed vertical budget.
+    path.style.setProperty("--dial-timeline-h", "0px");
   }
 
   _alignYearScrubRail() {
