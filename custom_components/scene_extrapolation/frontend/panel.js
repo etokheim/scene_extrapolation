@@ -765,15 +765,15 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-path.dial-view {
           --dial-timeline-h: 0px;
+          --dial-legend-h: 160px;
           /* Flush under the app bar so horizon/bloom/ramp share one top edge
              (margin left a strip where only some bleed painted). */
           margin-top: 0;
           overflow: hidden;
-          /* Square dial face budget: viewport minus app bar (portrait date/scrub
-             overlay the dial and no longer consume vertical budget). */
+          /* Face leaves room for the in-flow legend; horizon bleed fills behind it. */
           --dial-face-max: calc(
             100vh - var(--header-height, 64px) - var(--dial-timeline-h, 0px) -
-              56px
+              var(--dial-legend-h, 160px) - 72px
           );
         }
         .sun-light-clock {
@@ -790,23 +790,17 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-path.dial-view .sun-light-clock {
           position: relative;
-          max-height: calc(
-            100vh - var(--header-height, 64px) - var(--dial-timeline-h, 0px)
-          );
+          /* Grow with face + legend so horizon can paint behind the list. */
+          max-height: none;
           min-height: 0;
-          /* Legend overlays the face — no in-flow gap below the dial. */
-          gap: 0;
-          padding-bottom: 8px;
+          gap: 16px;
+          padding-bottom: 24px;
         }
         .sun-path.dial-view .sun-light-clock-legend {
-          /* Sit on top of horizon/bloom at the bottom of the dial (not clipped
-             under the face when dial-view overflow is hidden). */
-          position: absolute;
-          left: 50%;
-          bottom: 8px;
-          transform: translateX(-50%);
-          width: min(92%, 86vh, var(--dial-face-max, 86vh));
-          z-index: 8;
+          /* In-flow under the face — overlaps extended horizon, not the planet. */
+          position: relative;
+          z-index: 5;
+          width: min(100%, 86vh, var(--dial-face-max, 86vh));
           pointer-events: auto;
         }
         .sun-light-clock-face {
@@ -7197,11 +7191,17 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (!path.classList.contains("dial-view")) {
       path.style.removeProperty("--dial-timeline-h");
+      path.style.removeProperty("--dial-legend-h");
       return;
     }
     // Portrait date/scrub overlay the dial (absolute) — do not shrink the face.
-    // Landscape rail is beside the dial and never consumed vertical budget.
     path.style.setProperty("--dial-timeline-h", "0px");
+    const legend = this.shadowRoot?.querySelector(".sun-light-clock-legend");
+    const legendH = legend ? Math.ceil(legend.getBoundingClientRect().height) : 0;
+    path.style.setProperty(
+      "--dial-legend-h",
+      `${Math.max(legendH, 120)}px`
+    );
   }
 
   _alignYearScrubRail() {
@@ -8021,12 +8021,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const cx = fr.left + fr.width / 2;
     const cy = fr.top + fr.height / 2;
-    // Cover the full panel from the dial center (includes sidebar overlap).
+    // Reach the light list under the face so horizon/bloom fill behind it.
+    const clock = face.closest(".sun-light-clock");
+    const clockBottom =
+      clock?.getBoundingClientRect().bottom ?? Math.max(fr.bottom, host.bottom);
     const reach = Math.max(
       cx - host.left,
       host.right - cx,
       cy - host.top,
       host.bottom - cy,
+      clockBottom - cy,
       fr.width * 0.62
     );
     const side = reach * 2;
@@ -9561,6 +9565,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._layoutClockEventDots();
       this._layoutClockHorizonBack();
       this._alignYearScrubRail();
+      this._syncDialHeightBudget(
+        Boolean(this._sunPathStage?.classList.contains("landscape-clock-scrub"))
+      );
     };
     layoutEventAnchors();
     const layoutDialChrome = () => {
