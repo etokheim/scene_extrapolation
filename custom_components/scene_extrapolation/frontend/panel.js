@@ -9025,7 +9025,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (major) {
         const label = document.createElement("div");
         label.className = "clock-hour-label";
-        label.textContent = String(hour).padStart(2, "0");
+        label.textContent = hour === 0 ? "24" : String(hour).padStart(2, "0");
         label._clockPolar = { cos, sin };
         hourLabels.push(label);
       }
