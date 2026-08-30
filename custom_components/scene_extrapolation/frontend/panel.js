@@ -1589,20 +1589,19 @@ class SceneExtrapolationPanel extends HTMLElement {
           justify-content: center;
           background: color-mix(
             in srgb,
-            var(--clock-legend-accent, var(--state-light-color, var(--amber-color, #ff9800)))
-              20%,
+            var(--clock-legend-accent, var(--state-light-color, #ff9800)) 22%,
             transparent
           );
-          color: var(
-            --clock-legend-accent,
-            var(--state-light-color, var(--amber-color, #ff9800))
-          );
+          color: var(--clock-legend-accent, var(--state-light-color, #ff9800));
         }
-        .clock-legend-icon-wrap .clock-legend-icon {
+        .clock-legend-icon-wrap .clock-legend-icon,
+        .clock-legend-icon-wrap ha-state-icon,
+        .clock-legend-icon-wrap ha-icon {
           --mdc-icon-size: 22px;
+          --icon-primary-color: currentColor;
           width: 22px;
           height: 22px;
-          color: inherit;
+          color: inherit !important;
         }
         .clock-legend-meta {
           flex: 1 1 auto;
@@ -9802,13 +9801,22 @@ class SceneExtrapolationPanel extends HTMLElement {
     const samples = light.samples || [];
     const mid =
       samples[Math.floor(samples.length / 2)] || samples[0] || null;
-    if (mid && (mid[1] > 0 || mid[2] || mid[3] || mid[4])) {
-      return darkenedRgb(mid);
+    if (mid && mid[1] > 0) {
+      const r = mid[2];
+      const g = mid[3];
+      const b = mid[4];
+      // Near-white samples read as gray on the badge — keep HA light amber.
+      if (!(r > 230 && g > 220 && b > 200)) {
+        return `rgb(${r}, ${g}, ${b})`;
+      }
     }
     const state = this._hass?.states?.[light.entity_id];
     const rgb = state?.attributes?.rgb_color;
     if (Array.isArray(rgb) && rgb.length >= 3) {
-      return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+      const [r, g, b] = rgb;
+      if (!(r > 230 && g > 220 && b > 200)) {
+        return `rgb(${r}, ${g}, ${b})`;
+      }
     }
     return null;
   }
