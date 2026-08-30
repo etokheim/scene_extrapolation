@@ -7706,20 +7706,36 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _updateLightNameBrightness(seconds) {
-    for (const { light, titleEl, subEl } of this._lightNameLabels || []) {
-      if (!titleEl) {
+    for (const entry of this._lightNameLabels || []) {
+      const { light, titleEl, subEl, el } = entry;
+      // Dial cards: title + subtitle. Table bars: single name span.
+      if (titleEl) {
+        titleEl.textContent = light.name;
+        if (!subEl) {
+          continue;
+        }
+        if (seconds == null) {
+          subEl.textContent = "";
+          continue;
+        }
+        const sample = interpolateLightSample(light.samples || [], seconds);
+        subEl.textContent = `${Math.round(sample.brightness)}%`;
         continue;
       }
-      titleEl.textContent = light.name;
-      if (!subEl) {
+      if (!el) {
         continue;
       }
       if (seconds == null) {
-        subEl.textContent = "";
+        el.textContent = light.name;
         continue;
       }
       const sample = interpolateLightSample(light.samples || [], seconds);
-      subEl.textContent = `${Math.round(sample.brightness)}%`;
+      el.replaceChildren();
+      el.appendChild(document.createTextNode(`${light.name} `));
+      const pct = document.createElement("span");
+      pct.className = "light-brightness";
+      pct.textContent = `${Math.round(sample.brightness)}%`;
+      el.appendChild(pct);
     }
   }
 
