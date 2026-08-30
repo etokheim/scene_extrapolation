@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Sun halo uses SVG gradients only (no CSS blur) so scrub no longer leaves corona trails
 
 ### Added
 - Dial glow is dual blurred clones of the light rings (stacked above the horizon wash, behind the planet) so bloom matches dial colors; Save FAB shows only while dirty (dialog on first create, immediate save after); landscape date chips stay right-packed and grow left into the dial; event spokes and clamp arcs match the night sun path at 50% opacity; legend/form stack above the dial bleed

@@ -1286,13 +1286,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-overlay .clock-sun-glow-disc {
           pointer-events: none;
-          /* Soften the halo edge so it reads outside the white disc. */
-          filter: blur(2.5px);
+          /* Softness is in the SVG radial gradient — CSS filter:blur on a
+             cx/cy-moved circle trails under Chromium while scrubbing. */
         }
         .sun-light-clock-overlay .clock-sun-shadow-disc {
-          fill: rgba(0, 0, 0, 0.2);
           pointer-events: none;
-          filter: blur(6px);
         }
         .clock-sun-hit {
           position: absolute;
@@ -8443,13 +8441,41 @@ class SceneExtrapolationPanel extends HTMLElement {
       stop.setAttribute("stop-opacity", String(opacity));
       glowGrad.appendChild(stop);
     };
-    // Soft warm halo — stronger than a flat white so it reads past the shadow.
-    // Opacities: prior values with transparency reduced 20% → o' = 1 - 0.8*(1-o).
-    mkGlow("0%", "#ffffff", 0.36);
-    mkGlow("28%", "#ffffff", 0.96);
-    mkGlow("55%", "#fff1c2", 0.72);
-    mkGlow("78%", "#ffd27a", 0.48);
+    // Soft warm halo via gradient only (no CSS blur — that trailed on scrub).
+    mkGlow("0%", "#ffffff", 0.28);
+    mkGlow("22%", "#ffffff", 0.9);
+    mkGlow("48%", "#fff1c2", 0.58);
+    mkGlow("72%", "#ffd27a", 0.28);
     mkGlow("100%", "#ffc878", 0);
+
+    let shadowGrad = defs.querySelector("#clock-sun-shadow-grad");
+    if (!shadowGrad) {
+      shadowGrad = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "radialGradient"
+      );
+      shadowGrad.setAttribute("id", "clock-sun-shadow-grad");
+      shadowGrad.setAttribute("cx", "50%");
+      shadowGrad.setAttribute("cy", "50%");
+      shadowGrad.setAttribute("r", "50%");
+      defs.appendChild(shadowGrad);
+    }
+    while (shadowGrad.firstChild) {
+      shadowGrad.removeChild(shadowGrad.firstChild);
+    }
+    const mkShadow = (offset, opacity) => {
+      const stop = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "stop"
+      );
+      stop.setAttribute("offset", offset);
+      stop.setAttribute("stop-color", "#000");
+      stop.setAttribute("stop-opacity", String(opacity));
+      shadowGrad.appendChild(stop);
+    };
+    mkShadow("0%", 0.22);
+    mkShadow("55%", 0.12);
+    mkShadow("100%", 0);
 
     const clipUrl = this._clockSunDayClipId
       ? `url(#${this._clockSunDayClipId})`
@@ -8462,6 +8488,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       "circle"
     );
     shadow.setAttribute("class", "clock-sun-shadow-disc");
+    shadow.setAttribute("fill", "url(#clock-sun-shadow-grad)");
     const glow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     glow.setAttribute("class", "clock-sun-glow-disc");
     glow.setAttribute("fill", "url(#clock-sun-glow-grad)");
