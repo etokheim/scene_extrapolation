@@ -804,9 +804,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 1;
           transform: scale(1.75);
           transform-origin: center center;
-          filter: blur(96px);
+          filter: none;
           opacity: 0.9;
-          mix-blend-mode: screen;
         }
         /* Warmth along sunrise/sunset — not clipped to the planet rim. */
         .clock-horizon-glow {
@@ -4550,6 +4549,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     picker.hass = this._hass;
     picker.label = "Scene";
     picker.value = data.scene;
+    // Optional → ha-entity-picker shows its built-in clear control.
+    picker.required = false;
     const bindPicker = () => {
       picker.hass = this._hass;
       picker.selector = entitySelector(
@@ -4573,18 +4574,21 @@ class SceneExtrapolationPanel extends HTMLElement {
       applyDraft();
       syncActions();
     });
-    const clearBtn = document.createElement("ha-icon-button");
-    clearBtn.label = "Clear scene";
-    const clearIcon = document.createElement("ha-icon");
-    clearIcon.setAttribute("icon", "mdi:close");
-    clearBtn.appendChild(clearIcon);
-    clearBtn.addEventListener("click", () => {
-      data.scene = null;
-      bindPicker();
-      applyDraft();
-      syncActions();
+    const infoBtn = document.createElement("ha-icon-button");
+    infoBtn.label = this._loc(
+      "ui.panel.config.automation.picker.show_settings",
+      "Settings"
+    );
+    const infoIcon = document.createElement("ha-icon");
+    infoIcon.setAttribute("icon", "mdi:information-outline");
+    infoBtn.appendChild(infoIcon);
+    infoBtn.addEventListener("click", () => {
+      if (!data.scene) {
+        return;
+      }
+      this._showEntityMoreInfo(data.scene, "settings");
     });
-    field.append(picker, clearBtn);
+    field.append(picker, infoBtn);
     body.appendChild(field);
 
     const actions = document.createElement("div");
@@ -4684,7 +4688,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       createBtn.disabled = busy;
       renameBtn.disabled = busy;
       deleteBtn.disabled = busy;
-      clearBtn.disabled = busy;
+      infoBtn.disabled = busy || !data.scene;
       picker.disabled = busy;
     };
     const syncActions = () => {
@@ -4693,7 +4697,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       createBtn.disabled = !hasArea;
       renameBtn.disabled = !hasScene;
       deleteBtn.disabled = !hasScene;
-      clearBtn.disabled = !hasScene;
+      infoBtn.disabled = !hasScene;
       if (!hasArea) {
         setHint(
           "Select an area first. Create fills that room’s lights for this solar event."
@@ -5055,11 +5059,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
 
     const infoBtn = document.createElement("ha-icon-button");
-    infoBtn.label = this._loc("ui.dialogs.helper_settings.dialog.more_info", "More info");
+    infoBtn.label = this._loc(
+      "ui.panel.config.automation.picker.show_settings",
+      "Settings"
+    );
     const infoIcon = document.createElement("ha-icon");
     infoIcon.setAttribute("icon", "mdi:information-outline");
     infoBtn.appendChild(infoIcon);
-    infoBtn.addEventListener("click", () => this._showEntityMoreInfo(light.entity_id));
+    infoBtn.addEventListener("click", () =>
+      this._showEntityMoreInfo(light.entity_id, "settings")
+    );
 
     const onLiveEditChange = async (on) => {
       if (on) {
