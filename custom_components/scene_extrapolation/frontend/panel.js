@@ -27,7 +27,10 @@ const CLOCK_EVENT_ICON_R = 92;
 const CLOCK_CHROME_PX = 67;
 const CLOCK_CHROME_PX_MIN = 28;
 const CLOCK_EVENT_BTN_PX = 32;
-const CLOCK_SCRUB_RAIL_PX = 88;
+const CLOCK_SCRUB_RAIL_PX = 104;
+/* Inset the landscape timeline from the panel edge (also stops the large
+   day/month label from overflowing the rail and widening the page). */
+const CLOCK_SCRUB_RAIL_PAD_PX = 16;
 /* Rings host inset so CSS outer edge matches CLOCK_RINGS_OUTER in viewBox. */
 const CLOCK_RINGS_INSET_PCT = 50 - CLOCK_RINGS_OUTER / 2;
 /* Wedges/rays cover the square including corners; back layer is slightly
@@ -375,6 +378,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           align-items: start;
           width: 100%;
           box-sizing: border-box;
+          /* Right pad so the timeline is not flush to the panel edge; the
+             matching left column still optically centers the dial. */
+          padding-right: ${CLOCK_SCRUB_RAIL_PAD_PX}px;
           overflow: visible;
           transition: grid-template-columns ${SIDEBAR_ANIMATION_MS}ms
             cubic-bezier(0.2, 0, 0, 1);
@@ -501,7 +507,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           cursor: pointer;
         }
         .sun-year-scrub-rail .sun-scrub-date {
-          align-self: flex-end;
+          align-self: stretch;
+          justify-content: flex-end;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
           font-size: 26px;
           line-height: 1.15;
           padding: 2px 0;
@@ -518,7 +528,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           outline-offset: 2px;
         }
         /* Visually hidden but mounted — opened via ha-date-input._openDialog.
-           Keep it laid out (not clip/1×1) so the selector finishes upgrading. */
+           Keep it laid out (not display:none) so the selector finishes upgrading.
+           clip-path + contain so the upgraded control cannot widen scrollWidth. */
         .sun-date-picker-host {
           position: absolute;
           width: 1px;
@@ -526,6 +537,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           margin: 0;
           padding: 0;
           overflow: hidden;
+          clip-path: inset(50%);
+          contain: strict;
           opacity: 0;
           pointer-events: none;
         }
@@ -1028,6 +1041,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 6;
           transform: translateZ(0);
           backface-visibility: hidden;
+        }
+        .clock-horizon-sky .clock-sky-day {
+          /* Fill set in JS from skyLook (Apple-like day sky blue). */
+          fill: transparent;
         }
         .clock-horizon-sky .clock-sky-night {
           fill: color-mix(in srgb, ${CLOCK_NIGHT_OUTER} 78%, transparent);
@@ -7819,6 +7836,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     const sunset = this._clockSunsetSeconds;
     if (sunrise == null && sunset == null) {
       el.style.background = "transparent";
+      if (this._clockSkyDayEl) {
+        this._clockSkyDayEl.setAttribute("fill", "transparent");
+      }
       return;
     }
     const nearHorizon =
@@ -7835,6 +7855,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Cosine ramp is smooth enough at 36 stops; half the scrub-time string work.
     const steps = 36;
     const stops = [];
+    // Daytime rim uses sky blue; near sunrise/sunset the peach mid still wins
+    // via the cosine band (same stops, warmer fill when nearHorizon is high).
+    const rimFill =
+      elev >= 0 && nearHorizon < 0.55
+        ? glowLook.skyColor || glowLook.pathColor
+        : glowLook.horizonFill || glowLook.pathColor;
     for (let i = 0; i <= steps; i += 1) {
       const seconds = (i / steps) * SECONDS_PER_DAY;
       let weight = 0;
@@ -7846,10 +7872,24 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       const mix = weight * strength;
       stops.push(
-        `color-mix(in srgb, ${glowLook.horizonFill || glowLook.pathColor} ${Math.round(mix * 100)}%, transparent) ${((i / steps) * 100).toFixed(2)}%`
+        `color-mix(in srgb, ${rimFill} ${Math.round(mix * 100)}%, transparent) ${((i / steps) * 100).toFixed(2)}%`
       );
     }
     el.style.background = `conic-gradient(from 180deg, ${stops.join(", ")})`;
+
+    // Day wedge (sunrise→sunset): Apple Solar–style sky blue behind the planet.
+    const dayEl = this._clockSkyDayEl;
+    if (dayEl) {
+      const sky = glowLook.skyColor || glowLook.pathColor;
+      // Stronger when the sun is up; keep a faint wash below the horizon so
+      // the sector still reads before civil dawn paints the rim.
+      const dayAlpha =
+        elev < 0 ? 0.12 : 0.28 + 0.3 * (1 - nearHorizon);
+      dayEl.setAttribute(
+        "fill",
+        `color-mix(in srgb, ${sky} ${Math.round(dayAlpha * 100)}%, transparent)`
+      );
+    }
   }
 
   /** Sky wash removed — dial relies on night wedges + horizon rim glow only. */
@@ -7924,7 +7964,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     const dusk = this._clockEventSeconds(events, "dusk");
     this._clockSunriseSeconds = sunrise;
     this._clockSunsetSeconds = sunset;
+    this._clockSkyDayEl = null;
     if (sunset != null && sunrise != null) {
+      // Day sector first (under night wedges) — sky-blue wash updates with elev.
+      const day = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      day.setAttribute("class", "clock-sky-day");
+      day.setAttribute("d", this._clockWedgePath(sunrise, sunset, CLOCK_SKY_R));
+      overlay.appendChild(day);
+      this._clockSkyDayEl = day;
       const night = document.createElementNS(
         "http://www.w3.org/2000/svg",
         "path"
@@ -10907,9 +10954,9 @@ function skyLookFromElevation(elev) {
       ghostOpacity: 0.32,
     },
     {
-      // Just above — soft peach into dusty lavender-blue.
+      // Just above — soft peach into clear day sky.
       e: 4,
-      outer: [130, 155, 210],
+      outer: [100, 165, 230],
       mid: [210, 200, 205],
       glowOpacity: 0.58,
       sunCore: "#fff8f2",
@@ -10921,8 +10968,9 @@ function skyLookFromElevation(elev) {
     },
     {
       e: 8,
-      outer: [120, 168, 235],
-      mid: [188, 210, 240],
+      // Climb into clear Apple Solar–style day sky (#4FB3FF family).
+      outer: [79, 179, 255],
+      mid: [168, 214, 250],
       glowOpacity: 0.55,
       sunCore: "#f7fbff",
       sunCorona: "#d8e6f8",
@@ -10933,8 +10981,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: 25,
-      outer: [110, 175, 245],
-      mid: [200, 225, 250],
+      outer: [70, 172, 252],
+      mid: [175, 220, 252],
       glowOpacity: 0.5,
       sunCore: "#ffffff",
       sunCorona: "#e8f2ff",
@@ -10945,8 +10993,8 @@ function skyLookFromElevation(elev) {
     },
     {
       e: 90,
-      outer: [95, 160, 240],
-      mid: [210, 230, 255],
+      outer: [64, 165, 250],
+      mid: [185, 225, 255],
       glowOpacity: 0.48,
       sunCore: "#ffffff",
       sunCorona: "#e4efff",
