@@ -16,7 +16,9 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          # Match current Home Assistant Requires-Python (PyPI HA on 3.11
+          # resolves to ~2024.3, which lacks StaticPathConfig and LockState).
+          python-version: "3.14"
 
       - name: Install dependencies
         run: |

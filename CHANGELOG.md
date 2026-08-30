@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-mode color blends (e.g. color_temp ↔ HS/RGB) lerp in RGB instead of flipping mode at 50%
 - Dial/table layout: light list under the face; fixed desktop chrome; portrait date/scrub overlay; landscape rail top inset; horizon/bloom can paint under the desktop sidebar
 - Leaving with unsaved work prompts Discard / Keep editing while still buffering drafts for refresh/remount
-- CI workflows target `master` (was `main`)
+- CI workflows target `master` (was `main`); lint runs on Python 3.14 so PyPI Home Assistant matches current APIs
 
 ### Fixed
 - Create save no longer opens the Unsaved changes dialog when navigating to the new scene

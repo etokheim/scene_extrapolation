@@ -404,3 +404,10 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Decision:** Linear sun chart (list + table view): daytime path is a single solid `primary-text-color` stroke; night stays dashed with a stronger muted text mix for readability over the horizon wash. Horizon is a top border plus a peach ramp fading downward. Solar events are dial-style `clock-event` buttons on the curve (interactive in the editor; `inert` on the list). Dial clock path styling is unchanged.
 - **Why:** Colored/variable dashed day strokes and tiny dots read poorly; dial buttons unify event affordances across views.
 - **Do not reverse without user ask.**
+
+## CI lint uses current Home Assistant Requires-Python
+
+- **Date:** 2026-08-30
+- **Decision:** GitHub Actions lint installs `homeassistant` on Python **3.14** (not 3.11). `StaticPathConfig` is imported inside `async_setup_panel`, not at panel module import, so pure unit tests can load package modules even if an older HA is present.
+- **Why:** Unpinned `pip install homeassistant` on 3.11 resolves to ~2024.3, which lacks `StaticPathConfig` / `LockState` and breaks pytest collection via `panel.py`. Current HA requires Python ≥3.14.2.
+- **Do not reverse without user ask.**
