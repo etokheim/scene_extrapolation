@@ -1302,6 +1302,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           text-align: center;
           pointer-events: none;
           white-space: nowrap;
+          /* Soft shadow so labels stay readable over path / horizon / rings. */
+          text-shadow:
+            0 0 4px rgba(0, 0, 0, 0.75),
+            0 1px 2px rgba(0, 0, 0, 0.55);
         }
         /* Collision placement: below the button (see _layoutClockEventMetas). */
         .clock-event-meta.below {
@@ -1317,7 +1321,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-event-meta .clock-event-scene {
           font-size: 9px;
           line-height: 1.15;
-          color: var(--secondary-text-color);
+          /* Same hue as the heading at 70% — blends better than secondary gray. */
+          color: color-mix(in srgb, var(--primary-text-color) 70%, transparent);
           overflow: hidden;
           text-overflow: ellipsis;
           max-width: min(7.5rem, calc(var(--clock-chrome) * 2 - 8px));

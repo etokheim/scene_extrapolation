@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light sidebar ignores unavailable (orphaned) native scene assignments so dawn/sunrise/sunset no longer look populated when the YAML scene is gone
 - Light-edit sidebar drops On/Brightness fields (brightness graph + wheel only)
 - Dial year scrub computes sun geometry on the client and patches the dial in place; HA preview reconciles on release
+- Dial event labels use a soft text shadow; scene name line is primary text at 70% opacity (not secondary gray)
 - Dial chrome: hour ticks + numbers outermost (numbers inside the tick tips, clear of the stroke), solar-event buttons at a fixed gap from the sun path, sticky override arc on the outer tick tips, then the dial core
 - When earliest dusk clamps the scene, dial/chart keep true-solar marks and show a ghost button plus dashed link to the clamped control; top event cards strike through solar time and show the override
 - Sidebar panel to create and edit all extrapolation scenes from one integration instance
