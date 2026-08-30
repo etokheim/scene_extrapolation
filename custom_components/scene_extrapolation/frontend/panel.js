@@ -790,14 +790,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform-origin: center center;
           --clock-chrome: ${CLOCK_CHROME_PX}px;
         }
-        /* Mobile: drop hour numbers; grow the face past the column (clipped by
-           the graphics container) so ticks can bleed while events stay on-path. */
+        /* Mobile: drop hour numbers; grow the face past the column (clipped
+           later — see overflow-x under .page.dial-wide) so ticks can bleed. */
         @media (max-width: 870px) {
-          .page.dial-wide,
-          .sun-path.dial-view,
-          .sun-light-clock {
-            overflow-x: hidden;
-          }
           .sun-light-clock-face {
             width: min(
               calc(100% + 48px),
@@ -2789,6 +2784,19 @@ class SceneExtrapolationPanel extends HTMLElement {
             margin-right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
             width ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
             padding-right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        /* Must follow .page.dial-wide { overflow: visible } — that shorthand
+           was overriding an earlier mobile overflow-x and letting
+           .clock-horizon-back widen ha-top-app-bar’s .ha-scrollbar. */
+        @media (max-width: 870px) {
+          .page-shell,
+          .page.dial-wide,
+          .sun-path.dial-view,
+          .sun-path-stage,
+          .sun-path-body,
+          .sun-light-clock {
+            overflow-x: hidden;
+          }
         }
         .draft-restore {
           position: relative;
