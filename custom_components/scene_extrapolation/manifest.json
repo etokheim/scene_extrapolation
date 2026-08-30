@@ -14,5 +14,8 @@
     "@etokheim"
   ],
   "iot_class": "calculated",
-  "after_dependencies": ["frontend", "http"]
+  "after_dependencies": [
+    "frontend",
+    "http"
+  ]
 }
