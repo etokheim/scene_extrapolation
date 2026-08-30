@@ -43,11 +43,11 @@ const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
    sunrise/sunset and fixed through the night until sunrise. */
 const CLOCK_SUN_SCALE_MAX = 2;
 /* Handle tip / major tick outer radius in viewBox units.
-   Hourly ticks (master proportions); labels sit inside the marks. */
-const CLOCK_TICK_OUTER = 96;
-const CLOCK_TICK_INNER_MAJOR = 86;
-const CLOCK_TICK_INNER_MINOR = 90;
-const CLOCK_LABEL_R = 76;
+   Hourly ticks; labels sit outside the marks. */
+const CLOCK_TICK_OUTER = 94;
+const CLOCK_TICK_INNER_MAJOR = 89;
+const CLOCK_TICK_INNER_MINOR = 91;
+const CLOCK_LABEL_R = 102;
 /* Override scrub arc sits on the outer tip of the hour ticks. */
 const CLOCK_OVERRIDE_R = CLOCK_TICK_OUTER;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
@@ -394,8 +394,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           width: 100%;
           min-width: 0;
-          /* Visible so date chips can extend left of the narrow rail. */
-          overflow: visible;
+          overflow: hidden;
           opacity: 1;
           box-sizing: border-box;
           z-index: 2;
@@ -410,7 +409,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-path-stage.landscape-clock-scrub.scrub-collapsed .sun-year-scrub-rail {
           opacity: 0;
           pointer-events: none;
-          overflow: hidden;
         }
         .sun-scrub-block {
           display: flex;
@@ -445,9 +443,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 8px;
         }
         .sun-year-scrub-rail .sun-date-tools {
-          /* Chips above date, right-aligned to the scrub column. */
+          /* Chips above date, right-aligned within the rail (stay on-screen). */
           flex-direction: column;
           align-items: flex-end;
+          width: 100%;
+          max-width: 100%;
           gap: 4px;
         }
         .sun-chip-row {
@@ -458,18 +458,21 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-year-scrub-rail .sun-chip-row {
           flex-direction: row;
-          flex-wrap: nowrap;
+          flex-wrap: wrap;
           justify-content: flex-end;
           align-items: center;
-          width: max-content;
-          gap: 6px;
+          width: 100%;
+          max-width: 100%;
+          gap: 4px;
+          box-sizing: border-box;
         }
         .sun-year-scrub-rail .sun-chip {
           width: auto;
+          max-width: 100%;
           box-sizing: border-box;
           text-align: center;
-          padding: 4px 8px;
-          font-size: 11px;
+          padding: 3px 6px;
+          font-size: 10px;
           white-space: nowrap;
         }
         .sun-scrub-date {
@@ -740,7 +743,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           inset: var(--clock-chrome);
           border-radius: 50%;
           pointer-events: none;
-          z-index: 1;
+          z-index: 2;
         }
         .sun-light-clock-core .sun-light-clock-rings {
           pointer-events: auto;
@@ -791,14 +794,18 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Registered via CSS.registerProperty (document), not @property here —
            shadow-root @property does not enable transitions. */
-        /* Soft disc tinted by solar elevation (sky), not lamp conics. */
+        /* Soft disc tinted by solar elevation (sky), not lamp conics.
+           Sibling of the core so blur can bloom around the light rings
+           like master (not trapped inside the chrome-inset core). */
         .sun-light-clock-glow {
           position: absolute;
-          inset: ${CLOCK_RINGS_INSET_PCT}%;
+          inset: calc(
+            var(--clock-chrome) + (100% - 2 * var(--clock-chrome)) *
+              ${CLOCK_RINGS_INSET_PCT / 100}
+          );
           border-radius: 50%;
           pointer-events: none;
-          z-index: 0;
-          /* Master dial glow: larger spread + softer blur. */
+          z-index: 1;
           transform: scale(1.35);
           transform-origin: center center;
           filter: blur(81px);
@@ -1109,25 +1116,25 @@ class SceneExtrapolationPanel extends HTMLElement {
           touch-action: none;
           z-index: 7;
         }
-        /* Hourly ticks (master stroke tokens); majors every 6h. */
+        /* Hourly ticks; majors every 6h. White at differing opacities. */
         .sun-light-clock-overlay .clock-tick {
-          stroke: var(--divider-color);
-          stroke-width: 1;
+          stroke: rgba(255, 255, 255, 0.28);
+          stroke-width: 3px;
           vector-effect: non-scaling-stroke;
           stroke-linecap: round;
         }
         .sun-light-clock-overlay .clock-tick.major {
-          stroke: var(--secondary-text-color);
-          stroke-width: 1.5;
+          stroke: rgba(255, 255, 255, 0.5);
+          stroke-width: 4px;
         }
-        /* HTML labels so 16/32px stay screen-fixed; sit inside the ticks. */
+        /* HTML labels so 16/32px stay screen-fixed; sit outside the ticks. */
         .clock-hour-label {
           position: absolute;
           transform: translate(-50%, -50%);
           font-size: 16px;
           font-variant-numeric: tabular-nums;
           line-height: 1;
-          color: var(--secondary-text-color);
+          color: rgba(255, 255, 255, 0.4);
           pointer-events: none;
           z-index: 4;
         }
@@ -7372,7 +7379,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     const glow = this._clockSkyGlow;
     if (glow) {
       glow.style.background = glowLook.glowBackground;
-      glow.style.opacity = String(Math.min(0.55, glowLook.glowOpacity));
+      // Master: use elevation opacity as-is (no cap) so the ring glow reads.
+      glow.style.opacity = String(glowLook.glowOpacity);
     }
     this._updateHorizonGlow(elev, glowLook);
     this._updateSkyWash(elev, glowLook);
@@ -8287,7 +8295,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         ringLights[0];
       openRingAt(ev, selected);
     });
-    core.append(glowHost, ringsHost);
+    core.append(ringsHost);
 
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("class", "sun-light-clock-overlay");
@@ -8295,7 +8303,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     overlay.setAttribute("aria-hidden", "true");
     const cx = CLOCK_CX;
     const cy = CLOCK_CY;
-    // Hourly ticks (majors every 6h); hour numbers inside as HTML so font-size
+    // Hourly ticks (majors every 6h); hour numbers outside as HTML so font-size
     // does not scale with the face.
     const hourLabels = [];
     const labelRpct = (CLOCK_LABEL_R / CLOCK_VIEW) * 100;
@@ -8350,7 +8358,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       handleHit,
       ...hourLabels
     );
-    face.append(horizonBack, core);
+    face.append(horizonBack, glowHost, core);
 
     const editable = this._view === "edit";
     const eventAnchors = [];
@@ -10467,7 +10475,7 @@ function skyLookFromElevation(elev) {
       e: -12,
       outer: [28, 48, 108],
       mid: [48, 72, 140],
-      glowOpacity: 0.34,
+      glowOpacity: 0.42,
       sunCore: "#e4ecff",
       sunCorona: "#7a94c8",
       sunStreak: "#b0c4ff",
@@ -10480,7 +10488,7 @@ function skyLookFromElevation(elev) {
       e: -4,
       outer: [88, 108, 168],
       mid: [140, 148, 188],
-      glowOpacity: 0.42,
+      glowOpacity: 0.55,
       sunCore: "#f0eef8",
       sunCorona: "#c8b8d8",
       sunStreak: "#ddd0e8",
@@ -10493,7 +10501,7 @@ function skyLookFromElevation(elev) {
       e: 0,
       outer: [150, 138, 178],
       mid: [220, 186, 168],
-      glowOpacity: 0.5,
+      glowOpacity: 0.62,
       sunCore: "#fff4ea",
       sunCorona: "#e8c4a8",
       sunStreak: "#f0d8c4",
@@ -10506,7 +10514,7 @@ function skyLookFromElevation(elev) {
       e: 4,
       outer: [130, 155, 210],
       mid: [210, 200, 205],
-      glowOpacity: 0.48,
+      glowOpacity: 0.58,
       sunCore: "#fff8f2",
       sunCorona: "#e8d0b8",
       sunStreak: "#f2e4d4",
@@ -10518,7 +10526,7 @@ function skyLookFromElevation(elev) {
       e: 8,
       outer: [120, 168, 235],
       mid: [188, 210, 240],
-      glowOpacity: 0.5,
+      glowOpacity: 0.55,
       sunCore: "#f7fbff",
       sunCorona: "#d8e6f8",
       sunStreak: "#e8f0fa",
