@@ -11,19 +11,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
-          # Match current Home Assistant Requires-Python (PyPI HA on 3.11
-          # resolves to ~2024.3, which lacks StaticPathConfig and LockState).
+          # Current Home Assistant Requires-Python is >=3.14.2; 3.11 resolves to
+          # ancient PyPI wheels that lack StaticPathConfig / LockState.
           python-version: "3.14"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pylint black isort pytest homeassistant
+          pip install pylint black isort pytest "homeassistant"
+          python -c "import importlib.metadata as m; print('homeassistant', m.version('homeassistant'))"
 
       - name: Run pylint
         run: |
@@ -45,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate manifest.json
         run: |
@@ -67,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate hacs.json
         run: |

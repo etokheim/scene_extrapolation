@@ -11,6 +11,7 @@ from homeassistant.components.frontend import (
     async_register_built_in_panel,
     async_remove_panel,
 )
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, PANEL_URL_PATH
@@ -27,10 +28,6 @@ PANEL_ASSET_REV = "212"
 
 async def async_setup_panel(hass: HomeAssistant) -> None:
     """Serve the panel JS and add a sidebar entry."""
-    # Import at call time so unit tests can import package modules without a
-    # full/current Home Assistant http stack (CI may resolve an older PyPI HA).
-    from homeassistant.components.http import StaticPathConfig
-
     # Versioned path so HA's frontend module cache picks up panel.js after a restart.
     # Bump manifest.json version for releases; increment PANEL_ASSET_REV for WIP frontend.
     static_url = f"/api/scene_extrapolation/assets/{PANEL_VERSION}-{PANEL_ASSET_REV}"
