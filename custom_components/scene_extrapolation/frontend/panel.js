@@ -909,9 +909,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 1;
           --ring-expand: 0%;
           --ring-border-w: 0%;
+          transform-origin: center center;
           transition:
             --ring-expand 180ms cubic-bezier(0.2, 0, 0, 1),
-            --ring-border-w 180ms cubic-bezier(0.2, 0, 0, 1);
+            --ring-border-w 180ms cubic-bezier(0.2, 0, 0, 1),
+            opacity 180ms cubic-bezier(0.2, 0, 0, 1),
+            transform 180ms cubic-bezier(0.2, 0, 0, 1),
+            filter 180ms cubic-bezier(0.2, 0, 0, 1);
         }
         /* Fill lives on a child so the ring mask does not clip ::after borders. */
         .clock-ring-fill {
@@ -920,7 +924,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 50%;
           pointer-events: none;
         }
-        /* Inner + outer rim strokes; mask grows with --ring-expand. */
+        /* Legacy rim mask kept at opacity 0 — hover/selected use scale + shadow. */
         .clock-ring::after {
           content: "";
           position: absolute;
@@ -1001,24 +1005,29 @@ class SceneExtrapolationPanel extends HTMLElement {
               )
           );
         }
-        /* Hover/selected: slight radial grow + sharp primary rim (no soft glow).
-           Keep these rules separate — a comma-grouped selector matched in DevTools
-           but did not apply the registered --ring-* custom properties. */
+        /* Dim siblings while one band is hovered or selected. */
+        .sun-light-clock-rings:is(:hover, :has(.clock-ring.selected))
+          .clock-ring {
+          opacity: 0.5;
+        }
+        /* Hover/selected: 5% grow + black shadow (no primary rim).
+           Keep rules separate — comma-grouped selectors failed to apply
+           registered --ring-* props in the past. */
         .clock-ring.hovered {
-          --ring-expand: 0.45%;
-          --ring-border-w: 0.55%;
+          --ring-expand: 0%;
+          --ring-border-w: 0%;
+          opacity: 1;
+          transform: scale(1.05);
+          filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55));
           z-index: 5;
         }
-        .clock-ring.hovered::after {
-          opacity: 1;
-        }
         .clock-ring.selected {
-          --ring-expand: 0.45%;
-          --ring-border-w: 0.55%;
-          z-index: 6;
-        }
-        .clock-ring.selected::after {
+          --ring-expand: 0%;
+          --ring-border-w: 0%;
           opacity: 1;
+          transform: scale(1.05);
+          filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55));
+          z-index: 6;
         }
         .clock-ring.selected.hovered {
           z-index: 7;
