@@ -394,7 +394,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           width: 100%;
           min-width: 0;
-          overflow: hidden;
+          /* Visible so date chips can grow left into the dial column. */
+          overflow: visible;
           opacity: 1;
           box-sizing: border-box;
           z-index: 2;
@@ -443,11 +444,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           gap: 8px;
         }
         .sun-year-scrub-rail .sun-date-tools {
-          /* Chips above date, right-aligned within the rail (stay on-screen). */
+          /* Chips above date; chips grow left into the page from the rail. */
           flex-direction: column;
           align-items: flex-end;
           width: 100%;
-          max-width: 100%;
+          max-width: none;
+          overflow: visible;
           gap: 4px;
         }
         .sun-chip-row {
@@ -458,17 +460,18 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-year-scrub-rail .sun-chip-row {
           flex-direction: row;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
           justify-content: flex-end;
           align-items: center;
-          width: 100%;
-          max-width: 100%;
+          width: max-content;
+          max-width: none;
+          margin-left: auto;
           gap: 4px;
           box-sizing: border-box;
         }
         .sun-year-scrub-rail .sun-chip {
           width: auto;
-          max-width: 100%;
+          flex: 0 0 auto;
           box-sizing: border-box;
           text-align: center;
           padding: 3px 6px;
@@ -794,21 +797,29 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Registered via CSS.registerProperty (document), not @property here —
            shadow-root @property does not enable transitions. */
-        /* Halo around the light rings — transparent center (rings cover it),
-           bright rim scaled past the planet so it stays visible without blur. */
+        /* Soft bloom from a simple dial clone (same ring colors as the planet). */
         .sun-light-clock-glow {
           position: absolute;
-          inset: calc(
-            var(--clock-chrome) + (100% - 2 * var(--clock-chrome)) *
-              ${CLOCK_RINGS_INSET_PCT / 100}
-          );
+          inset: ${CLOCK_RINGS_INSET_PCT}%;
           border-radius: 50%;
           pointer-events: none;
           z-index: 1;
-          transform: scale(1.45);
+          transform: scale(1.38);
           transform-origin: center center;
+          filter: blur(28px);
+          opacity: 0.9;
+          overflow: visible;
+          --clock-feather: 0.35%;
+        }
+        .sun-light-clock-glow .clock-ring {
+          --ring-expand: 0%;
+          --ring-border-w: 0%;
+          transition: none;
           filter: none;
-          opacity: 1;
+        }
+        .sun-light-clock-glow .clock-ring::after {
+          content: none;
+          display: none;
         }
         /* Warmth along sunrise/sunset — not clipped to the planet rim. */
         .clock-horizon-glow {
@@ -998,28 +1009,22 @@ class SceneExtrapolationPanel extends HTMLElement {
           stroke-dasharray: 5 4;
           stroke-linejoin: round;
           stroke-linecap: round;
-          opacity: 0.95;
+          opacity: 0.5;
         }
         .sun-light-clock-overlay .clock-event-dot {
           fill: var(--primary-text-color);
           stroke: none;
         }
-        .sun-light-clock-overlay .clock-event-ray {
-          stroke: var(--secondary-text-color);
-          stroke-width: 0.5px;
-          vector-effect: non-scaling-stroke;
-          stroke-dasharray: 2.5 2;
-          stroke-linecap: round;
-          opacity: 0.55;
-        }
-        /* Chord from true-solar ghost to the clamped event button. */
+        /* Match night sun-path dash + opacity. */
+        .sun-light-clock-overlay .clock-event-ray,
         .sun-light-clock-overlay .clock-event-clamp-link {
-          stroke: var(--secondary-text-color);
-          stroke-width: 0.75px;
+          stroke: #d8e0ff;
+          stroke-width: 1px;
           vector-effect: non-scaling-stroke;
-          stroke-dasharray: 3.5 2.5;
+          stroke-dasharray: 5 4;
+          stroke-linejoin: round;
           stroke-linecap: round;
-          opacity: 0.65;
+          opacity: 0.5;
         }
         .sun-light-clock-overlay .clock-handle,
         .sun-light-clock-handle-overlay .clock-handle {
@@ -2654,10 +2659,19 @@ class SceneExtrapolationPanel extends HTMLElement {
           bottom: calc(16px + var(--safe-area-inset-bottom, 0px));
           z-index: 6;
           --ha-button-box-shadow: var(--ha-box-shadow-l);
-          transition: right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
+          transform-origin: bottom right;
+          transition:
+            right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
+            opacity 180ms cubic-bezier(0.2, 0, 0, 1),
+            transform 180ms cubic-bezier(0.2, 0, 0, 1),
+            visibility 180ms;
         }
-        .fab[hidden] {
-          display: none;
+        /* Prefer class over [hidden] so opacity/scale can animate (UA hidden is display:none). */
+        .fab.is-hidden {
+          opacity: 0;
+          transform: scale(0.85);
+          visibility: hidden;
+          pointer-events: none;
         }
         .save-dialog ha-input,
         .save-dialog ha-textarea,
@@ -2954,13 +2968,61 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!this._fabEl) {
       return;
     }
-    this._fabEl.replaceChildren();
+    if (this._fabHideTimer) {
+      window.clearTimeout(this._fabHideTimer);
+      this._fabHideTimer = undefined;
+    }
     if (!node) {
-      this._fabEl.hidden = true;
+      this._fabEl.classList.add("is-hidden");
+      this._fabHideTimer = window.setTimeout(() => {
+        this._fabHideTimer = undefined;
+        if (this._fabEl?.classList.contains("is-hidden")) {
+          this._fabEl.replaceChildren();
+          this._fabEl.setAttribute("hidden", "");
+        }
+      }, 200);
       return;
     }
-    this._fabEl.hidden = false;
-    this._fabEl.appendChild(node);
+    this._fabEl.removeAttribute("hidden");
+    this._fabEl.replaceChildren(node);
+    this._fabEl.classList.add("is-hidden");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        this._fabEl?.classList.remove("is-hidden");
+      });
+    });
+  }
+
+  /** Editor Save FAB: only while dirty; dialog on first create, else immediate. */
+  _syncSaveFab() {
+    if (this._view !== "edit") {
+      return;
+    }
+    if (!this._sessionIsDirty()) {
+      if (this._saveFabVisible || this._fabEl?.childElementCount) {
+        this._setFab(null);
+      }
+      this._saveFabVisible = false;
+      return;
+    }
+    if (
+      this._saveFabVisible &&
+      this._fabEl &&
+      !this._fabEl.classList.contains("is-hidden") &&
+      this._fabEl.childElementCount
+    ) {
+      return;
+    }
+    this._saveFabVisible = true;
+    this._setFab(
+      this._fabButton("Save", "mdi:content-save", () => {
+        if (!this._editId) {
+          this._openSaveDialog();
+          return;
+        }
+        this._save();
+      })
+    );
   }
 
   _fabButton(label, icon, onClick) {
@@ -3116,6 +3178,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._previewOverlay = null;
     this._sessionBaseline = this._snapshotSession();
     this._syncUndoButtons();
+    this._syncSaveFab();
   }
 
   _snapshotSession() {
@@ -3391,7 +3454,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._redoStack = [];
     this._syncUndoButtons();
-    queueMicrotask(() => this._persistDraftSoon());
+    queueMicrotask(() => {
+      this._persistDraftSoon();
+      this._syncSaveFab();
+    });
   }
 
   _applySession(snapshot) {
@@ -3406,6 +3472,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._clearPreviewCache();
     this._syncUndoButtons();
     this._persistDraftSoon();
+    this._syncSaveFab();
     this._ensureSunPath();
   }
 
@@ -4377,9 +4444,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._setNavigationIcon(this._backButton());
     this._setEditorActions();
     this._syncEditorChrome();
-    this._setFab(
-      this._fabButton("Save", "mdi:content-save", () => this._openSaveDialog())
-    );
+    this._syncSaveFab();
     this._contentEl.classList.add("wide");
 
     const wrap = document.createElement("div");
@@ -7520,11 +7585,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         `${this._clockAngleDeg(seconds)}deg`
       );
     }
-    const glow = this._clockSkyGlow;
-    if (glow) {
-      glow.style.background = glowLook.glowHaloBackground;
-      glow.style.opacity = "1";
-    }
+    // Dial glow is a blurred clone of the rings — not elevation-tinted.
     this._updateHorizonGlow(elev, glowLook);
     this._updateOverrideArc(this._clockStickySeconds);
   }
@@ -8400,10 +8461,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     const core = document.createElement("div");
     core.className = "sun-light-clock-core";
 
-    const glowHost = document.createElement("div");
-    glowHost.className = "sun-light-clock-glow";
-    glowHost.setAttribute("aria-hidden", "true");
-    this._clockSkyGlow = glowHost;
     const ringsHost = document.createElement("div");
     ringsHost.className = "sun-light-clock-rings";
     const n = ringLights.length;
@@ -8413,7 +8470,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Expand each ring into its neighbors so soft edges blend over lamp
     // color, not the dark card (same idea as the table’s negative margin).
     const overlap = CLOCK_FEATHER_PCT;
-    // Sky glow is applied in _applyClockSunAppearance after the sun marker.
     for (let index = 0; index < n; index += 1) {
       const light = ringLights[index];
       const midOuter = 100 - index * stroke;
@@ -8491,7 +8547,21 @@ class SceneExtrapolationPanel extends HTMLElement {
         ringLights[0];
       openRingAt(ev, selected);
     });
-    core.append(ringsHost);
+    // Large simple dial clone behind the interactive rings — bloom uses the
+    // same conic colors so the glow matches the planet (not elevation sky).
+    const glowHost = ringsHost.cloneNode(true);
+    glowHost.className = "sun-light-clock-glow";
+    glowHost.removeAttribute("tabindex");
+    glowHost.removeAttribute("role");
+    glowHost.removeAttribute("aria-label");
+    glowHost.setAttribute("aria-hidden", "true");
+    for (const ring of glowHost.querySelectorAll(".clock-ring")) {
+      ring.classList.remove("selected", "hovered");
+      ring.removeAttribute("aria-current");
+      ring.removeAttribute("title");
+    }
+    this._clockSkyGlow = glowHost;
+    core.append(glowHost, ringsHost);
 
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("class", "sun-light-clock-overlay");
@@ -8554,7 +8624,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       handleHit,
       ...hourLabels
     );
-    face.append(horizonBack, glowHost, core);
+    face.append(horizonBack, core);
 
     const editable = this._view === "edit";
     const eventAnchors = [];
