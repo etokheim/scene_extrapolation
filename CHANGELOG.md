@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## [2.2.0] - 2026-08-30
+
+### Added
+- Sidebar panel: add Scene Extrapolation once; rooms are created and edited there (legacy per-room config entries import automatically)
 - Solar dial view: concentric light rings, year scrub with client-side sun math, landscape timeline rail, soft ring glow, and dial chrome (ticks, event buttons, sticky scrub, enter animation)
 - Create-scene wizard: Automatic (Bright/Dimmed/Low lights) or Manual with config-flow-style guidance, native scene pickers (empty = create automatically), brightness-ranked defaults; block areas with no lights
 - List page: Extrapolation / Created scenes tabs (`ha-tab-group`), global settings sidebar (hide created scenes in the HA UI), row settings/delete on both lists, New FAB on both tabs
@@ -20,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview another location; year-long date scrub; Live edit; undo/redo
 
 ### Changed
+- Configuration home is the sidebar panel; the options flow is gone on purpose
 - New-scene Save FAB is always visible; existing scenes still show Save only while dirty (dialog on first create, immediate save after)
 - Cross-mode color blends (e.g. color_temp ↔ HS/RGB) lerp in RGB instead of flipping mode at 50%
 - Dial/table layout: light list under the face; fixed desktop chrome; portrait date/scrub overlay; landscape rail top inset; horizon/bloom can paint under the desktop sidebar
