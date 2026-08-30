@@ -774,10 +774,25 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: visible;
         }
         .sun-path.dial-view .sun-light-clock {
+          position: relative;
           max-height: calc(
             100vh - var(--header-height, 64px) - var(--dial-timeline-h, 0px)
           );
           min-height: 0;
+          /* Legend overlays the face — no in-flow gap below the dial. */
+          gap: 0;
+          padding-bottom: 8px;
+        }
+        .sun-path.dial-view .sun-light-clock-legend {
+          /* Sit on top of horizon/bloom at the bottom of the dial (not clipped
+             under the face when dial-view overflow is hidden). */
+          position: absolute;
+          left: 50%;
+          bottom: 8px;
+          transform: translateX(-50%);
+          width: min(92%, 86vh, var(--dial-face-max, 86vh));
+          z-index: 8;
+          pointer-events: auto;
         }
         .sun-light-clock-face {
           position: relative;
