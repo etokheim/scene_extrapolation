@@ -940,7 +940,9 @@ class SceneExtrapolationPanel extends HTMLElement {
               )
           );
         }
-        /* Hover/selected: slight radial grow + sharp primary rim (no soft glow). */
+        /* Hover/selected: slight radial grow + sharp primary rim (no soft glow).
+           Keep these rules separate — a comma-grouped selector matched in DevTools
+           but did not apply the registered --ring-* custom properties. */
         .clock-ring.hovered {
           --ring-expand: 0.45%;
           --ring-border-w: 0.55%;
