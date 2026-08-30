@@ -9,17 +9,17 @@ const PLOT_RIGHT = 984;
 const SUN_LINE_DAY = "#ffb74d";
 const SUN_LINE_NIGHT = "#5a2e0a";
 /* Clock overlay viewBox is 200×200. Planet (rings) sits inside a circular
-   sun path midway between the rings rim and the dial-core edge. */
+   sun path whose radius scales with the day's peak elevation. */
 const CLOCK_VIEW = 200;
 const CLOCK_CX = 100;
 const CLOCK_CY = 100;
 const CLOCK_RINGS_OUTER = 52;
-/* Perfect circle between planet rim and core edge (viewBox half = face). */
-const CLOCK_SUN_PATH_R = (CLOCK_RINGS_OUTER + CLOCK_VIEW / 2) / 2;
+/* Path stays a perfect circle between planet + pad and face − pad. */
+const CLOCK_SUN_PATH_PAD = 3;
 const CLOCK_SUN_PATH_WIDTH_PX = 1;
 /* Magnetic scrub: capture / rubber-break windows around solar events (seconds). */
-const CLOCK_SNAP_CAPTURE_SEC = 20 * 60;
-const CLOCK_SNAP_RELEASE_SEC = 48 * 60;
+const CLOCK_SNAP_CAPTURE_SEC = 12 * 60;
+const CLOCK_SNAP_RELEASE_SEC = Math.round(48 * 60 * 0.6);
 /* How far the sun follows the pointer while stuck (same direction, never reverses). */
 const CLOCK_SNAP_RUBBER = 0.34;
 const CLOCK_DRAG_CLICK_PX = 7;
@@ -1017,7 +1017,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-light-clock-overlay .clock-override-arc {
           fill: none;
           stroke: #fff;
-          stroke-width: 2px;
+          stroke-width: 1px;
           vector-effect: non-scaling-stroke;
           stroke-linecap: round;
           opacity: 0.88;
@@ -1101,13 +1101,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         /* Two tick styles only: 6-hour majors (2px) and all others (1px).
            Stroke is CSS px + non-scaling so weight does not grow with the dial. */
         .sun-light-clock-overlay .clock-tick {
-          stroke: var(--divider-color);
+          stroke: rgba(255, 255, 255, 0.6);
           stroke-width: 1px;
           vector-effect: non-scaling-stroke;
           stroke-linecap: round;
         }
         .sun-light-clock-overlay .clock-tick.major {
-          stroke: var(--secondary-text-color);
+          stroke: rgba(255, 255, 255, 0.6);
           stroke-width: 2px;
         }
         /* HTML labels (not SVG text) so 10/14px stay screen-fixed. */
@@ -1117,7 +1117,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-size: 10px;
           font-variant-numeric: tabular-nums;
           line-height: 1;
-          color: var(--secondary-text-color);
+          color: rgba(255, 255, 255, 0.6);
           pointer-events: none;
           z-index: 4;
         }
@@ -7100,7 +7100,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const pct = (r / ringsRadius) * 100;
     const n = ringLights.length;
-    const hole = 20;
+    const hole = 0;
     const stroke = (100 - hole) / n;
     for (let index = 0; index < n; index += 1) {
       const midOuter = 100 - index * stroke;
@@ -7108,6 +7108,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (pct <= midOuter && pct >= midInner) {
         return ringLights[index];
       }
+    }
+    // Center falls in the innermost ring when the hole is filled.
+    if (pct < hole && n) {
+      return ringLights[n - 1];
     }
     return null;
   }
@@ -7212,8 +7216,38 @@ class SceneExtrapolationPanel extends HTMLElement {
     );
   }
 
+  /** Today's peak elevation from the sun curve (may be ≤0 in polar night). */
+  _clockDayPeakElevation() {
+    const curve = this._sunPath?.curve;
+    if (!curve?.length) {
+      return 0;
+    }
+    let peak = -Infinity;
+    for (const [, elev] of curve) {
+      peak = Math.max(peak, elev);
+    }
+    return peak;
+  }
+
+  /**
+   * Perfect-circle path radius for the preview day: larger in summer (high
+   * peak), smaller in winter. Clamped between planet+pad and face−pad so the
+   * stroke (and large night sun) clear the dial and the core edge.
+   */
+  _clockSunPathRadius() {
+    const sunClear = CLOCK_SUN_R_VIEW * CLOCK_SUN_SCALE_MAX;
+    const rMin = CLOCK_RINGS_OUTER + CLOCK_SUN_PATH_PAD + sunClear;
+    const rMax = CLOCK_VIEW / 2 - CLOCK_SUN_PATH_PAD - sunClear;
+    const lo = Math.min(rMin, rMax);
+    const hi = Math.max(rMin, rMax);
+    const annual = Math.max(this._sunPath?.max_elevation || 0, 1e-6);
+    const dayPeak = this._clockDayPeakElevation();
+    const t = Math.min(1, Math.max(0, dayPeak / annual));
+    return lo + t * (hi - lo);
+  }
+
   _clockSunPathRadiusOf(_elevation) {
-    return CLOCK_SUN_PATH_R;
+    return this._clockSunPathRadius();
   }
 
   /** Smallest at daytime zenith; largest at sunrise/sunset; fixed max at night. */
@@ -7373,16 +7407,16 @@ class SceneExtrapolationPanel extends HTMLElement {
         "stop"
       );
       stop.setAttribute("offset", offset);
-      // Mostly white with a light gold tint — softer than the prior amber.
-      stop.setAttribute("stop-color", "#fff6d6");
+      // Warm white–gold; a touch more opaque than the prior soft wash.
+      stop.setAttribute("stop-color", "#ffe08a");
       stop.setAttribute("stop-opacity", String(opacity));
       grad.appendChild(stop);
     };
-    // Half the prior inward reach; opacity ≈ 30% of the old gold wash.
+    // Half the prior inward reach; slightly less transparent than rev 121.
     mk("0%", 0);
     mk("78%", 0);
-    mk("90%", 0.066);
-    mk("100%", 0.165);
+    mk("90%", 0.1);
+    mk("100%", 0.24);
     let clip = defs.querySelector("#clock-override-wedge");
     if (!clip) {
       clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
@@ -7415,7 +7449,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       arc = document.createElementNS("http://www.w3.org/2000/svg", "path");
       arc.setAttribute("class", "clock-override-arc");
       arc.setAttribute("vector-effect", "non-scaling-stroke");
-      arc.setAttribute("stroke-width", "2px");
+      arc.setAttribute("stroke-width", "1px");
       arc.setAttribute("visibility", "hidden");
       overlay.appendChild(arc);
     }
@@ -7686,7 +7720,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._paintSunDayClip(overlay, events);
 
-    const r = CLOCK_SUN_PATH_R;
+    const r = this._clockSunPathRadius();
     // Night ring first (full circle); day arcs paint on top.
     const nightRing = document.createElementNS(
       "http://www.w3.org/2000/svg",
@@ -7781,21 +7815,25 @@ class SceneExtrapolationPanel extends HTMLElement {
       glowGrad.setAttribute("cx", "50%");
       glowGrad.setAttribute("cy", "50%");
       glowGrad.setAttribute("r", "50%");
-      const mkGlow = (offset, color, opacity) => {
-        const stop = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "stop"
-        );
-        stop.setAttribute("offset", offset);
-        stop.setAttribute("stop-color", color);
-        stop.setAttribute("stop-opacity", String(opacity));
-        glowGrad.appendChild(stop);
-      };
-      mkGlow("0%", "#fff8dc", 0.95);
-      mkGlow("40%", "#ffb74d", 0.45);
-      mkGlow("100%", "#ffb74d", 0);
       defs.appendChild(glowGrad);
     }
+    while (glowGrad.firstChild) {
+      glowGrad.removeChild(glowGrad.firstChild);
+    }
+    const mkGlow = (offset, color, opacity) => {
+      const stop = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "stop"
+      );
+      stop.setAttribute("offset", offset);
+      stop.setAttribute("stop-color", color);
+      stop.setAttribute("stop-opacity", String(opacity));
+      glowGrad.appendChild(stop);
+    };
+    // Pure white halo — fill stays #fff; both are day-wedge clipped.
+    mkGlow("0%", "#ffffff", 0.85);
+    mkGlow("42%", "#ffffff", 0.28);
+    mkGlow("100%", "#ffffff", 0);
 
     const clipUrl = this._clockSunDayClipId
       ? `url(#${this._clockSunDayClipId})`
@@ -8123,7 +8161,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const ringsHost = document.createElement("div");
     ringsHost.className = "sun-light-clock-rings";
     const n = ringLights.length;
-    const hole = 20;
+    const hole = 0;
     const usable = 100 - hole;
     const stroke = n ? usable / n : 0;
     // Expand each ring into its neighbors so soft edges blend over lamp
