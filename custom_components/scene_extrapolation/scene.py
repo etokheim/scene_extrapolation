@@ -25,9 +25,7 @@ from homeassistant.components.light import (
     ATTR_TRANSITION,
 )
 from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
-from homeassistant.components.light import (
-    ColorMode,
-)
+from homeassistant.components.light import ColorMode
 from homeassistant.components.lock import LockState
 from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN
 from homeassistant.components.scene import Scene
@@ -55,15 +53,21 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
+from .color_math import (
+    blend_entity_rgb,
+    infer_color_mode,
+    normalize_color_mode,
+    same_color_mode,
+)
 from .const import (
-        AREA,
-        CATEGORY,
-        DATA_ADD_ENTITIES,
-        DATA_ENTITIES,
-        DATA_STORE,
-        DOMAIN,
-        LABELS,
-        NIGHTLIGHTS_BOOLEAN,
+    AREA,
+    CATEGORY,
+    DATA_ADD_ENTITIES,
+    DATA_ENTITIES,
+    DATA_STORE,
+    DOMAIN,
+    LABELS,
+    NIGHTLIGHTS_BOOLEAN,
     NIGHTLIGHTS_SCENE,
     SCENE_DAWN,
     SCENE_DUSK,
@@ -72,12 +76,6 @@ from .const import (
     SCENE_NOON,
     SCENE_SUNRISE,
     SCENE_SUNSET,
-)
-from .color_math import (
-    blend_entity_rgb,
-    infer_color_mode,
-    normalize_color_mode,
-    same_color_mode,
 )
 from .solar import EVENT_ORDER, dusk_start_seconds, resolve_solar_events
 
@@ -547,9 +545,7 @@ class ExtrapolationScene(Scene):
             scene_dusk_minimum_time_of_day, numbers.Number
         ), "scene_dusk_minimum_time_of_day is either not configured (or not a number)"
 
-        day_start = target_date_time.replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        day_start = target_date_time.replace(hour=0, minute=0, second=0, microsecond=0)
         dusk_seconds, dusk_was_overridden, dusk_solar_seconds = dusk_start_seconds(
             solar_events["dusk"],
             day_start,

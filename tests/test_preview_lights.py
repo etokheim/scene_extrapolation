@@ -36,9 +36,7 @@ def test_unassigned_area_returns_suggested_lights(mock_lights, mock_native):
     """New scene with an area but no native scenes still lists area lights."""
     mock_native.return_value = {}
     mock_lights.return_value = ["light.ceiling", "light.lamp"]
-    hass = _hass_with_names(
-        {"light.ceiling": "Ceiling", "light.lamp": "Lamp"}
-    )
+    hass = _hass_with_names({"light.ceiling": "Ceiling", "light.lamp": "Lamp"})
 
     lights, warnings = _light_series(
         hass,
@@ -93,9 +91,7 @@ def test_assigned_scenes_include_suggested_area_lights(mock_lights, mock_native)
         }
     }
     mock_lights.return_value = ["light.ceiling", "light.extra"]
-    hass = _hass_with_names(
-        {"light.ceiling": "Ceiling", "light.extra": "Extra"}
-    )
+    hass = _hass_with_names({"light.ceiling": "Ceiling", "light.extra": "Extra"})
 
     lights, _warnings = _light_series(
         hass,

@@ -21,6 +21,7 @@ from .const import (
 )
 from .native_scene import (
     apply_managed_native_scene_visibility,
+    area_setup_info,
     async_apply_area_setup,
     async_apply_native_drafts,
     async_create_native_scene,
@@ -28,7 +29,6 @@ from .native_scene import (
     async_rename_native_scene,
     async_update_native_scene_entities,
     async_update_native_scene_entity,
-    area_setup_info,
     list_managed_native_scenes,
 )
 from .preview import build_preview

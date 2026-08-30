@@ -218,12 +218,8 @@ def build_sun_path(
     target = _parse_target_date(time_zone, target_date)
     start = target.replace(hour=0, minute=0, second=0, microsecond=0)
     today = target.date() == now.date()
-    latitude = (
-        float(location["latitude"]) if location else hass.config.latitude
-    )
-    longitude = (
-        float(location["longitude"]) if location else hass.config.longitude
-    )
+    latitude = float(location["latitude"]) if location else hass.config.latitude
+    longitude = float(location["longitude"]) if location else hass.config.longitude
     place = LocationInfo(
         timezone=time_zone,
         latitude=latitude,

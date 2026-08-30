@@ -20,10 +20,9 @@ from homeassistant.util.color import color_temperature_to_hs
 from homeassistant.util.file import write_utf8_file_atomic
 from homeassistant.util.yaml import dump, load_yaml
 
-from .solar import EVENT_META, EVENT_ORDER
-
 # Avoid circular import of DOMAIN store at module load — resolve via hass.data.
 from .const import DATA_STORE, DOMAIN
+from .solar import EVENT_META, EVENT_ORDER
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -190,9 +189,7 @@ def lights_in_area(hass: HomeAssistant, area_id: str) -> list[str]:
     entity_reg = er.async_get(hass)
     device_reg = dr.async_get(hass)
     device_ids = {
-        device.id
-        for device in device_reg.devices.values()
-        if device.area_id == area_id
+        device.id for device in device_reg.devices.values() if device.area_id == area_id
     }
     lights: list[str] = []
     for entry in entity_reg.entities.values():
@@ -257,9 +254,7 @@ def _unique_scene_name(current: list[dict[str, Any]], base: str) -> str:
 
 def _native_scene_entity_id(hass: HomeAssistant, config_id: str) -> str | None:
     entity_reg = er.async_get(hass)
-    entity_id = entity_reg.async_get_entity_id(
-        SCENE_DOMAIN, "homeassistant", config_id
-    )
+    entity_id = entity_reg.async_get_entity_id(SCENE_DOMAIN, "homeassistant", config_id)
     if entity_id:
         return entity_id
     scene_component = hass.data.get("scene")
@@ -406,9 +401,7 @@ def native_scenes_in_area(hass: HomeAssistant, area_id: str) -> list[dict[str, A
                 "avg_brightness": average_light_brightness(entities),
             }
         )
-    results.sort(
-        key=lambda row: (-row["avg_brightness"], str(row["name"]).lower())
-    )
+    results.sort(key=lambda row: (-row["avg_brightness"], str(row["name"]).lower()))
     return results
 
 
@@ -424,9 +417,7 @@ def suggest_setup_assignments(
         return {
             "noon": brightest,
             "linked": second if second and second != brightest else None,
-            "dusk": lowest
-            if lowest and lowest not in {brightest, second}
-            else None,
+            "dusk": lowest if lowest and lowest not in {brightest, second} else None,
         }
     # Unlinked: still seed noon / a mid day / dusk; leave others empty→Automatic.
     return {
@@ -434,9 +425,7 @@ def suggest_setup_assignments(
         "sunrise": None,
         "noon": brightest,
         "sunset": None,
-        "dusk": lowest
-        if lowest and lowest not in {brightest, second}
-        else None,
+        "dusk": lowest if lowest and lowest not in {brightest, second} else None,
     }
 
 
@@ -468,9 +457,7 @@ async def async_plan_native_scene(
         raise HomeAssistantError(f"Unknown area {area_id}")
     lights = lights_in_area(hass, area_id)
     entities = {
-        entity_id: light_state_for_event(
-            hass, entity_id, event_id, linked=linked
-        )
+        entity_id: light_state_for_event(hass, entity_id, event_id, linked=linked)
         for entity_id in lights
     }
     base_name = _scene_base_name(area.name, event_id, linked=linked)
@@ -544,9 +531,7 @@ async def async_apply_area_setup(
                     hass, area_id, event_id, linked=link_flag
                 )
                 # Uniquify against disk + scenes already queued in this batch.
-                base = _scene_base_name(
-                    info["area_name"], event_id, linked=link_flag
-                )
+                base = _scene_base_name(info["area_name"], event_id, linked=link_flag)
                 planned["name"] = _unique_scene_name(current, base)
                 current.append(
                     {
@@ -559,9 +544,7 @@ async def async_apply_area_setup(
                 planned_rows.append((slot, planned))
             await hass.async_add_executor_job(_write_scenes, path, current)
 
-        await hass.services.async_call(
-            SCENE_DOMAIN, SERVICE_RELOAD, blocking=True
-        )
+        await hass.services.async_call(SCENE_DOMAIN, SERVICE_RELOAD, blocking=True)
         entity_reg = er.async_get(hass)
         for slot, planned in planned_rows:
             entity_id = _native_scene_entity_id(hass, planned["id"])
@@ -602,9 +585,7 @@ async def async_create_native_scene(
     write=False only plans (draft id). The picker needs a real entity, so
     the panel always writes immediately.
     """
-    planned = await async_plan_native_scene(
-        hass, area_id, event_id, linked=linked
-    )
+    planned = await async_plan_native_scene(hass, area_id, event_id, linked=linked)
     if not write:
         return planned
     path = hass.config.path(SCENE_CONFIG_PATH)

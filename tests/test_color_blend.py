@@ -73,7 +73,5 @@ def test_display_rgb_same_temp_uses_kelvin_path():
         "color_temp_kelvin": 4000,
     }
     final = {"entity_id": "light.test"}
-    rgb = _display_rgb(
-        from_entity, to_entity, final, "color_temp", "color_temp", 50
-    )
+    rgb = _display_rgb(from_entity, to_entity, final, "color_temp", "color_temp", 50)
     assert rgb == kelvin_to_rgb(3000)

@@ -6,24 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-- Fix new-scene save prompting Unsaved changes; keep New FAB on Created tab; keep settings sidebar open when toggling hide
-- New-scene Save FAB always visible; leaving without saving prompts Discard / Keep editing; extrapolation list rows get settings + delete
+- List: Extrapolation / Created tabs (`ha-tab-group`), settings sidebar (hide created scenes in HA), row settings/delete, New FAB on both tabs, fast solar-only sun chart
+- New-scene Save always visible; leave prompts Discard / Keep editing; create save no longer false-triggers that dialog; settings hide toggle keeps the sidebar open
 - Panel translations for English, Bokmål, Nynorsk, German, and Spanish (`frontend` + config); agent skill to keep them in sync
-- List tabs use native `ha-tab-group`; table/list sun path uses a solid day stroke, horizon ramp, and dial-style event buttons
-- List page: Extrapolation / Created scenes tabs, settings sidebar to hide created scenes in HA UI, and a fast solar-only sun path chart
-- Create wizard uses config-flow-style guidance and native scene pickers (empty = create automatically)
-- Create-scene wizard: Automatic (Bright/Dimmed/Low lights) or Manual with Automatic slots and brightness-ranked defaults
-- Block creating extrapolation scenes for areas with no lights
+- Table/list sun path: solid day stroke, horizon ramp, dial-style event buttons (inert on the list)
+- Create wizard: Automatic (Bright/Dimmed/Low lights) or Manual with guidance, native scene pickers (empty = automatic), brightness-ranked defaults; block areas with no lights
 - Horizon/bloom can paint under the open desktop sidebar; legend Add to … sits before X/chevron
-- Dial hover name sits flush above the outer light ring; clicking the selected ring closes the sidebar
-- Dial ring selection updates before the light-sidebar swap so the previous ring does not flash
+- Dial ring selection updates before the light-sidebar swap; clicking the selected ring closes the sidebar
 - Cross-mode color blends (e.g. color_temp ↔ HS/RGB) lerp in RGB instead of flipping mode at 50%
 - Dial light list uses HA-style cards with each entity’s state icon in a tinted circle (max 500px wide)
 - New extrapolation scenes with an area but no native scenes yet still show suggested area lights (dial/table no longer blank)
 - Horizon glow peach↔sky and day-wedge alpha blend smoothly with elevation (no mid-morning snap)
 - Document dial light-list layout and stricter panel.js reload/verify guidance for agents
 - README refresh with clearer install/setup and Buy Me a Coffee badge
-- Dial ring hover name sits 8px above the light-ring planet (not above the face chrome)
+- Dial ring hover name sits 8px above the light-ring planet
 - Dial face keeps full scale; light list always flows under the face (portrait and landscape; does not shrink the graphic)
 - Desktop dial chrome is fixed (no face-size lerp that slid event buttons inward)
 - Landscape dial rail gets the same 12px top inset under the header as portrait
@@ -35,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sun halo uses SVG gradients only (no CSS blur) so scrub no longer leaves corona trails
 
 ### Added
-- Dial glow is dual blurred clones of the light rings (stacked above the horizon wash, behind the planet) so bloom matches dial colors; Save FAB shows only while dirty (dialog on first create, immediate save after); landscape date chips stay right-packed and grow left into the dial; event spokes and clamp arcs match the night sun path at 50% opacity; legend/form stack above the dial bleed
+- Dial glow is dual blurred clones of the light rings (stacked above the horizon wash, behind the planet) so bloom matches dial colors; Save FAB always on new scenes and while dirty on existing (dialog on first create, immediate save after); landscape date chips stay right-packed and grow left into the dial; event spokes and clamp arcs match the night sun path at 50% opacity; legend/form stack above the dial bleed
 - Dial compositing: staged per-clone bloom blurs, `translateZ(0)` layers, `box-shadow` planet shadow; sun keeps CSS-blur halo/shadow (halo 20% less transparent)
 - Landscape dial timeline has right padding and a wider rail so the day/month label no longer widens the page; daytime horizon fills with Apple-like sky blue
 - Dial legend lights open the light-edit sidebar on click (same closest-event targeting as ring clicks)
@@ -108,7 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Desktop sidebar open/close is a 200ms slide; the editor column and Save button move aside (padding / right, not max-width); gutter is sidebar width + 16px (drawer right inset only); draft-restore banner uses 12px inline margin
 - Opening a second sidebar reuses the open drawer and fades its body instead of closing and re-sliding
 - The solar-event row highlights the event whose sidebar is open; clicking that event again closes the drawer
-- Leaving the editor keeps session drafts in this browser instead of prompting to discard them
+- Leaving the editor with unsaved work prompts Discard / Keep editing; session drafts still persist in this browser for refresh/remount
 - Light-row hover sharpens the feathered seam with an animated mask; visible band height stays the same
 - Light-row names, dots, and warnings sit on the visible band; edit dots stay 5px with a 40px hit and expand from center
 - Editor graphs and form use a 1024px column (12px padding) instead of Home Assistant’s 1540px automation-editor canvas

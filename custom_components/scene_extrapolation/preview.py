@@ -282,9 +282,7 @@ def _event_states_for_light(
     for item in bound:
         scene = item["scene"]
         scene_entity_id = scene.get("entity_id")
-        stored = (
-            scene["entities"].get(entity_id) if scene_entity_id else None
-        )
+        stored = scene["entities"].get(entity_id) if scene_entity_id else None
         rows.append(
             {
                 "event": item["id"],
@@ -307,9 +305,7 @@ def _gap_warnings(
     for index, current in enumerate(bound):
         nxt = bound[(index + 1) % count]
         # Unassigned events are off-knots, not native scenes — skip gap UI.
-        if not current["scene"].get("entity_id") or not nxt["scene"].get(
-            "entity_id"
-        ):
+        if not current["scene"].get("entity_id") or not nxt["scene"].get("entity_id"):
             continue
         current_ids = {
             entity_id
@@ -394,7 +390,9 @@ def _sample_light(
     elif final_entity.get(ATTR_STATE) == STATE_ON:
         brightness = 255
         final_entity[ATTR_BRIGHTNESS] = brightness
-    rgb = _display_rgb(from_entity, to_entity, final_entity, from_mode, to_mode, percent)
+    rgb = _display_rgb(
+        from_entity, to_entity, final_entity, from_mode, to_mode, percent
+    )
     pct = max(0, min(100, round(brightness * 100 / 255)))
     if final_entity.get(ATTR_STATE) != STATE_ON and brightness <= 0:
         pct = 0
