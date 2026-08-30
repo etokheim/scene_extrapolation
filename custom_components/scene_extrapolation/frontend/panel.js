@@ -1026,9 +1026,10 @@ class SceneExtrapolationPanel extends HTMLElement {
               )
           );
         }
-        /* Dim siblings while one band is hovered or selected. */
+        /* Dim only siblings — :is/:has dimming outranked .hovered/.selected
+           opacity:1 when applied to every .clock-ring. */
         .sun-light-clock-rings:is(:hover, :has(.clock-ring.selected))
-          .clock-ring {
+          .clock-ring:not(.hovered):not(.selected) {
           opacity: 0.5;
         }
         /* Hover/selected: 10% grow, strong black shadow, soft white rim.
