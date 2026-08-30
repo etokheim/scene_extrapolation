@@ -366,6 +366,24 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 0;
           margin-top: var(--ha-space-3);
           overflow: visible;
+          position: relative;
+        }
+        /* Soft black ramp under top dial controls so date/chips stay readable
+           over horizon bleed (caps at 50% opacity). */
+        .sun-path.dial-view::before {
+          content: "";
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 0;
+          height: 160px;
+          z-index: 2;
+          pointer-events: none;
+          background: linear-gradient(
+            to bottom,
+            rgba(0, 0, 0, 0.5),
+            transparent
+          );
         }
         .sun-path[hidden] {
           display: none;
@@ -414,7 +432,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: visible;
           opacity: 1;
           box-sizing: border-box;
-          z-index: 2;
+          z-index: 3;
           flex-direction: column;
           align-items: stretch;
           gap: 6px;
@@ -556,6 +574,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           align-items: stretch;
           gap: 4px;
           padding: 12px 16px 0;
+          position: relative;
+          z-index: 3;
         }
         /* Scrub/date live in the right rail — do not leave empty toolbar padding
            above the dial (would push the face down). */
@@ -632,9 +652,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-year-thumb {
           position: absolute;
           top: 4px;
-          width: 12px;
-          height: 12px;
-          margin-left: -6px;
+          width: 16px;
+          height: 16px;
+          margin-left: -8px;
           border-radius: 50%;
           background: var(--primary-color);
           box-shadow: 0 0 0 2px var(--card-background-color);
@@ -658,14 +678,16 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex: 1 1 auto;
           width: auto;
           height: auto;
-          margin: 0 4px 0 0;
+          margin: 0 2px 0 0;
           align-self: stretch;
         }
         .sun-year-scrub.vertical .sun-year-months span {
-          left: 0;
+          left: auto;
+          right: 0;
           top: 0;
           font-size: 10px;
           line-height: 1.1;
+          text-align: right;
         }
         .sun-year-scrub.vertical .sun-year-track {
           flex: 0 0 20px;
@@ -689,10 +711,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           height: 0;
         }
         .sun-year-scrub.vertical .sun-year-thumb {
-          left: 4px;
+          left: 2px;
           top: 0;
           margin-left: 0;
-          margin-top: -6px;
+          margin-top: -8px;
         }
         .sun-year-scrub.vertical .sun-year-today {
           left: 4px;
@@ -752,6 +774,18 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: visible;
           transform-origin: center center;
           --clock-chrome: ${CLOCK_CHROME_PX}px;
+        }
+        /* Mobile: drop hour numbers, overflow L/R a little so the dial can
+           grow while event buttons stay on-screen. */
+        @media (max-width: 870px) {
+          .sun-light-clock-face {
+            width: min(calc(100% + 32px), 92vh);
+            max-width: 92vh;
+            margin-inline: -16px;
+          }
+          .clock-hour-label {
+            display: none;
+          }
         }
         /* Sunrise/sunset shadow + glow sit behind the planet (back-most).
            Sized in JS to cover the full panel (under the sidebar).
@@ -6901,7 +6935,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       const startDay = dayOfYear(`${year}-${String(month + 1).padStart(2, "0")}-01`);
       const pos = (startDay / days) * 100;
       if (vertical) {
-        label.style.left = "0";
+        label.style.left = "auto";
+        label.style.right = "0";
         label.style.top = `${pos}%`;
         if (month === 0) {
           label.style.transform = "none";
@@ -6911,6 +6946,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           label.style.transform = "translateY(-50%)";
         }
       } else {
+        label.style.right = "";
         label.style.top = "";
         label.style.left = `${pos}%`;
         if (month === 0) {
@@ -9176,11 +9212,19 @@ class SceneExtrapolationPanel extends HTMLElement {
       const labelInsetPx =
         (CLOCK_TICK_MAJOR_LEN / 100) * (w / 2) + labelFontPx * 0.55 + 4 + 18;
       const labelPad = tickOuterPad + labelInsetPx;
+      // Mobile hides hour numbers — chrome only needs to clear the tick tips
+      // so the core (path / planet / events) can grow.
+      const narrowFace = window.matchMedia("(max-width: 870px)").matches;
+      const chromeFloor = narrowFace
+        ? Math.ceil(
+            tickOuterPad + (CLOCK_TICK_MAJOR_LEN / 100) * (w / 2) + 8
+          )
+        : Math.ceil(labelPad + 4);
       const chromePx = Math.max(
         Math.round(
           CLOCK_CHROME_PX_MIN + t * (CLOCK_CHROME_PX - CLOCK_CHROME_PX_MIN)
         ),
-        Math.ceil(labelPad + 4)
+        chromeFloor
       );
       face.style.setProperty("--clock-chrome", `${chromePx}px`);
       // Derive core size from chrome (do not wait for a second layout pass).
