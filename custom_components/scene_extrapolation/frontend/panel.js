@@ -7895,6 +7895,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     const elev = interpolateElevation(curve, seconds);
     const glowLook = skyLookFromElevation(elev);
     const pos = this._clockSunXy(seconds, elev);
+    // Year-scrub must never leave us updating a detached sun while the visible
+    // outline stays put — reattach refs to the live core nodes if needed.
+    this._ensureLiveClockSunEls();
     const sun = this._clockSunEl;
     const sunHit = this._clockSunHitEl;
     const scale = this._clockSunScale(elev);
@@ -7927,6 +7930,40 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Dial glow is a blurred clone of the rings — not elevation-tinted.
     this._updateHorizonGlow(elev, glowLook);
     this._updateOverrideArc(this._clockStickySeconds);
+  }
+
+  /** Prefer connected core sun/hit nodes over detached paint leftovers. */
+  _ensureLiveClockSunEls() {
+    const core =
+      this._clockFaceEl?.querySelector(".sun-light-clock-core") ||
+      this._clockSunEl?.parentElement;
+    if (!core) {
+      return;
+    }
+    if (!this._clockSunEl?.isConnected) {
+      const live = core.querySelector(":scope > .clock-sun");
+      if (live) {
+        this._clockSunEl = live;
+      }
+    }
+    if (!this._clockSunHitEl?.isConnected) {
+      const liveHit = core.querySelector(":scope > .clock-sun-hit");
+      if (liveHit) {
+        this._clockSunHitEl = liveHit;
+      }
+    }
+    if (!this._clockSunFillEl?.isConnected) {
+      const liveFill = this._clockOverlayEl?.querySelector(
+        ".clock-sun-day-group .clock-sun-fill"
+      );
+      if (liveFill) {
+        const group = liveFill.parentElement;
+        this._clockSunFillEl = liveFill;
+        this._clockSunGlowEl = group?.querySelector(".clock-sun-glow-disc") || null;
+        this._clockSunShadowEl =
+          group?.querySelector(".clock-sun-shadow-disc") || null;
+      }
+    }
   }
 
   _layoutClockHorizonBack() {
@@ -8522,6 +8559,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._clockSunFillEl = fill;
     this._clockSunNightEl = null;
 
+    // Full build only — caller appends these to the core. Never create them
+    // during year-scrub patch (includeSun: false) or the visible outline sticks.
     const marker = document.createElement("div");
     marker.className = "clock-sun";
     marker.setAttribute("aria-hidden", "true");
