@@ -1013,15 +1013,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           .clock-ring:not(.hovered):not(.selected) {
           opacity: 0.5;
         }
-        /* Hover/selected: 10% grow, strong black shadow, soft white rim.
+        /* Hover/selected: strong black shadow, soft white rim (no scale grow).
            Keep rules separate — comma-grouped selectors failed to apply
-           registered --ring-* props in the past.
-           Border width is calc(1px/1.1) so scale(1.1) still reads as 1px. */
+           registered --ring-* props in the past. */
         .clock-ring.hovered {
           --ring-expand: 0%;
-          --ring-rim-w: calc(1px / 1.1);
+          --ring-rim-w: 1px;
           opacity: 1;
-          transform: scale(1.1);
           filter:
             drop-shadow(0 4px 14px rgba(0, 0, 0, 0.75))
             drop-shadow(0 0 6px rgba(0, 0, 0, 0.45));
@@ -1032,9 +1030,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .clock-ring.selected {
           --ring-expand: 0%;
-          --ring-rim-w: calc(1px / 1.1);
+          --ring-rim-w: 1px;
           opacity: 1;
-          transform: scale(1.1);
           filter:
             drop-shadow(0 4px 14px rgba(0, 0, 0, 0.75))
             drop-shadow(0 0 6px rgba(0, 0, 0, 0.45));
@@ -1050,7 +1047,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           --ring-expand: 0%;
           --ring-rim-w: 0px;
           opacity: 0.5;
-          transform: none;
           filter: none;
           z-index: 1;
         }
