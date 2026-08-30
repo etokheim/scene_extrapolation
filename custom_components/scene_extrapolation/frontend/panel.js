@@ -845,7 +845,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Was 0.63; 50% less transparent → opacity 0.815 */
           opacity: 0.815;
           overflow: visible;
-          --clock-feather: 0.35%;
+          /* Match soft-mode bleed so the bloom still overlaps between bands. */
+          --clock-feather: ${CLOCK_FEATHER_PCT}%;
           backface-visibility: hidden;
         }
         .sun-light-clock-glow.glow-lg {
@@ -894,10 +895,21 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform: translateZ(0);
           backface-visibility: hidden;
         }
-        /* Sharpen on hover, and keep sharp while a lamp is selected (sidebar). */
+        /* Surface disc under the bands so 50% rings mix with the panel color,
+           not the horizon/bloom graphics behind the planet. */
+        .sun-light-clock-rings::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          background: var(--primary-background-color);
+          z-index: 0;
+          pointer-events: none;
+        }
+        /* Soft → sharp: drop feather so bands sit edge-to-edge (no overlap). */
         .sun-light-clock-rings:hover,
         .sun-light-clock-rings:has(.clock-ring.selected) {
-          --clock-feather: 0.2%;
+          --clock-feather: 0%;
         }
         .clock-ring {
           position: absolute;
@@ -924,14 +936,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-radius: 50%;
           pointer-events: none;
         }
-        /* Legacy rim mask kept at opacity 0 — hover/selected use scale + shadow. */
+        /* Inner + outer rim strokes; mask grows with --ring-expand / border-w. */
         .clock-ring::after {
           content: "";
           position: absolute;
           inset: 0;
           border-radius: 50%;
           pointer-events: none;
-          background: var(--primary-color);
+          background: rgba(255, 255, 255, 0.45);
           opacity: 0;
           transition: opacity 180ms cubic-bezier(0.2, 0, 0, 1);
           -webkit-mask-image: radial-gradient(
@@ -1010,24 +1022,34 @@ class SceneExtrapolationPanel extends HTMLElement {
           .clock-ring {
           opacity: 0.5;
         }
-        /* Hover/selected: 5% grow + black shadow (no primary rim).
+        /* Hover/selected: 10% grow, strong black shadow, soft white rim.
            Keep rules separate — comma-grouped selectors failed to apply
            registered --ring-* props in the past. */
         .clock-ring.hovered {
           --ring-expand: 0%;
-          --ring-border-w: 0%;
+          --ring-border-w: 0.7%;
           opacity: 1;
-          transform: scale(1.05);
-          filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55));
+          transform: scale(1.1);
+          filter:
+            drop-shadow(0 4px 14px rgba(0, 0, 0, 0.75))
+            drop-shadow(0 0 6px rgba(0, 0, 0, 0.45));
           z-index: 5;
+        }
+        .clock-ring.hovered::after {
+          opacity: 1;
         }
         .clock-ring.selected {
           --ring-expand: 0%;
-          --ring-border-w: 0%;
+          --ring-border-w: 0.7%;
           opacity: 1;
-          transform: scale(1.05);
-          filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55));
+          transform: scale(1.1);
+          filter:
+            drop-shadow(0 4px 14px rgba(0, 0, 0, 0.75))
+            drop-shadow(0 0 6px rgba(0, 0, 0, 0.45));
           z-index: 6;
+        }
+        .clock-ring.selected::after {
+          opacity: 1;
         }
         .clock-ring.selected.hovered {
           z-index: 7;
@@ -8607,16 +8629,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     const hole = 0;
     const usable = 100 - hole;
     const stroke = n ? usable / n : 0;
-    // Expand each ring into its neighbors so soft edges blend over lamp
-    // color, not the dark card (same idea as the table’s negative margin).
-    const overlap = CLOCK_FEATHER_PCT;
+    // Band edges are the true partitions; --clock-feather bleeds them into
+    // neighbors in soft mode and drops to 0% in sharp (hover/selected) mode.
     for (let index = 0; index < n; index += 1) {
       const light = ringLights[index];
-      const midOuter = 100 - index * stroke;
-      const midInner = Math.max(hole, midOuter - stroke);
-      const outer = Math.min(100, midOuter + overlap);
-      const inner = Math.max(0, midInner - overlap);
-      // --ring-expand grows the band on hover/selected; --clock-feather softens seams.
+      const outer = 100 - index * stroke;
+      const inner = Math.max(hole, outer - stroke);
+      // --ring-expand / --ring-border-w grow the hover rim; --clock-feather softens seams.
       const mask = `radial-gradient(farthest-side, transparent calc(var(--ring-inner) - var(--clock-feather) - var(--ring-expand)), #000 calc(var(--ring-inner) + var(--clock-feather) - var(--ring-expand)), #000 calc(var(--ring-outer) - var(--clock-feather) + var(--ring-expand)), transparent calc(var(--ring-outer) + var(--clock-feather) + var(--ring-expand)))`;
       const bg = conicGradientFromSamples(light.samples || []);
 
