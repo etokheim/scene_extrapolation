@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Landscape dial timeline has right padding and a wider rail so the day/month label no longer widens the page; daytime horizon fills with Apple-like sky blue
 - Dial legend lights open the light-edit sidebar on click (same closest-event targeting as ring clicks)
 - Dial ring hover/selected: 2× drop-shadow blur, 1px white rim at 6% opacity (no scale grow; soft↔sharp feather snaps with no ramp/size animation); sibling rings at 50% over a surface disc; hover yields selected highlight; click outside deselects
-- Dial ring hover shows the light’s friendly name in a center label
+- Dial ring hover shows the light’s friendly name in a pill above the dial; touch/pen can scrub bands (page scroll blocked over the rings)
 - Light sidebar ignores unavailable (orphaned) native scene assignments so dawn/sunrise/sunset no longer look populated when the YAML scene is gone
 - Light-edit sidebar drops On/Brightness fields (brightness graph + wheel only)
 - Dial chrome: hour ticks + numbers outermost (numbers inside the tick tips), then solar-event buttons toward the center, then the dial core

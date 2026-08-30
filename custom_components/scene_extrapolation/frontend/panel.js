@@ -726,8 +726,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           align-items: center;
           gap: 24px;
           width: 100%;
-          /* No horizontal padding — use the full stage column for the dial. */
-          padding: 8px 0 16px;
+          /* No horizontal padding — use the full stage column for the dial.
+             Extra top pad leaves room for the ring hover name above the face. */
+          padding: 40px 0 16px;
           box-sizing: border-box;
           overflow: visible;
         }
@@ -899,6 +900,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Sharp ↔ soft snaps instantly — animating feather/expand reads as a
              size/ramp morph on every hover. */
           cursor: pointer;
+          /* Finger scrub over bands must not scroll the page. */
+          touch-action: none;
           /* Filled circular planet: box-shadow matches the old drop-shadow look
              without filter-rasterizing masked conics every frame. */
           box-shadow: 0 0 32px rgba(0, 0, 0, 0.4);
@@ -1055,15 +1058,15 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-ring.selected.hovered {
           z-index: 7;
         }
-        /* Friendly name while pointing at a band (center of the planet). */
+        /* Friendly name above the dial while pointing at a band. */
         .clock-ring-hover-name {
           position: absolute;
           left: 50%;
-          top: 50%;
-          transform: translate(-50%, -50%);
+          top: 0;
+          transform: translate(-50%, calc(-100% - 10px));
           z-index: 10;
           pointer-events: none;
-          max-width: min(70%, 12rem);
+          max-width: min(80%, 14rem);
           padding: 6px 12px;
           border-radius: 999px;
           background: color-mix(
@@ -8668,7 +8671,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     hoverName.className = "clock-ring-hover-name";
     hoverName.setAttribute("aria-live", "polite");
     hoverName.hidden = true;
-    ringsHost.appendChild(hoverName);
+    // On the face (above the dial), not inside the rings host — glow clones
+    // copy ringsHost and must not duplicate the label.
+    face.appendChild(hoverName);
     const setHoveredRing = (entityId) => {
       let label = "";
       for (const ring of ringsHost.querySelectorAll(".clock-ring")) {
@@ -8687,13 +8692,53 @@ class SceneExtrapolationPanel extends HTMLElement {
         hoverName.hidden = true;
       }
     };
-    ringsHost.addEventListener("pointermove", (ev) => {
+    const updateRingHover = (ev) => {
+      // Block page scroll while a finger/pen scrubs across the planet.
+      if (ev.cancelable && (ev.pointerType === "touch" || ev.pointerType === "pen")) {
+        ev.preventDefault();
+      }
       const light = this._lightAtClockPointer(ev, ringsHost, ringLights);
       setHoveredRing(light?.entity_id || null);
+    };
+    ringsHost.addEventListener("pointerdown", (ev) => {
+      // Touch has no hover: capture so move events keep updating the band.
+      if (ev.pointerType === "touch" || ev.pointerType === "pen") {
+        if (ev.cancelable) {
+          ev.preventDefault();
+        }
+        try {
+          ringsHost.setPointerCapture(ev.pointerId);
+        } catch (_err) {
+          /* capture optional */
+        }
+      }
+      updateRingHover(ev);
     });
-    ringsHost.addEventListener("pointerleave", () => {
+    ringsHost.addEventListener("pointermove", updateRingHover);
+    ringsHost.addEventListener("pointerup", (ev) => {
+      // Touch/pen have no persistent hover — clear when the finger lifts.
+      if (ev.pointerType === "touch" || ev.pointerType === "pen") {
+        setHoveredRing(null);
+      }
+    });
+    ringsHost.addEventListener("pointercancel", () => {
       setHoveredRing(null);
     });
+    ringsHost.addEventListener("pointerleave", (ev) => {
+      // With capture, leave can fire mid-drag; only clear when not captured.
+      if (ringsHost.hasPointerCapture?.(ev.pointerId)) {
+        return;
+      }
+      setHoveredRing(null);
+    });
+    // Non-passive touchmove so preventDefault can block scroll on older engines.
+    ringsHost.addEventListener(
+      "touchmove",
+      (ev) => {
+        ev.preventDefault();
+      },
+      { passive: false }
+    );
     const openRingAt = (ev, light) => {
       if (!light) {
         return;
