@@ -1138,12 +1138,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-overlay .clock-sun-glow-disc {
           pointer-events: none;
-          /* Soft edge from radialGradient stops — no CSS blur (scrub moved
-             cx/cy every frame and re-filtered). */
+          /* Soften the halo edge so it reads outside the white disc. */
+          filter: blur(2.5px);
         }
         .sun-light-clock-overlay .clock-sun-shadow-disc {
-          fill: url(#clock-sun-shadow-grad);
+          fill: rgba(0, 0, 0, 0.2);
           pointer-events: none;
+          filter: blur(6px);
         }
         .clock-sun-hit {
           position: absolute;
@@ -7873,8 +7874,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       glow.setAttribute("r", glowR.toFixed(2));
     }
     if (shadow) {
-      // Slightly larger than the old blur(6px) disc so soft edge still reads.
-      const shadowR = r * 2.15;
+      // Keep shadow inside the glow so the halo stays visible around it.
+      const shadowR = r * 1.85;
       shadow.setAttribute("cx", pos.x.toFixed(2));
       shadow.setAttribute("cy", pos.y.toFixed(2));
       shadow.setAttribute("r", shadowR.toFixed(2));
@@ -8129,36 +8130,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     mkGlow("55%", "#fff1c2", 0.72);
     mkGlow("78%", "#ffd27a", 0.48);
     mkGlow("100%", "#ffc878", 0);
-
-    let shadowGrad = defs.querySelector("#clock-sun-shadow-grad");
-    if (!shadowGrad) {
-      shadowGrad = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "radialGradient"
-      );
-      shadowGrad.setAttribute("id", "clock-sun-shadow-grad");
-      shadowGrad.setAttribute("cx", "50%");
-      shadowGrad.setAttribute("cy", "50%");
-      shadowGrad.setAttribute("r", "50%");
-      defs.appendChild(shadowGrad);
-    }
-    while (shadowGrad.firstChild) {
-      shadowGrad.removeChild(shadowGrad.firstChild);
-    }
-    const mkShadow = (offset, opacity) => {
-      const stop = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "stop"
-      );
-      stop.setAttribute("offset", offset);
-      stop.setAttribute("stop-color", "#000");
-      stop.setAttribute("stop-opacity", String(opacity));
-      shadowGrad.appendChild(stop);
-    };
-    // Soft falloff without CSS blur (avoids re-filtering on every scrub frame).
-    mkShadow("0%", 0.28);
-    mkShadow("55%", 0.14);
-    mkShadow("100%", 0);
 
     const clipUrl = this._clockSunDayClipId
       ? `url(#${this._clockSunDayClipId})`

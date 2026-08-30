@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Dial glow is dual blurred clones of the light rings (stacked above the horizon wash, behind the planet) so bloom matches dial colors; Save FAB shows only while dirty (dialog on first create, immediate save after); landscape date chips stay right-packed and grow left into the dial; event spokes and clamp arcs match the night sun path at 50% opacity; legend/form stack above the dial bleed
-- Dial compositing: staged per-clone bloom blurs, `translateZ(0)` layers, `box-shadow` planet shadow, and gradient sun halo/shadow (halo 20% less transparent; no CSS blur on moving discs) so scrub stays smoother
+- Dial compositing: staged per-clone bloom blurs, `translateZ(0)` layers, `box-shadow` planet shadow; sun keeps CSS-blur halo/shadow (halo 20% less transparent)
 - When earliest dusk clamps the scene, dial/chart keep true-solar marks and show a ghost button plus dashed link to the clamped control; top event cards strike through solar time and show the override
 - Sidebar panel to create and edit all extrapolation scenes from one integration instance
 - Sun-path visualization on the create/edit screen (elevation curve + solar events)
