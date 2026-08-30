@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Light-edit sidebar brightness graph above the color wheel (titled, full-bleed, 0–100% in the subtext): drag a solar-event point to change brightness; release works outside the graph; missing-lamp events show `+` to add
 
 ### Changed
-- Dial view: ~86vh dial with wider chrome and event buttons past the face edge; sun path circle scales with day's peak vs annual max (summer max at 90% of padded face limit); solid white day sun (HTML shadow only below horizon; glow day-clipped); rings fill to the center; sky wash uses `--card-background-color`; sticky 1px white override arc with short white–gold wash; magnetic snap at 60% prior windows; ticks/labels white at 60% opacity
+- Dial view: ~86vh dial with face-scaled chrome (shrinks on small screens) and in-bounds event buttons with spokes to the buttons; sun path circle scales with day's peak vs annual max; solid white day sun with SVG shadow under day-clipped glow+fill (glow 3.3×); elevation radial sky wash + horizon ramp; sticky scrub persists across date/location; 1px white override arc; magnetic snap at 60% prior windows; labeled-hour major ticks; ticks/labels white at ~30%/45% opacity
 - One config entry for the whole integration; room configs live in a persistent store (legacy per-room entries are migrated)
 - Unassigned solar events are off-knots in the light preview (graphs go dark there) instead of being skipped
 - Feather sharpen-on-hover animates via document-registered `--light-feather` / `--clock-feather` (shadow `@property` did not transition)
