@@ -4,14 +4,17 @@ ignore-paths=custom_components/scene_extrapolation/frontend
 
 [MESSAGES CONTROL]
 # HA is installed in CI; keep import-error disabled so local pylint without the
-# full HA tree still works. Disable complexity/length noise common in HA
-# integrations (especially legacy scene.py) without rewriting that module.
+# full HA tree still works. no-name-in-module (E0611) fires on HA lazy exports
+# (e.g. LockState, StaticPathConfig) even when the symbols exist at runtime.
+# Disable complexity/length noise common in HA integrations (especially legacy
+# scene.py) without rewriting that module.
 disable=
     C0114,
     C0116,
     C0301,
     C0302,
     E0401,
+    E0611,
     R0902,
     R0903,
     R0911,
