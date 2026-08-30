@@ -4060,8 +4060,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Selected solar event pins the sun (drag sticky yields to the pin).
     if (this._clockSunEl) {
       this._clockSunLive = false;
-      this._cancelClockSunArc();
-      this._applyClockSunAppearance(this._clockSunIdleSeconds());
+      this._moveClockSunTo(this._clockSunIdleSeconds());
       if (this._hoverSeconds == null) {
         this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
       }
@@ -7043,14 +7042,24 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._hoverSeconds = undefined;
     this._clockSunLive = false;
     const now = nowSecondsSinceMidnight();
-    const from = this._clockSunDisplayedSeconds ?? now;
-    this._cancelClockSunArc();
-    if (Math.abs(this._shortestSecondsDelta(from, now)) < 1) {
-      this._applyClockSunAppearance(now);
-    } else {
-      this._animateClockSunArc(from, now, 420);
-    }
+    this._moveClockSunTo(now, { durationMs: 420 });
     this._fillHoverReadout(now, { hovering: false });
+  }
+
+  /** Ease the sun along the path when it relocates (event pin, reset, etc.). */
+  _moveClockSunTo(toSeconds, { durationMs = 380 } = {}) {
+    if (!this._clockSunEl || toSeconds == null) {
+      return;
+    }
+    const to =
+      ((toSeconds % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
+    const from = this._clockSunDisplayedSeconds ?? to;
+    this._cancelClockSunArc();
+    if (Math.abs(this._shortestSecondsDelta(from, to)) < 1) {
+      this._applyClockSunAppearance(to);
+      return;
+    }
+    this._animateClockSunArc(from, to, durationMs);
   }
 
   _updateLightNameBrightness(seconds) {
@@ -8056,8 +8065,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         const dist = Math.hypot(ev.clientX - origin.x, ev.clientY - origin.y);
         if (dist >= CLOCK_DRAG_CLICK_PX) {
           this._clockSunDragging = true;
+          // Keep the event sidebar open while dragging; close on release.
           if (this._sidebarEventId) {
-            this._closeSceneSidebar({ animate: true });
+            this._clockCloseSidebarAfterDrag = true;
           }
         }
       }
@@ -8154,6 +8164,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._clockSunLive = false;
       this._applyClockSunAppearance(finalSeconds);
       this._fillHoverReadout(finalSeconds, { hovering: false });
+      if (this._clockCloseSidebarAfterDrag) {
+        this._clockCloseSidebarAfterDrag = false;
+        this._closeSceneSidebar({ animate: true });
+      }
     };
     const onDown = (ev) => {
       if (ev.button != null && ev.button !== 0) {
@@ -8163,6 +8177,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       ev.stopPropagation();
       this._clockPointerArmed = true;
       this._clockSunDragging = false;
+      this._clockCloseSidebarAfterDrag = false;
       this._clockPointerOrigin = { x: ev.clientX, y: ev.clientY };
       this._clockMagnetEventId = null;
       this._cancelClockSunArc();
