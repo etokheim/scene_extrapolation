@@ -895,9 +895,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Soft mode: expand bands into neighbors so opaque cores overlap —
              feather alone only overlaps fades and the surface disc shows through. */
           --ring-soft-expand: ${(CLOCK_FEATHER_PCT * 1.35).toFixed(2)}%;
-          transition:
-            --clock-feather 220ms cubic-bezier(0.2, 0, 0, 1),
-            --ring-soft-expand 220ms cubic-bezier(0.2, 0, 0, 1);
+          /* Sharp ↔ soft snaps instantly — animating feather/expand reads as a
+             size/ramp morph on every hover. */
           cursor: pointer;
           /* Filled circular planet: box-shadow matches the old drop-shadow look
              without filter-rasterizing masked conics every frame. */
@@ -933,11 +932,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           --ring-expand: var(--ring-soft-expand);
           --ring-rim-w: 0px;
           transform-origin: center center;
+          /* Opacity/filter only — expand/rim-w follow sharp/soft with no tween. */
           transition:
-            --ring-expand 180ms cubic-bezier(0.2, 0, 0, 1),
-            --ring-rim-w 180ms cubic-bezier(0.2, 0, 0, 1),
             opacity 180ms cubic-bezier(0.2, 0, 0, 1),
-            transform 180ms cubic-bezier(0.2, 0, 0, 1),
             filter 180ms cubic-bezier(0.2, 0, 0, 1);
         }
         /* Fill lives on a child so the ring mask does not clip ::after borders. */
@@ -956,8 +953,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           inset: 0;
           border-radius: 50%;
           pointer-events: none;
-          /* Hover rim: soft white at 10% opacity. */
-          background: rgba(255, 255, 255, 0.1);
+          /* Hover rim: was 0.1; 40% more transparent → 0.06 */
+          background: rgba(255, 255, 255, 0.06);
           opacity: 0;
           transition: opacity 180ms cubic-bezier(0.2, 0, 0, 1);
           -webkit-mask-image: radial-gradient(
@@ -1013,7 +1010,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           .clock-ring:not(.hovered):not(.selected) {
           opacity: 0.5;
         }
-        /* Hover/selected: strong black shadow, soft white rim (no scale grow).
+        /* Hover/selected: stronger black shadow (2× blur), soft white rim.
            Keep rules separate — comma-grouped selectors failed to apply
            registered --ring-* props in the past. */
         .clock-ring.hovered {
@@ -1021,8 +1018,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           --ring-rim-w: 1px;
           opacity: 1;
           filter:
-            drop-shadow(0 4px 14px rgba(0, 0, 0, 0.75))
-            drop-shadow(0 0 6px rgba(0, 0, 0, 0.45));
+            drop-shadow(0 4px 28px rgba(0, 0, 0, 0.75))
+            drop-shadow(0 0 12px rgba(0, 0, 0, 0.45));
           z-index: 5;
         }
         .clock-ring.hovered::after {
@@ -1033,8 +1030,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           --ring-rim-w: 1px;
           opacity: 1;
           filter:
-            drop-shadow(0 4px 14px rgba(0, 0, 0, 0.75))
-            drop-shadow(0 0 6px rgba(0, 0, 0, 0.45));
+            drop-shadow(0 4px 28px rgba(0, 0, 0, 0.75))
+            drop-shadow(0 0 12px rgba(0, 0, 0, 0.45));
           z-index: 6;
         }
         .clock-ring.selected::after {

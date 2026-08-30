@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dial compositing: staged per-clone bloom blurs, `translateZ(0)` layers, `box-shadow` planet shadow; sun keeps CSS-blur halo/shadow (halo 20% less transparent)
 - Landscape dial timeline has right padding and a wider rail so the day/month label no longer widens the page; daytime horizon fills with Apple-like sky blue
 - Dial legend lights open the light-edit sidebar on click (same closest-event targeting as ring clicks)
-- Dial ring hover/selected: strong black drop-shadow, 1px white rim (10% opacity) inset so the outer ring isn’t clipped (no scale grow); sibling rings at 50% over a surface disc (active ring stays fully opaque); hover yields selected highlight so only one band is emphasized; click outside deselects
+- Dial ring hover/selected: 2× drop-shadow blur, 1px white rim at 6% opacity (no scale grow; soft↔sharp feather snaps with no ramp/size animation); sibling rings at 50% over a surface disc; hover yields selected highlight; click outside deselects
 - Dial ring hover shows the light’s friendly name in a center label
 - Light sidebar ignores unavailable (orphaned) native scene assignments so dawn/sunrise/sunset no longer look populated when the YAML scene is gone
 - Light-edit sidebar drops On/Brightness fields (brightness graph + wheel only)
