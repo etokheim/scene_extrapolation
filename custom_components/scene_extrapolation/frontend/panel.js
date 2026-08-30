@@ -801,7 +801,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-path.dial-view .sun-light-clock-legend {
           position: relative;
           z-index: 5;
-          width: min(100%, 86vh, var(--dial-face-max, 86vh));
+          width: min(100%, 500px);
+          max-width: 500px;
           flex: 0 0 auto;
           pointer-events: auto;
         }
@@ -1530,7 +1531,8 @@ class SceneExtrapolationPanel extends HTMLElement {
             0 2px 8px rgba(0, 0, 0, 0.22);
         }
         .sun-light-clock-legend {
-          width: min(100%, 86vh);
+          width: min(100%, 500px);
+          max-width: 500px;
           display: flex;
           flex-direction: column;
           gap: 4px;
@@ -1576,12 +1578,15 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-legend-row.suggested {
           color: var(--secondary-text-color);
         }
-        .clock-legend-swatch {
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
+        .clock-legend-icon {
           flex-shrink: 0;
-          box-shadow: 0 0 0 1px var(--divider-color);
+          width: 20px;
+          height: 20px;
+          --mdc-icon-size: 20px;
+          color: var(--secondary-text-color);
+        }
+        .clock-legend-row.selected .clock-legend-icon {
+          color: var(--primary-text-color);
         }
         .clock-legend-name {
           flex: 1 1 auto;
@@ -9630,15 +9635,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (light.entity_id === this._sidebarLightId) {
       row.classList.add("selected");
     }
-    if (!suggested) {
-      const swatch = document.createElement("span");
-      swatch.className = "clock-legend-swatch";
-      const samples = light.samples || [];
-      const mid =
-        samples[Math.floor(samples.length / 2)] || samples[0] || null;
-      swatch.style.background = mid ? darkenedRgb(mid) : "var(--divider-color)";
-      row.appendChild(swatch);
-    }
+    row.appendChild(this._lightEntityIcon(light.entity_id));
     const name = document.createElement("span");
     name.className = "clock-legend-name";
     name.textContent = light.name;
@@ -9718,6 +9715,21 @@ class SceneExtrapolationPanel extends HTMLElement {
       row.appendChild(warn);
     }
     return row;
+  }
+
+  _lightEntityIcon(entityId) {
+    const state = this._hass?.states?.[entityId];
+    if (customElements.get("ha-state-icon") && state) {
+      const icon = document.createElement("ha-state-icon");
+      icon.className = "clock-legend-icon";
+      icon.hass = this._hass;
+      icon.stateObj = state;
+      return icon;
+    }
+    const icon = document.createElement("ha-icon");
+    icon.className = "clock-legend-icon";
+    icon.setAttribute("icon", state?.attributes?.icon || "mdi:lightbulb");
+    return icon;
   }
 
   _buildLightBars(xOf, events) {
