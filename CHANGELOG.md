@@ -6,12 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-- Dial legend sits under the face over extended horizon bleed (not on the planet)
+- Dial face keeps full scale; light list uses leftover portrait height or the landscape left rail (does not shrink the graphic)
 - Desktop dial chrome is fixed (no face-size lerp that slid event buttons inward)
 - Landscape dial rail gets the same 12px top inset under the header as portrait
 - Enter animation keeps SVG sun fill locked to the HTML outline (counter-spin)
 - Portrait dial date/scrub overlay the dial graphics instead of sitting above them
-- Dial legend overlays the face so it is not clipped by dial overflow
 - Keep the sun outline moving with path radius during year timeline scrub
 - Dial view clips horizon/bloom flush under the app bar (no top margin gap)
 - Keep dusk clamp dashed link (and solar ghost) updating during year timeline scrub
