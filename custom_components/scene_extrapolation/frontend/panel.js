@@ -748,6 +748,15 @@ class SceneExtrapolationPanel extends HTMLElement {
           --ha-button-height: 40px;
           color: var(--primary-text-color);
         }
+        .sun-path.dial-view {
+          --dial-timeline-h: 0px;
+          /* Square dial face budget: viewport minus app bar, portrait timeline,
+             and this container’s vertical padding. */
+          --dial-face-max: calc(
+            100vh - var(--header-height, 64px) - var(--dial-timeline-h, 0px) -
+              56px
+          );
+        }
         .sun-light-clock {
           display: flex;
           flex-direction: column;
@@ -760,11 +769,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           box-sizing: border-box;
           overflow: visible;
         }
+        .sun-path.dial-view .sun-light-clock {
+          max-height: calc(
+            100vh - var(--header-height, 64px) - var(--dial-timeline-h, 0px)
+          );
+          min-height: 0;
+        }
         .sun-light-clock-face {
           position: relative;
           /* Leave headroom for the app bar + event labels around the dial. */
-          width: min(100%, 86vh);
-          max-width: 86vh;
+          width: min(100%, 86vh, var(--dial-face-max, 86vh));
+          max-width: min(100%, 86vh, var(--dial-face-max, 86vh));
           aspect-ratio: 1;
           flex: 0 0 auto;
           /* Allow page scroll over the dial; only the sun/handle capture. */
@@ -784,8 +799,12 @@ class SceneExtrapolationPanel extends HTMLElement {
             overflow-x: hidden;
           }
           .sun-light-clock-face {
-            width: min(calc(100% + 48px), 96vh);
-            max-width: 96vh;
+            width: min(
+              calc(100% + 48px),
+              96vh,
+              var(--dial-face-max, 96vh)
+            );
+            max-width: min(96vh, var(--dial-face-max, 96vh));
             margin-inline: -24px;
           }
           .clock-hour-label {
@@ -7085,6 +7104,25 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (landscapeClock) {
       requestAnimationFrame(() => this._alignYearScrubRail());
     }
+    // Portrait timeline sits above the dial — subtract its height from the
+    // graphics max-height. Landscape rail does not consume vertical space.
+    requestAnimationFrame(() => this._syncDialHeightBudget(landscapeClock));
+  }
+
+  _syncDialHeightBudget(landscapeClock) {
+    const path = this._sunPathEl;
+    if (!path) {
+      return;
+    }
+    if (!path.classList.contains("dial-view")) {
+      path.style.removeProperty("--dial-timeline-h");
+      return;
+    }
+    let timelineH = 0;
+    if (!landscapeClock && this._dateToolbar && !this._scrubBlock?.hidden) {
+      timelineH = Math.ceil(this._dateToolbar.getBoundingClientRect().height);
+    }
+    path.style.setProperty("--dial-timeline-h", `${Math.max(0, timelineH)}px`);
   }
 
   _alignYearScrubRail() {
