@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- When earliest dusk clamps the scene, dial/chart keep true-solar marks and show a ghost button plus dashed link to the clamped control; top event cards strike through solar time and show the override
 - Sidebar panel to create and edit all extrapolation scenes from one integration instance
 - Sun-path visualization on the create/edit screen (elevation curve + solar events)
 - Per-light brightness/color preview on create/edit, with a date picker for winter/polar days

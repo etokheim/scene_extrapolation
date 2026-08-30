@@ -51,8 +51,9 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Date:** 2026-08-26
 - **Superseded in part:** 2026-08-26 — no static vertical grid or event lines; hover shows a second cursor line and a fixed readout.
 - **Superseded in part:** 2026-08-26 — Y scale is the location’s annual max elevation; the stroke is darker below the horizon.
-- **Decision:** The create/edit screen shows a full-width sun elevation curve for today, with dawn / sunrise / noon / sunset / dusk plotted (icons + times). Dusk on the chart respects the configured earliest-dusk override.
-- **Why:** Makes the solar events the scenes interpolate between visible instead of abstract form fields.
+- **Superseded in part:** 2026-08-30 — when earliest dusk clamps the scene, path dots / night wedges / chart markers stay at true solar dusk; only the interactive event button moves to the floor, with a smaller disabled ghost at solar and a dashed link between them. Top event cards strike through solar time and show the clamped time beside it. Preview events expose `solar_seconds` when overridden.
+- **Decision:** The create/edit screen shows a full-width sun elevation curve for today, with dawn / sunrise / noon / sunset / dusk plotted (icons + times). True solar dusk stays visible when earliest-dusk delays the scene; the active control sits at the clamped time.
+- **Why:** Makes the solar events the scenes interpolate between visible instead of abstract form fields. Showing both solar and clamp makes the override obvious without lying about when dusk actually is.
 - **Do not reverse without user ask.**
 
 ## Sun-path Y scale is annual max; night stroke is darker

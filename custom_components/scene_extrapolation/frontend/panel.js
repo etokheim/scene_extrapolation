@@ -1012,6 +1012,15 @@ class SceneExtrapolationPanel extends HTMLElement {
           stroke-linecap: round;
           opacity: 0.55;
         }
+        /* Chord from true-solar ghost to the clamped event button. */
+        .sun-light-clock-overlay .clock-event-clamp-link {
+          stroke: var(--secondary-text-color);
+          stroke-width: 0.75px;
+          vector-effect: non-scaling-stroke;
+          stroke-dasharray: 3.5 2.5;
+          stroke-linecap: round;
+          opacity: 0.65;
+        }
         .sun-light-clock-overlay .clock-handle,
         .sun-light-clock-handle-overlay .clock-handle {
           stroke: var(--primary-text-color);
@@ -1193,6 +1202,29 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .clock-event ha-icon {
           --mdc-icon-size: 18px;
+        }
+        /* True-solar stand-in when earliest-dusk moves the active button. */
+        .clock-event-anchor.ghost {
+          width: 22px;
+          height: 22px;
+          z-index: 5;
+        }
+        .clock-event.ghost {
+          width: 22px;
+          height: 22px;
+          opacity: 0.48;
+          cursor: default;
+          pointer-events: none;
+          box-shadow: none;
+          border-style: dashed;
+          background: color-mix(
+            in srgb,
+            var(--card-background-color) 70%,
+            transparent
+          );
+        }
+        .clock-event.ghost ha-icon {
+          --mdc-icon-size: 13px;
         }
         /* Missing — icon only; scene cue lives in the meta above. */
         .clock-event.missing {
@@ -2297,6 +2329,15 @@ class SceneExtrapolationPanel extends HTMLElement {
           color: var(--secondary-text-color);
           font-variant-numeric: tabular-nums;
         }
+        .sun-event .time .solar-struck {
+          text-decoration: line-through;
+          opacity: 0.65;
+          margin-right: 0.35em;
+        }
+        .sun-event .time .clamp-time {
+          color: var(--primary-text-color);
+          font-weight: 600;
+        }
         .sun-event .scene {
           font-size: 11px;
           color: var(--primary-color);
@@ -2455,6 +2496,26 @@ class SceneExtrapolationPanel extends HTMLElement {
           border: 2px solid #ffb74d;
           box-sizing: border-box;
           pointer-events: none;
+        }
+        .sun-dot.clamp-tick {
+          width: 6px;
+          height: 6px;
+          margin-left: -3px;
+          margin-top: -3px;
+          border-width: 1.5px;
+          border-style: dashed;
+          border-color: var(--secondary-text-color);
+          background: transparent;
+          opacity: 0.75;
+        }
+        .sun-clamp-link {
+          position: absolute;
+          height: 0;
+          border: none;
+          border-top: 1px dashed var(--secondary-text-color);
+          opacity: 0.55;
+          pointer-events: none;
+          transform-origin: left center;
         }
         .page-shell {
           box-sizing: border-box;
@@ -6838,7 +6899,19 @@ class SceneExtrapolationPanel extends HTMLElement {
       name.textContent = event.name;
       const time = document.createElement("span");
       time.className = "time";
-      time.textContent = event.fallback ? `${event.time}*` : event.time;
+      if (event.overridden && event.solar_time) {
+        const struck = document.createElement("span");
+        struck.className = "solar-struck";
+        struck.textContent = event.fallback
+          ? `${event.solar_time}*`
+          : event.solar_time;
+        const clamp = document.createElement("span");
+        clamp.className = "clamp-time";
+        clamp.textContent = event.time;
+        time.append(struck, clamp);
+      } else {
+        time.textContent = event.fallback ? `${event.time}*` : event.time;
+      }
       item.append(icon, name, time);
       if (editable) {
         const scene = document.createElement("span");
@@ -6859,8 +6932,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     chart.className = "sun-chart";
     chart.innerHTML = svg;
     for (const event of events) {
-      const left = `${(xOf(event.seconds) / CHART_WIDTH) * 100}%`;
-      const top = `${yOf(event.elevation)}px`;
+      const markSeconds = this._eventMarkSeconds(event);
+      if (markSeconds == null) {
+        continue;
+      }
+      const markElev = interpolateElevation(curve, markSeconds);
+      const left = `${(xOf(markSeconds) / CHART_WIDTH) * 100}%`;
+      const top = `${yOf(markElev)}px`;
       const dot = document.createElement("div");
       dot.className = "sun-dot";
       dot.style.left = left;
@@ -6873,6 +6951,39 @@ class SceneExtrapolationPanel extends HTMLElement {
       icon.setAttribute("icon", event.icon);
       marker.appendChild(icon);
       chart.append(dot, marker);
+      const buttonSeconds = this._eventButtonSeconds(event);
+      if (
+        event.overridden &&
+        buttonSeconds != null &&
+        buttonSeconds !== markSeconds
+      ) {
+        const clampElev = interpolateElevation(curve, buttonSeconds);
+        const clampLeftPct = (xOf(buttonSeconds) / CHART_WIDTH) * 100;
+        const clampTopPx = yOf(clampElev);
+        const markLeftPct = (xOf(markSeconds) / CHART_WIDTH) * 100;
+        const markTopPx = yOf(markElev);
+        const tick = document.createElement("div");
+        tick.className = "sun-dot clamp-tick";
+        tick.title = `${event.name} scene at ${event.time}`;
+        tick.style.left = `${clampLeftPct}%`;
+        tick.style.top = `${clampTopPx}px`;
+        chart.appendChild(tick);
+        const dyPx = clampTopPx - markTopPx;
+        const link = document.createElement("div");
+        link.className = "sun-clamp-link";
+        link.style.left = `${markLeftPct}%`;
+        link.style.top = `${markTopPx}px`;
+        chart.appendChild(link);
+        requestAnimationFrame(() => {
+          const w = chart.clientWidth;
+          if (!(w > 0)) {
+            return;
+          }
+          const dx = ((clampLeftPct - markLeftPct) / 100) * w;
+          link.style.width = `${Math.hypot(dx, dyPx)}px`;
+          link.style.transform = `rotate(${(Math.atan2(dyPx, dx) * 180) / Math.PI}deg)`;
+        });
+      }
     }
     if (isToday) {
       const nowDot = document.createElement("div");
@@ -7352,6 +7463,22 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _clockEventSeconds(events, id) {
     const event = (events || []).find((item) => item.id === id);
+    return this._eventMarkSeconds(event);
+  }
+
+  /** True solar time for path/sky marks (ignores earliest-dusk clamp). */
+  _eventMarkSeconds(event) {
+    if (!event || event.seconds == null) {
+      return null;
+    }
+    if (event.overridden && event.solar_seconds != null) {
+      return event.solar_seconds;
+    }
+    return event.seconds;
+  }
+
+  /** Effective scene time (clamped when earliest-dusk applies). */
+  _eventButtonSeconds(event) {
     return event?.seconds != null ? event.seconds : null;
   }
 
@@ -7806,18 +7933,20 @@ class SceneExtrapolationPanel extends HTMLElement {
     const spokeOuter = Math.min(96, CLOCK_TICK_OUTER - 1);
     this._clockEventDotEls = [];
     this._clockEventSpokeEls = [];
+    this._clockEventClampLinkEls = [];
     for (const event of events || []) {
-      if (event?.seconds == null) {
+      const markSeconds = this._eventMarkSeconds(event);
+      if (markSeconds == null) {
         continue;
       }
-      const pos = this._clockSunXy(event.seconds);
-      const outer = this._clockPolar(event.seconds, spokeOuter);
+      const pos = this._clockSunXy(markSeconds);
+      const outer = this._clockPolar(markSeconds, spokeOuter);
       const spoke = document.createElementNS(
         "http://www.w3.org/2000/svg",
         "line"
       );
       spoke.setAttribute("class", "clock-event-ray");
-      // Outer tip retargeted to the event button in _layoutClockEventSpokes.
+      // Outer tip retargeted to mark chrome (ghost or button) in layout.
       spoke.setAttribute("x1", outer.x.toFixed(2));
       spoke.setAttribute("y1", outer.y.toFixed(2));
       spoke.setAttribute("x2", pos.x.toFixed(2));
@@ -7835,6 +7964,25 @@ class SceneExtrapolationPanel extends HTMLElement {
       // r set in _layoutClockEventDots for a fixed screen size.
       overlay.appendChild(dot);
       this._clockEventDotEls.push(dot);
+      const buttonSeconds = this._eventButtonSeconds(event);
+      if (
+        event.overridden &&
+        buttonSeconds != null &&
+        buttonSeconds !== markSeconds
+      ) {
+        const link = document.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "line"
+        );
+        link.setAttribute("class", "clock-event-clamp-link");
+        link.setAttribute("x1", outer.x.toFixed(2));
+        link.setAttribute("y1", outer.y.toFixed(2));
+        link.setAttribute("x2", outer.x.toFixed(2));
+        link.setAttribute("y2", outer.y.toFixed(2));
+        link.dataset.eventId = event.id;
+        overlay.appendChild(link);
+        this._clockEventClampLinkEls.push(link);
+      }
     }
 
     const defs =
@@ -7946,6 +8094,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!anchors?.length) {
       return;
     }
+    // Ghosts have no labels — only active buttons compete for placement.
+    anchors = anchors.filter((anchor) => !anchor.classList.contains("ghost"));
+    if (!anchors.length) {
+      return;
+    }
     const TOP = -0.4;
     const BOTTOM = 0.4;
     const top = [];
@@ -7983,12 +8136,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     right.forEach((anchor, index) => setBelow(anchor, index !== 0));
   }
 
-  /** Retarget dashed spokes from path dots to the event button centers. */
+  /** Retarget dashed spokes from path dots to mark chrome; clamp links ghost→button. */
   _layoutClockEventSpokes() {
     const spokes = this._clockEventSpokeEls;
+    const links = this._clockEventClampLinkEls;
     const face = this._clockFaceEl;
     const core = this._clockSunEl?.parentElement;
-    if (!spokes?.length || !face || !core) {
+    if (!face || !core) {
       return;
     }
     const faceW = face.clientWidth;
@@ -8003,23 +8157,44 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (iconR == null) {
       return;
     }
-    for (const spoke of spokes) {
-      const id = spoke.dataset.eventId;
-      const event = (this._sunPath?.events || []).find((item) => item.id === id);
-      if (!event || event.seconds == null) {
-        continue;
-      }
-      const deg = this._clockAngleDeg(event.seconds);
+    const chromePoint = (seconds) => {
+      const deg = this._clockAngleDeg(seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
-      // Button center on the face → core-local → viewBox units.
       const faceX = (0.5 + (cos * iconR) / 100) * faceW;
       const faceY = (0.5 + (sin * iconR) / 100) * faceW;
-      const vbX = ((faceX - chrome) / coreW) * CLOCK_VIEW;
-      const vbY = ((faceY - chrome) / coreW) * CLOCK_VIEW;
-      spoke.setAttribute("x1", vbX.toFixed(2));
-      spoke.setAttribute("y1", vbY.toFixed(2));
+      return {
+        x: ((faceX - chrome) / coreW) * CLOCK_VIEW,
+        y: ((faceY - chrome) / coreW) * CLOCK_VIEW,
+      };
+    };
+    for (const spoke of spokes || []) {
+      const id = spoke.dataset.eventId;
+      const event = (this._sunPath?.events || []).find((item) => item.id === id);
+      const markSeconds = this._eventMarkSeconds(event);
+      if (markSeconds == null) {
+        continue;
+      }
+      // Spoke aims at true-solar chrome (ghost when overridden, else button).
+      const tip = chromePoint(markSeconds);
+      spoke.setAttribute("x1", tip.x.toFixed(2));
+      spoke.setAttribute("y1", tip.y.toFixed(2));
+    }
+    for (const link of links || []) {
+      const id = link.dataset.eventId;
+      const event = (this._sunPath?.events || []).find((item) => item.id === id);
+      const markSeconds = this._eventMarkSeconds(event);
+      const buttonSeconds = this._eventButtonSeconds(event);
+      if (markSeconds == null || buttonSeconds == null) {
+        continue;
+      }
+      const from = chromePoint(markSeconds);
+      const to = chromePoint(buttonSeconds);
+      link.setAttribute("x1", from.x.toFixed(2));
+      link.setAttribute("y1", from.y.toFixed(2));
+      link.setAttribute("x2", to.x.toFixed(2));
+      link.setAttribute("y2", to.y.toFixed(2));
     }
   }
 
@@ -8383,11 +8558,18 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const editable = this._view === "edit";
     const eventAnchors = [];
-    for (const event of events) {
-      const deg = this._clockAngleDeg(event.seconds);
+    const polarForSeconds = (seconds) => {
+      const deg = this._clockAngleDeg(seconds);
       const rad = ((deg - 90) * Math.PI) / 180;
-      const cos = Math.cos(rad);
-      const sin = Math.sin(rad);
+      return { cos: Math.cos(rad), sin: Math.sin(rad) };
+    };
+    for (const event of events) {
+      const buttonSeconds = this._eventButtonSeconds(event);
+      const markSeconds = this._eventMarkSeconds(event);
+      if (buttonSeconds == null) {
+        continue;
+      }
+      const { cos, sin } = polarForSeconds(buttonSeconds);
       const sceneId = this._eventSceneId(event.id);
       const sceneName = this._sceneName(sceneId);
       const timeText = event.fallback ? `${event.time}*` : event.time;
@@ -8418,9 +8600,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         btn.type = "button";
         btn.dataset.eventId = event.id;
       }
+      const solarHint =
+        event.overridden && event.solar_time
+          ? ` (solar ${event.solar_time})`
+          : "";
       btn.title = sceneName
-        ? `${event.name} · ${timeText} · ${sceneName}`
-        : `${event.name} · ${timeText}`;
+        ? `${event.name} · ${timeText}${solarHint} · ${sceneName}`
+        : `${event.name} · ${timeText}${solarHint}`;
       if (!sceneName) {
         btn.classList.add("missing");
       }
@@ -8446,6 +8632,27 @@ class SceneExtrapolationPanel extends HTMLElement {
       anchor.append(meta, btn);
       face.appendChild(anchor);
       eventAnchors.push(anchor);
+
+      if (
+        event.overridden &&
+        markSeconds != null &&
+        markSeconds !== buttonSeconds
+      ) {
+        const ghostPolar = polarForSeconds(markSeconds);
+        const ghost = document.createElement("div");
+        ghost.className = "clock-event-anchor ghost";
+        ghost._clockPolar = ghostPolar;
+        ghost.setAttribute("aria-hidden", "true");
+        const ghostBtn = document.createElement("div");
+        ghostBtn.className = "clock-event ghost";
+        ghostBtn.title = `${event.name} · solar ${event.solar_time || timeText}`;
+        const ghostIcon = document.createElement("ha-icon");
+        ghostIcon.setAttribute("icon", event.icon);
+        ghostBtn.appendChild(ghostIcon);
+        ghost.appendChild(ghostBtn);
+        face.appendChild(ghost);
+        eventAnchors.push(ghost);
+      }
     }
 
     const layoutEventAnchors = () => {

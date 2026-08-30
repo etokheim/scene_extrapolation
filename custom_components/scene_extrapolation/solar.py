@@ -243,12 +243,14 @@ def build_sun_path(
         event_time = events_by_name[event_id]
         overridden = False
         solar_time = None
+        solar_seconds = None
         if event_id == "dusk":
             seconds, overridden, solar_raw = dusk_start_seconds(
                 event_time, start, dusk_minimum
             )
             if overridden and solar_raw is not None:
                 solar_time = _format_time(solar_raw)
+                solar_seconds = int(solar_raw)
             event_time = start + timedelta(seconds=seconds)
         else:
             seconds = _seconds_since_midnight(event_time)
@@ -263,6 +265,9 @@ def build_sun_path(
                 "overridden": overridden,
                 "fallback": event_id in fallbacks,
                 "solar_time": solar_time,
+                # True solar dusk when earliest-dusk delays the scene; UI marks
+                # stay here while the interactive button uses `seconds`.
+                "solar_seconds": solar_seconds,
             }
         )
 
