@@ -473,6 +473,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           content: "";
           position: absolute;
           inset: 0;
+          /* Reach the same top as .clock-horizon-back (host), including under
+             draft/location banners — measured as --dial-banner-h. */
+          top: calc(-1 * var(--dial-banner-h, 0px));
           right: calc(-1 * var(--scene-sidebar-gutter));
           z-index: 2;
           pointer-events: none;
@@ -5131,6 +5134,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const anyVisible = [...stack.children].some((child) => !child.hidden);
     stack.hidden = !anyVisible;
+    // Banner show/hide changes the dial height budget and vignette reach.
+    if (this._sunPathEl?.classList.contains("dial-view")) {
+      requestAnimationFrame(() => this._syncDialHeightBudget());
+    }
   }
 
   async _discardRestoredDraft() {
@@ -9420,14 +9427,18 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!path.classList.contains("dial-view")) {
       path.style.removeProperty("--dial-timeline-h");
       path.style.removeProperty("--dial-face-max");
+      path.style.removeProperty("--dial-banner-h");
       return;
     }
+    const landscape =
+      landscapeClock ??
+      this._sunPathStage?.classList.contains("landscape-clock-scrub");
     // Portrait: toolbar (chips + year scrub) is in-flow — reserve its height so
     // the face shrinks instead of the timeline covering hour ticks. Landscape
     // rail sits beside the face (timeline-h = 0).
     let toolbarH = 0;
     if (
-      !landscapeClock &&
+      !landscape &&
       this._dateToolbar &&
       !this._dateToolbar.classList.contains("toolbar-rail-only")
     ) {
@@ -9438,12 +9449,22 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Face fills available height under the app bar, minus overhead above the
     // face (event-label pad) and gap, leaving ~32px of the first light row
     // peeking so the list is discoverable without shrinking on mobile past
-    // the width/aspect lock.
+    // the width/aspect lock. Draft/location banners sit above .sun-path —
+    // reserve their reach so the dial shrinks instead of pushing the list
+    // below the fold.
+    const hostRect = this.getBoundingClientRect();
     const hostH = this.clientHeight || window.innerHeight;
     const headerVar = parseFloat(
       getComputedStyle(this).getPropertyValue("--header-height")
     );
     const headerH = Number.isFinite(headerVar) && headerVar > 0 ? headerVar : 64;
+    const pathTop = path.getBoundingClientRect().top;
+    // Vignette / horizon: extend to the host top (under app bar + banners).
+    const vignetteReach = Math.max(0, Math.round(pathTop - hostRect.top));
+    // Face budget: only the stack below the app bar (banners), not the header
+    // itself (already subtracted as headerH).
+    const bannerH = Math.max(0, Math.round(pathTop - (hostRect.top + headerH)));
+    path.style.setProperty("--dial-banner-h", `${vignetteReach}px`);
     const clock = path.querySelector(".sun-light-clock");
     let overhead = 40 + 16;
     if (clock) {
@@ -9456,7 +9477,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const maxPx = Math.max(
       160,
-      Math.floor(hostH - headerH - overhead - toolbarH - DIAL_LIST_PEEK_PX)
+      Math.floor(
+        hostH - headerH - bannerH - overhead - toolbarH - DIAL_LIST_PEEK_PX
+      )
     );
     path.style.setProperty("--dial-face-max", `${maxPx}px`);
     // Face size may have changed — re-align landscape rail / chrome next frame.
