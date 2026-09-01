@@ -637,19 +637,39 @@ export function resampleLightsForEvents(lights, events, draftRgbFn, options = {}
         (item) => item.event === event.id
       );
       return {
+        id: event.id,
         seconds: event.seconds,
         ...knotFromEventState(row, draftRgbFn),
       };
     });
     if (knotsOnly) {
-      // One stop per solar event; conic-gradient interpolates between them.
-      const samples = knots.map((knot) => [
-        knot.seconds,
-        knot.brightness,
-        knot.rgb[0],
-        knot.rgb[1],
-        knot.rgb[2],
-      ]);
+      // Event stops + midnight wrap so CSS can ramp dusk→dawn overnight.
+      // Without midnight, 0%→dawn is a flat dawn fill (missing night blend).
+      const dawn = knots.find((knot) => knot.id === "dawn");
+      const dusk = knots.find((knot) => knot.id === "dusk");
+      const samples = knots
+        .slice()
+        .sort((a, b) => a.seconds - b.seconds)
+        .map((knot) => [
+          knot.seconds,
+          knot.brightness,
+          knot.rgb[0],
+          knot.rgb[1],
+          knot.rgb[2],
+        ]);
+      if (dawn && dusk) {
+        const t =
+          transitionProgress(dusk.seconds, dawn.seconds, 0) / 100;
+        const midnight = [
+          0,
+          Math.round(dusk.brightness + (dawn.brightness - dusk.brightness) * t),
+          Math.round(dusk.rgb[0] + (dawn.rgb[0] - dusk.rgb[0]) * t),
+          Math.round(dusk.rgb[1] + (dawn.rgb[1] - dusk.rgb[1]) * t),
+          Math.round(dusk.rgb[2] + (dawn.rgb[2] - dusk.rgb[2]) * t),
+        ];
+        const withoutZero = samples.filter((row) => row[0] > 0);
+        return { ...light, samples: [midnight, ...withoutZero] };
+      }
       return { ...light, samples };
     }
     const samples = [];

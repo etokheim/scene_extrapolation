@@ -7849,16 +7849,29 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!changed) {
       return;
     }
-    if (!this._yearScrubbing) {
-      this._pathMorphMs = DATE_MORPH_MS;
-    }
-    // Keep sticky scrub time across date changes (curve updates underneath).
-    this._sunPathKey = undefined;
     // Dial year scrub: client sun + in-place patch (no mid-drag HA preview).
     if (this._yearScrubbing && this._lightView === "clock") {
       this._applyClientScrubDay(iso);
       return;
     }
+    // Date picker / chips: walk intermediate calendar days on the dial so the
+    // year does not crossfade in one fade (dusk clamp would also jump).
+    const fromIso = this._displayedSunPath?.date || this._sunPath?.date;
+    if (
+      this._view === "edit" &&
+      this._lightView === "clock" &&
+      fromIso &&
+      fromIso !== iso &&
+      this._sunPath?.lights
+    ) {
+      this._morphAcrossDates(fromIso, iso);
+      return;
+    }
+    if (!this._yearScrubbing) {
+      this._pathMorphMs = DATE_MORPH_MS;
+    }
+    // Keep sticky scrub time across date changes (curve updates underneath).
+    this._sunPathKey = undefined;
     if (debounce) {
       this._schedulePreview();
     } else {
@@ -7867,10 +7880,51 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   /**
+   * Animate the dial through each calendar day from→to, then refine with HA.
+   */
+  _morphAcrossDates(fromIso, toIso) {
+    this._cancelSunPathMorph();
+    const span = diffIsoDays(fromIso, toIso);
+    if (!span) {
+      this._sunPathKey = undefined;
+      this._pathMorphMs = DATE_MORPH_MS;
+      this._ensureSunPath();
+      return;
+    }
+    const absSpan = Math.abs(span);
+    const sign = span > 0 ? 1 : -1;
+    const started = performance.now();
+    let lastIso = null;
+    const tick = (now) => {
+      const u = Math.min(1, (now - started) / DATE_MORPH_MS);
+      const eased = easeOutCubic(u);
+      const dayOffset = Math.round(eased * absSpan) * sign;
+      const iso = shiftIsoDate(fromIso, dayOffset);
+      if (iso !== lastIso) {
+        lastIso = iso;
+        this._previewDate = iso;
+        this._syncDateToolbar();
+        this._applyClientScrubDay(iso, { keepMorph: true });
+      }
+      if (u < 1) {
+        this._sunPathMorphRaf = window.requestAnimationFrame(tick);
+        return;
+      }
+      this._sunPathMorphRaf = undefined;
+      this._previewDate = toIso;
+      this._syncDateToolbar();
+      this._sunPathKey = undefined;
+      this._pathMorphMs = PREVIEW_REFINE_MS;
+      this._ensureSunPath();
+    };
+    this._sunPathMorphRaf = window.requestAnimationFrame(tick);
+  }
+
+  /**
    * Mid-drag year scrub: local sun geometry + 5-event ring knots (CSS ramps
    * between them). HA Astral preview reconciles on pointer-up via _ensureSunPath.
    */
-  _applyClientScrubDay(iso) {
+  _applyClientScrubDay(iso, { keepMorph = false } = {}) {
     const loc = this._previewLocation || this._homeLocation();
     if (!loc || !this._sunPath?.lights) {
       return;
@@ -7891,7 +7945,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       draftRgb,
       { knotsOnly: true }
     );
-    this._cancelSunPathMorph();
+    if (!keepMorph) {
+      this._cancelSunPathMorph();
+    }
     this._sunPath = {
       ...sunDay,
       lights,
@@ -13189,6 +13245,29 @@ function shiftIsoDate(iso, days) {
   return `${nextYear}-${nextMonth}-${nextDay}`;
 }
 
+/** Signed whole-day distance from→to (local calendar dates). */
+function diffIsoDays(fromIso, toIso) {
+  const [y0, m0, d0] = fromIso.split("-").map(Number);
+  const [y1, m1, d1] = toIso.split("-").map(Number);
+  const from = Date.UTC(y0, m0 - 1, d0);
+  const to = Date.UTC(y1, m1 - 1, d1);
+  return Math.round((to - from) / 86400000);
+}
+
+function formatClockHm(seconds) {
+  const sec = ((Math.round(Number(seconds) || 0) % SECONDS_PER_DAY) + SECONDS_PER_DAY) %
+    SECONDS_PER_DAY;
+  if (sec === 0) {
+    return "00:00";
+  }
+  if (sec >= SECONDS_PER_DAY) {
+    return "24:00";
+  }
+  const hours = Math.floor(sec / 3600);
+  const minutes = Math.floor((sec % 3600) / 60);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
 function emptyFormData() {
   return {
     scene_name: "Automatic Lighting",
@@ -13699,12 +13778,24 @@ function lerpCurve(from, to, t) {
 function lerpSunPath(from, to, t) {
   const events = (to.events || []).map((event) => {
     const prev = (from.events || []).find((item) => item.id === event.id) || event;
+    const fromBtn = prev.seconds;
+    const toBtn = event.seconds;
+    const fromSolar = prev.solar_seconds ?? prev.seconds;
+    const toSolar = event.solar_seconds ?? event.seconds;
+    const seconds = fromBtn + (toBtn - fromBtn) * t;
+    const solarSeconds = fromSolar + (toSolar - fromSolar) * t;
+    // Ghost while button and solar differ (covers clamp appearing/disappearing).
+    const overridden = Math.abs(seconds - solarSeconds) > 30;
     return {
       ...event,
-      seconds: prev.seconds + (event.seconds - prev.seconds) * t,
+      seconds,
+      time: formatClockHm(seconds),
       elevation:
         (prev.elevation ?? event.elevation) +
         ((event.elevation ?? 0) - (prev.elevation ?? 0)) * t,
+      overridden,
+      solar_seconds: overridden ? solarSeconds : null,
+      solar_time: overridden ? formatClockHm(solarSeconds) : undefined,
     };
   });
   const lights = (to.lights || []).map((light) => {

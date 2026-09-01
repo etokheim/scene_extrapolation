@@ -360,8 +360,9 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Dial defaults to clock; scrub uses event knots + Helland kelvin
 
 - **Date:** 2026-09-01
-- **Decision:** New users get dial (`clock`) view; an explicit `table` in localStorage is still honored. Mid-scrub ring paints use only the five solar-event knots (CSS conic-gradient ramps between them) and a coarse sun curve; pointer-up / settled preview restores full Astral resolution. Client `color_temp` display RGB uses Tanner Helland (`kelvinToRgb`, matching Python); HA picker `hueTempToRgb` stays for the temp wheel chrome only. Dial face max height fills below the header minus overhead and ~32px list peek; aspect-ratio stays 1.
-- **Why:** Table-as-default hid the product’s primary visualization. Scrub used a different kelvin→RGB curve (white at 4200K / cool blue) than the settled preview, and dense 5-minute resampling every drag frame was heavier than needed when the ring only needs event stops mid-scrub.
+- **Superseded in part:** 2026-09-01 — scrub knots include a midnight sample so dusk→dawn wraps overnight; date picker / chips walk intermediate calendar days on the dial (then Astral refine), and event lerp tracks solar_seconds so earliest-dusk ghosts do not jump.
+- **Decision:** New users get dial (`clock`) view; an explicit `table` in localStorage is still honored. Mid-scrub ring paints use the five solar-event knots plus a midnight wrap stop (CSS conic-gradient ramps between them) and a coarse sun curve; pointer-up / settled preview restores full Astral resolution. Client `color_temp` display RGB uses Tanner Helland (`kelvinToRgb`, matching Python); HA picker `hueTempToRgb` stays for the temp wheel chrome only. Dial face max height fills below the header minus overhead and ~32px list peek; aspect-ratio stays 1.
+- **Why:** Table-as-default hid the product’s primary visualization. Scrub used a different kelvin→RGB curve (white at 4200K / cool blue) than the settled preview, and dense 5-minute resampling every drag frame was heavier than needed when the ring only needs event stops mid-scrub. Knots without midnight left 0%→dawn as flat dawn. Crossfading two endpoint days skipped the year and made dusk clamp appear to teleport.
 - **Do not reverse without user ask.**
 
 ## Editor overflow matches the native scene page
