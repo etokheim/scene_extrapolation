@@ -884,6 +884,21 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex: 0 0 auto;
           pointer-events: auto;
         }
+        /* Same column width as the dial light list (under the face). */
+        .nightlights-settings {
+          position: relative;
+          z-index: 5;
+          width: min(100%, 500px);
+          max-width: 500px;
+          box-sizing: border-box;
+          flex: 0 0 auto;
+        }
+        .sun-plots > .nightlights-settings {
+          /* Table light bands are full plot width — match that, not the dial 500px. */
+          width: 100%;
+          max-width: none;
+          margin-top: 16px;
+        }
         .sun-light-clock-empty-hint {
           margin: 0;
           padding: 0 12px;
@@ -5753,14 +5768,21 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._syncSaveFab();
     this._contentEl.classList.add("wide");
 
-    const wrap = document.createElement("div");
+    // Nightlights live under the light list in the sun-path body (same max-width
+    // as the dial legend / table bands). Content only holds editor errors.
     if (this._error) {
       const error = document.createElement("p");
       error.className = "error";
       error.textContent = this._error;
-      wrap.appendChild(error);
+      this._contentEl.replaceChildren(error);
+    } else {
+      this._contentEl.replaceChildren();
     }
+  }
 
+  _buildNightlightsSection() {
+    const section = document.createElement("div");
+    section.className = "nightlights-settings";
     const form = document.createElement("ha-form");
     form.hass = this._hass;
     form.data = this._formData;
@@ -5779,8 +5801,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     cardContent.className = "card-content";
     cardContent.appendChild(form);
     card.appendChild(cardContent);
-    wrap.appendChild(card);
-    this._contentEl.replaceChildren(wrap);
+    section.appendChild(card);
+    return section;
   }
 
   _setNavigationIcon(node) {
@@ -9236,6 +9258,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         if (lights) {
           plots.appendChild(lights);
         }
+        plots.appendChild(this._buildNightlightsSection());
       }
     } else {
       plots.append(chart, hours);
@@ -11467,6 +11490,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._clockLegendEl = legend;
     wrap.appendChild(legend);
+    wrap.appendChild(this._buildNightlightsSection());
     return wrap;
   }
 

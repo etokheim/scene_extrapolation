@@ -103,6 +103,7 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 
 - **Date:** 2026-08-26
 - **Superseded in part:** 2026-08-26 — area is chosen before create and again on save; dusk minimum lives on the dusk event dialog; only nightlights stay on `ha-form`.
+- **Superseded in part:** 2026-09-01 — nightlights `ha-form` sits under the light list in the sun-path body (dial: same 500px max-width as the legend; table: full plot width), not in the separate `.content` column.
 - **Superseded in part:** 2026-08-26 — event and light editors use the automation-style sidebar, not a centered `ha-dialog`.
 - **Superseded in part:** 2026-08-26 — picker / dusk / link changes apply to the graphs immediately. Close keeps them; there is no Done. YAML is still only written on Save of the extrapolation scene.
 - **Superseded in part:** 2026-08-26 — linked dawn/sunrise/sunset is only described in the event sidebar; the row does not outline linked events. Unassigned events use a warning treatment. Buttons cap width and space evenly.
