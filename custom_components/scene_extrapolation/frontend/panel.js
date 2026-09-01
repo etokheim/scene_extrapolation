@@ -35,6 +35,8 @@ const CLOCK_SCRUB_RAIL_PX = 104;
 /* Inset the landscape timeline from the panel edge (also stops the large
    day/month label from overflowing the rail and widening the page). */
 const CLOCK_SCRUB_RAIL_PAD_PX = 16;
+/** Leave this much of the first light-list row visible under the dial face. */
+const DIAL_LIST_PEEK_PX = 32;
 /* Rings host inset so CSS outer edge matches CLOCK_RINGS_OUTER in viewBox. */
 const CLOCK_RINGS_INSET_PCT = 50 - CLOCK_RINGS_OUTER / 2;
 /* Wedges/rays cover the square including corners; back layer is slightly
@@ -215,7 +217,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sidebarLightId = null;
     this._clockStickySeconds = undefined;
     this._hashConfirming = false;
-    this._lightView = "table";
+    this._lightView = "clock";
     this._liveEdit = false;
     this._liveEditSidebarHandler = null;
     this._onHashChange = () => this._syncHash();
@@ -801,10 +803,12 @@ class SceneExtrapolationPanel extends HTMLElement {
              face to extend so the page can scroll to it (landscape + portrait). */
           overflow-x: hidden;
           overflow-y: visible;
-          /* Full dial scale — legend flows under the face and must not shrink it. */
+          /* Fallback until _syncDialHeightBudget measures: fill below the
+             header, keep event-label pad + gap, leave ~32px of the first
+             light row peeking. */
           --dial-face-max: calc(
-            100vh - var(--header-height, 64px) - var(--dial-timeline-h, 0px) -
-              56px
+            100vh - var(--header-height, 64px) - 40px - 16px -
+              ${DIAL_LIST_PEEK_PX}px
           );
         }
         .sun-light-clock {
@@ -4241,9 +4245,13 @@ class SceneExtrapolationPanel extends HTMLElement {
   _readLightView() {
     try {
       const raw = window.localStorage.getItem(this._lightViewStorageKey());
-      return raw === "clock" ? "clock" : "table";
+      // Explicit table stays table; missing/unknown → dial for new users.
+      if (raw === "table") {
+        return "table";
+      }
+      return "clock";
     } catch (_err) {
-      return "table";
+      return "clock";
     }
   }
 
@@ -7859,8 +7867,8 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   /**
-   * Mid-drag year scrub: local sun geometry + resampled rings. HA Astral
-   * preview reconciles on pointer-up via _ensureSunPath.
+   * Mid-drag year scrub: local sun geometry + 5-event ring knots (CSS ramps
+   * between them). HA Astral preview reconciles on pointer-up via _ensureSunPath.
    */
   _applyClientScrubDay(iso) {
     const loc = this._previewLocation || this._homeLocation();
@@ -7874,11 +7882,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       longitude: loc.longitude,
       timeZone,
       duskMinimum: this._duskMinimumSeconds() ?? null,
+      // Coarse elevation curve while dragging; release uses Astral.
+      curveStepMinutes: 30,
     });
     const lights = resampleLightsForEvents(
       this._sunPath.lights,
       sunDay.events,
-      draftRgb
+      draftRgb,
+      { knotsOnly: true }
     );
     this._cancelSunPathMorph();
     this._sunPath = {
@@ -8590,12 +8601,38 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (!path.classList.contains("dial-view")) {
       path.style.removeProperty("--dial-timeline-h");
+      path.style.removeProperty("--dial-face-max");
       return;
     }
     // Portrait date/scrub overlay the dial — do not shrink the face for them.
-    // Light list always flows under the face (same in landscape) and must not
-    // reduce --dial-face-max.
     path.style.setProperty("--dial-timeline-h", "0px");
+
+    // Face fills available height under the app bar, minus overhead above the
+    // face (event-label pad) and gap, leaving ~32px of the first light row
+    // peeking so the list is discoverable without shrinking on mobile past
+    // the width/aspect lock.
+    const hostH = this.clientHeight || window.innerHeight;
+    const headerVar = parseFloat(
+      getComputedStyle(this).getPropertyValue("--header-height")
+    );
+    const headerH = Number.isFinite(headerVar) && headerVar > 0 ? headerVar : 64;
+    const clock = path.querySelector(".sun-light-clock");
+    let overhead = 40 + 16;
+    if (clock) {
+      const cs = getComputedStyle(clock);
+      const padTop = parseFloat(cs.paddingTop);
+      const gap = parseFloat(cs.rowGap || cs.gap);
+      overhead =
+        (Number.isFinite(padTop) ? padTop : 40) +
+        (Number.isFinite(gap) ? gap : 16);
+    }
+    const maxPx = Math.max(
+      160,
+      Math.floor(hostH - headerH - overhead - DIAL_LIST_PEEK_PX)
+    );
+    path.style.setProperty("--dial-face-max", `${maxPx}px`);
+    // Face size may have changed — re-align landscape rail / chrome next frame.
+    requestAnimationFrame(() => this._alignYearScrubRail());
   }
 
   _alignYearScrubRail() {
@@ -11688,6 +11725,33 @@ function hueTempToRgb(kelvin) {
   ];
 }
 
+/** Tanner Helland daylight curve — same as color_math.kelvin_to_rgb. */
+function kelvinToRgb(kelvin) {
+  const temp = Math.max(1000, Math.min(Number(kelvin) || 0, 40000)) / 100;
+  let red;
+  let green;
+  let blue;
+  if (temp <= 66) {
+    red = 255;
+    green = 99.4708025861 * Math.log(temp) - 161.1195681661;
+  } else {
+    red = 329.698727446 * (temp - 60) ** -0.1332047592;
+    green = 288.1221695283 * (temp - 60) ** -0.0755148492;
+  }
+  if (temp >= 66) {
+    blue = 255;
+  } else if (temp <= 19) {
+    blue = 0;
+  } else {
+    blue = 138.5177312231 * Math.log(temp - 10) - 305.0447927307;
+  }
+  return [
+    Math.max(0, Math.min(255, Math.round(red))),
+    Math.max(0, Math.min(255, Math.round(green))),
+    Math.max(0, Math.min(255, Math.round(blue))),
+  ];
+}
+
 function hexToRgb(hex) {
   const n = hex.replace("#", "");
   return [
@@ -11892,7 +11956,9 @@ function draftRgb(draft) {
     return hsv2rgb(draft.hs_color[0], draft.hs_color[1] / 100, 1);
   }
   if (draft?.color_temp_kelvin != null) {
-    return hueTempToRgb(draft.color_temp_kelvin);
+    // Match Python kelvin_to_rgb (Helland) so scrub/morph rings match Astral.
+    // hueTempToRgb stays for the temp wheel chrome only.
+    return kelvinToRgb(draft.color_temp_kelvin);
   }
   return [255, 214, 170];
 }

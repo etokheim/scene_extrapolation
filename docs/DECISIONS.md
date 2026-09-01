@@ -352,8 +352,16 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Dial light list stays under the face
 
 - **Date:** 2026-08-30
-- **Decision:** The dial light list always flows **under** the clock face (portrait and landscape), same width as the face. Do **not** shrink `--dial-face-max` (or other face budget) to make room for it — scrolling to reach the list is fine; a smaller graphic is not. Do **not** move the list into the landscape left grid column; that column is only a matching gutter so the timeline rail can take width while the dial stays optically centered. Ring hover name sits flush above the outer light ring (`top` = rings inset inside the core), not above `--clock-chrome` / face chrome. Legend actions order: Add to …, then remove (X), then chevron.
-- **Why:** Subtracting legend height from the face pushed the graphic up and forced landscape scroll to see the dial. Parking the list in the left gutter left-aligned/truncated names and broke parity with portrait. Under-face flow matches mobile and keeps scale.
+- **Superseded in part:** 2026-09-01 — `--dial-face-max` now reserves ~32px so the first light-list row peeks under the face (discoverability). List still flows under the face; do not move it into the landscape left gutter.
+- **Decision:** The dial light list always flows **under** the clock face (portrait and landscape), same width as the face. Do **not** move the list into the landscape left grid column; that column is only a matching gutter so the timeline rail can take width while the dial stays optically centered. Ring hover name sits flush above the outer light ring (`top` = rings inset inside the core), not above `--clock-chrome` / face chrome. Legend actions order: Add to …, then remove (X), then chevron.
+- **Why:** Parking the list in the left gutter left-aligned/truncated names and broke parity with portrait. Under-face flow matches mobile. A small peek of the first row is enough to hint scroll without returning to the “shrink the dial for the whole legend” approach.
+- **Do not reverse without user ask.**
+
+## Dial defaults to clock; scrub uses event knots + Helland kelvin
+
+- **Date:** 2026-09-01
+- **Decision:** New users get dial (`clock`) view; an explicit `table` in localStorage is still honored. Mid-scrub ring paints use only the five solar-event knots (CSS conic-gradient ramps between them) and a coarse sun curve; pointer-up / settled preview restores full Astral resolution. Client `color_temp` display RGB uses Tanner Helland (`kelvinToRgb`, matching Python); HA picker `hueTempToRgb` stays for the temp wheel chrome only. Dial face max height fills below the header minus overhead and ~32px list peek; aspect-ratio stays 1.
+- **Why:** Table-as-default hid the product’s primary visualization. Scrub used a different kelvin→RGB curve (white at 4200K / cool blue) than the settled preview, and dense 5-minute resampling every drag frame was heavier than needed when the ring only needs event stops mid-scrub.
 - **Do not reverse without user ask.**
 
 ## Editor overflow matches the native scene page

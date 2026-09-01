@@ -458,6 +458,8 @@ export function buildClientSunDay({
   longitude,
   timeZone = "UTC",
   duskMinimum = null,
+  // Mid-scrub can use a coarser elevation curve; release uses Astral preview.
+  curveStepMinutes = CURVE_STEP_MINUTES,
 }) {
   const noon = zonedNoonDate(isoDate, timeZone);
   const [y, m, d] = isoDate.split("-").map(Number);
@@ -535,7 +537,8 @@ export function buildClientSunDay({
 
   const curve = [];
   let dayPeak = -Infinity;
-  for (let minute = 0; minute <= 24 * 60; minute += CURVE_STEP_MINUTES) {
+  const step = Math.max(1, Number(curveStepMinutes) || CURVE_STEP_MINUTES);
+  for (let minute = 0; minute <= 24 * 60; minute += step) {
     const seconds = minute * 60;
     const sampleAt = new Date(noon.getTime() + (minute - 12 * 60) * 60 * 1000);
     const elev =
@@ -613,8 +616,17 @@ function knotFromEventState(row, draftRgbFn) {
   return { brightness, rgb: [rgb[0], rgb[1], rgb[2]] };
 }
 
-/** Rebuild light.samples for dial scrub from event_states + day's event times. */
-export function resampleLightsForEvents(lights, events, draftRgbFn) {
+/** Rebuild light.samples for dial scrub from event_states + day's event times.
+
+ * options.stepMinutes — sample spacing. Omit for the usual 5-minute grid.
+ * Pass 0 (or knotsOnly: true) to emit only the five solar-event knots so
+ * CSS conic-gradient ramps between them (fast mid-scrub path).
+ */
+export function resampleLightsForEvents(lights, events, draftRgbFn, options = {}) {
+  const knotsOnly = options.knotsOnly === true || options.stepMinutes === 0;
+  const stepMinutes = knotsOnly
+    ? 0
+    : Math.max(1, Number(options.stepMinutes) || CURVE_STEP_MINUTES);
   const starts = events.map((event) => event.seconds);
   return (lights || []).map((light) => {
     if (light.suggested || !(light.event_states || []).length) {
@@ -629,8 +641,19 @@ export function resampleLightsForEvents(lights, events, draftRgbFn) {
         ...knotFromEventState(row, draftRgbFn),
       };
     });
+    if (knotsOnly) {
+      // One stop per solar event; conic-gradient interpolates between them.
+      const samples = knots.map((knot) => [
+        knot.seconds,
+        knot.brightness,
+        knot.rgb[0],
+        knot.rgb[1],
+        knot.rgb[2],
+      ]);
+      return { ...light, samples };
+    }
     const samples = [];
-    for (let minute = 0; minute <= 24 * 60; minute += CURVE_STEP_MINUTES) {
+    for (let minute = 0; minute <= 24 * 60; minute += stepMinutes) {
       const seconds = minute * 60;
       const index = currentEventIndex(starts, seconds);
       const current = knots[index];
