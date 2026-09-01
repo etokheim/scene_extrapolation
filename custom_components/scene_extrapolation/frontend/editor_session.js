@@ -88,8 +88,6 @@ function emptyFormData() {
     scene_sunset: null,
     scene_dusk: null,
     scene_dusk_minimum_time_of_day: "22:00:00",
-    nightlights_boolean: null,
-    nightlights_scene: null,
   };
 }
 

@@ -192,8 +192,6 @@ const LABELS = {
   scene_dusk: "Dusk scene",
   scene_dawn_sunrise_sunset: "Dawn, sunrise, and sunset scene",
   scene_dusk_minimum_time_of_day: "Earliest time for the dusk scene",
-  nightlights_boolean: "Nightlights trigger",
-  nightlights_scene: "Nightlights scene",
 };
 
 const HELPERS = {
@@ -207,8 +205,6 @@ const HELPERS = {
   scene_dusk: "Last light (sun 6° below the horizon)",
   scene_dawn_sunrise_sunset: "First light, sunrise, and sunset",
   scene_dusk_minimum_time_of_day: "To avoid lights dimming too much, too early",
-  nightlights_boolean: "When this input boolean is on, the nightlights scene is used instead",
-  nightlights_scene: "Required if a nightlights trigger is set",
   setup_empty_means_auto:
     "Leave empty to create a native scene automatically for this event",
 };
@@ -282,9 +278,6 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (this._form) {
-      this._form.hass = hass;
-    }
     if (this._menuButtonEl) {
       this._menuButtonEl.hass = hass;
     }
@@ -299,6 +292,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._renderList();
       }
     });
+    // Registry/friendly_name can change while the editor is open — keep the
+    // app-bar title in sync (same source as the list rows).
+    if (this._built && this._view === "edit" && this._editId && this._headerEl) {
+      this._headerEl.textContent = this._editorSceneTitle();
+    }
     if (!this._built && this.isConnected) {
       this._build();
     }
@@ -886,20 +884,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: auto;
         }
         /* Same column width as the dial light list (under the face). */
-        .nightlights-settings {
-          position: relative;
-          z-index: 5;
-          width: min(100%, 500px);
-          max-width: 500px;
-          box-sizing: border-box;
-          flex: 0 0 auto;
-        }
-        .sun-plots > .nightlights-settings {
-          /* Table light bands are full plot width — match that, not the dial 500px. */
-          width: 100%;
-          max-width: none;
-          margin-top: 16px;
-        }
         .sun-light-clock-empty-hint {
           margin: 0;
           padding: 0 12px;
@@ -4797,9 +4781,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._forceCloseSceneSidebar();
     this._formData = structuredClone(snapshot.form);
     this._nativeDrafts = structuredClone(snapshot.nativeDrafts);
-    if (this._form) {
-      this._form.data = this._formData;
-    }
+    this._syncEditorSceneTitle();
     this._syncPreviewOverlay();
     this._sunPath = null;
     this._clearPreviewCache();
@@ -5241,9 +5223,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (this._formData.scene_dawn_sunrise_sunset === fromId) {
       this._formData.scene_dawn_sunrise_sunset = toId;
-    }
-    if (this._formData.nightlights_scene === fromId) {
-      this._formData.nightlights_scene = toId;
     }
   }
 
@@ -5854,17 +5833,13 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _renderEditor() {
-    this._headerEl.textContent = this._editId
-      ? this._formData.scene_name || "Edit scene"
-      : "New scene";
+    this._syncEditorSceneTitle();
     this._setNavigationIcon(this._backButton());
     this._setEditorActions();
     this._syncEditorChrome();
     this._syncSaveFab();
     this._contentEl.classList.add("wide");
 
-    // Nightlights live under the light list in the sun-path body (same max-width
-    // as the dial legend / table bands). Content only holds editor errors.
     if (this._error) {
       const error = document.createElement("p");
       error.className = "error";
@@ -5875,29 +5850,22 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
   }
 
-  _buildNightlightsSection() {
-    const section = document.createElement("div");
-    section.className = "nightlights-settings";
-    const form = document.createElement("ha-form");
-    form.hass = this._hass;
-    form.data = this._formData;
-    form.schema = this._schema();
-    form.computeLabel = (schema) => this._fieldLabel(schema.name);
-    form.computeHelper = (schema) => this._fieldHelper(schema.name);
-    form.addEventListener("value-changed", (ev) => {
-      this._commitUndo();
-      this._formData = { ...this._formData, ...ev.detail.value };
-      this._error = null;
-      this._schedulePreview();
-    });
-    this._form = form;
-    const card = document.createElement("ha-card");
-    const cardContent = document.createElement("div");
-    cardContent.className = "card-content";
-    cardContent.appendChild(form);
-    card.appendChild(cardContent);
-    section.appendChild(card);
-    return section;
+  /** App-bar / dialogs: prefer HA friendly_name over stored scene_name. */
+  _editorSceneTitle() {
+    if (!this._editId) {
+      return this._t("frontend.common.new_scene", "New scene");
+    }
+    return (
+      this._entityFriendlyName(this._entityId, this._formData.scene_name) ||
+      this._t("frontend.common.edit_scene", "Edit scene")
+    );
+  }
+
+  _syncEditorSceneTitle() {
+    if (!this._headerEl || this._view !== "edit") {
+      return;
+    }
+    this._headerEl.textContent = this._editorSceneTitle();
   }
 
   _setNavigationIcon(node) {
@@ -5969,18 +5937,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     button.textContent = label;
     button.addEventListener("click", onClick);
     return button;
-  }
-
-  _schema() {
-    const areaId = this._formData.area || null;
-    const sceneSelector = entitySelector(this._hass, "scene", areaId, true);
-    return [
-      {
-        name: "nightlights_boolean",
-        selector: { entity: { domain: "input_boolean", multiple: false } },
-      },
-      { name: "nightlights_scene", selector: sceneSelector },
-    ];
   }
 
   _resolvableSceneId(sceneId) {
@@ -6389,9 +6345,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (this._formData.scene_dawn_sunrise_sunset === entityId) {
       this._formData.scene_dawn_sunrise_sunset = null;
-    }
-    if (this._formData.nightlights_scene === entityId) {
-      this._formData.nightlights_scene = null;
     }
   }
 
@@ -7400,6 +7353,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._formData.description = data.description;
       this._formData.labels = data.labels;
       this._formData.category = data.category || null;
+      this._syncEditorSceneTitle();
       dialog.open = false;
       await this._save();
     });
@@ -7516,10 +7470,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     );
     dialog.open = true;
     const text = document.createElement("p");
+    const displayName = this._editorSceneTitle();
     text.textContent = this._loc(
       "ui.panel.config.scene.picker.delete_confirm_text",
-      `Are you sure you want to delete ${this._formData.scene_name}?`,
-      { name: this._formData.scene_name }
+      `Are you sure you want to delete ${displayName}?`,
+      { name: displayName }
     );
     dialog.appendChild(text);
     const footer = customElements.get("ha-dialog-footer")
@@ -9353,7 +9308,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         if (lights) {
           plots.appendChild(lights);
         }
-        plots.appendChild(this._buildNightlightsSection());
       }
     } else {
       plots.append(chart, hours);
@@ -11585,7 +11539,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._clockLegendEl = legend;
     wrap.appendChild(legend);
-    wrap.appendChild(this._buildNightlightsSection());
     return wrap;
   }
 

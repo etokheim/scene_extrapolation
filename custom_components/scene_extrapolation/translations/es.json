@@ -132,14 +132,6 @@
         "label": "Hora más temprana para la escena del anochecer",
         "helper": "Para evitar que las luces se atenúen demasiado pronto"
       },
-      "nightlights_boolean": {
-        "label": "Activador de luces nocturnas",
-        "helper": "Cuando este input boolean está activado, se usa la escena de luces nocturnas"
-      },
-      "nightlights_scene": {
-        "label": "Escena de luces nocturnas",
-        "helper": "Obligatoria si hay un activador de luces nocturnas"
-      },
       "setup_empty_means_auto": {
         "helper": "Déjalo vacío para crear automáticamente una escena nativa para este evento"
       }

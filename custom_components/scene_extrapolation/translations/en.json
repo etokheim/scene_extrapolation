@@ -144,14 +144,6 @@
         "label": "Earliest time for the dusk scene",
         "helper": "To avoid lights dimming too much, too early"
       },
-      "nightlights_boolean": {
-        "label": "Nightlights trigger",
-        "helper": "When this input boolean is on, the nightlights scene is used instead"
-      },
-      "nightlights_scene": {
-        "label": "Nightlights scene",
-        "helper": "Required if a nightlights trigger is set"
-      },
       "setup_empty_means_auto": {
         "helper": "Leave empty to create a native scene automatically for this event"
       }

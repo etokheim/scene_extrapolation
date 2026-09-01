@@ -132,14 +132,6 @@
         "label": "Tidligste tid for skumringsscenen",
         "helper": "For å unngå at lyset dempes for mye, for tidlig"
       },
-      "nightlights_boolean": {
-        "label": "Nattlys-utløser",
-        "helper": "Når denne input boolean er på, brukes nattlys-scenen i stedet"
-      },
-      "nightlights_scene": {
-        "label": "Nattlys-scene",
-        "helper": "Påkrevd hvis en nattlys-utløser er satt"
-      },
       "setup_empty_means_auto": {
         "helper": "La stå tom for å opprette en native scene automatisk for denne hendelsen"
       }

@@ -15,9 +15,6 @@ SCENE_DUSK = "scene_dusk"
 SCENE_DUSK_MINIMUM_TIME_OF_DAY = "scene_dusk_minimum_time_of_day"
 SCENE_DAWN_SUNRISE_SUNSET = "scene_dawn_sunrise_sunset"
 
-NIGHTLIGHTS_BOOLEAN = "nightlights_boolean"
-NIGHTLIGHTS_SCENE = "nightlights_scene"
-
 DISPLAY_SCENES_COMBINED = "display_scenes_combined"
 # Per-scene preference: keep applying on an interval after activation (default on).
 AUTOMATICALLY_UPDATE_LIGHTS = "automatically_update_lights"

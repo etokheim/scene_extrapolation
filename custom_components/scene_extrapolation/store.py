@@ -19,8 +19,6 @@ from .const import (
     DOMAIN,
     AUTOMATICALLY_UPDATE_LIGHTS,
     LABELS,
-    NIGHTLIGHTS_BOOLEAN,
-    NIGHTLIGHTS_SCENE,
     SCENE_DAWN,
     SCENE_DAWN_SUNRISE_SUNSET,
     SCENE_DUSK,
@@ -158,8 +156,6 @@ def normalize_scene_config(
         AREA: raw.get(AREA) or None,
         DISPLAY_SCENES_COMBINED: combined,
         AUTOMATICALLY_UPDATE_LIGHTS: automatically_update_lights,
-        NIGHTLIGHTS_BOOLEAN: raw.get(NIGHTLIGHTS_BOOLEAN) or None,
-        NIGHTLIGHTS_SCENE: raw.get(NIGHTLIGHTS_SCENE) or None,
         SCENE_DUSK_MINIMUM_TIME_OF_DAY: time_to_seconds(
             raw.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
         ),
@@ -179,11 +175,6 @@ def normalize_scene_config(
     missing = [key for key in SCENE_KEYS if not item.get(key)]
     if missing:
         raise ValueError(f"Missing required scenes: {', '.join(missing)}")
-
-    if item[NIGHTLIGHTS_BOOLEAN] and not item[NIGHTLIGHTS_SCENE]:
-        raise ValueError(
-            "Nightlights scene is required when a nightlights boolean is configured"
-        )
 
     return item
 
@@ -221,8 +212,6 @@ def to_form_data(item: dict[str, Any]) -> dict[str, Any]:
         SCENE_DUSK_MINIMUM_TIME_OF_DAY: seconds_to_time(
             item.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
         ),
-        NIGHTLIGHTS_BOOLEAN: item.get(NIGHTLIGHTS_BOOLEAN),
-        NIGHTLIGHTS_SCENE: item.get(NIGHTLIGHTS_SCENE),
         AUTOMATICALLY_UPDATE_LIGHTS: bool(item.get(AUTOMATICALLY_UPDATE_LIGHTS, True)),
     }
     if combined:

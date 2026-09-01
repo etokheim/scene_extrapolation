@@ -73,8 +73,6 @@ from .const import (
     DATA_STORE,
     DOMAIN,
     LABELS,
-    NIGHTLIGHTS_BOOLEAN,
-    NIGHTLIGHTS_SCENE,
     SCENE_DAWN,
     SCENE_DUSK,
     SCENE_DUSK_MINIMUM_TIME_OF_DAY,
@@ -690,57 +688,6 @@ class ExtrapolationScene(Scene):
                 "Home Assistant doesn't support transition times longer than 6553 (109 minutes). Anything above this value seems to be disregarded. The integration received a transition time of: %s",
                 apply_transition,
             )
-
-        ##############################################
-        #             Handle nightlights             #
-        ##############################################
-        nightlights_boolean_id = self._cfg(NIGHTLIGHTS_BOOLEAN)
-        nightlights_boolean = False
-
-        if nightlights_boolean_id:
-            nightlights_state = self.hass.states.get(nightlights_boolean_id)
-            if nightlights_state:
-                nightlights_boolean = nightlights_state.state == "on"
-
-        # Turn on night lights instead if the nightlights_boolean is on
-        if nightlights_boolean:
-            _LOGGER.debug(
-                "nightlights_boolean is on. Turning on nightlights instead of default behavior"
-            )
-
-            nightlights_scene_id = self._cfg(NIGHTLIGHTS_SCENE)
-
-            try:
-                self._internal_scene_call = True
-                await self.hass.services.async_call(
-                    domain=SCENE_DOMAIN,
-                    service=SERVICE_TURN_ON,
-                    service_data={ATTR_ENTITY_ID: nightlights_scene_id},
-                )
-
-                _LOGGER.debug(
-                    "Service call (%s.%s) has been sent successfully to turn on nightlights scene",
-                    SCENE_DOMAIN,
-                    SERVICE_TURN_ON,
-                )
-
-            except Exception as error:  # noqa: BLE001
-                _LOGGER.error("Service call to turn on scene failed: %s", error)
-            finally:
-                self._internal_scene_call = False
-
-            # Nightlights replace circadian targets; ignore those writes as overrides.
-            self._unsub_light_tracking()
-            self._commanded = {}
-            self._pre_apply = {}
-            self._apply_context = None
-
-            # Keep the timer so circadian resumes when nightlights turn off.
-            if generation != self._automatically_update_lights_generation:
-                return
-            if will_follow:
-                self._schedule_automatically_update_lights(interval)
-            return
 
         ##############################################
         #                Load scenes                 #

@@ -104,6 +104,14 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Date:** 2026-08-26
 - **Superseded in part:** 2026-08-26 — area is chosen before create and again on save; dusk minimum lives on the dusk event dialog; only nightlights stay on `ha-form`.
 - **Superseded in part:** 2026-09-01 — nightlights `ha-form` sits under the light list in the sun-path body (dial: same 500px max-width as the legend; table: full plot width), not in the separate `.content` column.
+- **Superseded:** 2026-09-01 — nightlights boolean/scene handling removed (UI, store fields, activate early-return). Prefer a user script/automation to choose an alternate scene.
+
+## Editor and list titles use HA friendly_name
+
+- **Date:** 2026-09-01
+- **Decision:** Extrapolation list rows and the editor app-bar title (plus delete confirm) prefer `hass.states[entity_id].attributes.friendly_name`, falling back to stored `scene_name`. Do not show the raw store name when the entity already has a friendly name.
+- **Why:** Rename / registry edits update the entity name; the store copy can lag and looked wrong in the header the same way the list used to.
+- **Do not reverse without user ask.**
 - **Superseded in part:** 2026-08-26 — event and light editors use the automation-style sidebar, not a centered `ha-dialog`.
 - **Superseded in part:** 2026-08-26 — picker / dusk / link changes apply to the graphs immediately. Close keeps them; there is no Done. YAML is still only written on Save of the extrapolation scene.
 - **Superseded in part:** 2026-08-26 — linked dawn/sunrise/sunset is only described in the event sidebar; the row does not outline linked events. Unassigned events use a warning treatment. Buttons cap width and space evenly.

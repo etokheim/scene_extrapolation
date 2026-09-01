@@ -37,7 +37,7 @@ After that:
 
 1. **Settings → Devices & services → Add integration → Scene Extrapolation** (once; the form is empty)
 2. Open **Scene Extrapolation** in the sidebar
-3. **Add** a scene (area + native dag/kveld/natt scenes; optional `input_boolean.nightlights`)
+3. **Add** a scene (area + native dag/kveld/natt scenes)
 4. Activate the generated `scene.*` from **Developer tools → States**
 
 Logs: `dev/config/home-assistant.log` or `docker compose logs -f`.

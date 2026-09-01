@@ -132,14 +132,6 @@
         "label": "Früheste Zeit für die Abenddämmerungsszene",
         "helper": "Damit das Licht nicht zu früh zu stark gedimmt wird"
       },
-      "nightlights_boolean": {
-        "label": "Nachtlicht-Auslöser",
-        "helper": "Wenn dieser Input Boolean an ist, wird die Nachtlicht-Szene verwendet"
-      },
-      "nightlights_scene": {
-        "label": "Nachtlicht-Szene",
-        "helper": "Erforderlich, wenn ein Nachtlicht-Auslöser gesetzt ist"
-      },
       "setup_empty_means_auto": {
         "helper": "Leer lassen, um für dieses Ereignis automatisch eine native Szene zu erstellen"
       }
