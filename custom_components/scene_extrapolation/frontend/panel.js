@@ -81,11 +81,11 @@ const CLOCK_RINGS_INSET_PCT = 50 - CLOCK_RINGS_OUTER / 2;
 /* Wedges/rays cover the square including corners; back layer is slightly
    larger than the face so they land just outside the container. */
 const CLOCK_SKY_R = (CLOCK_VIEW / 2) * Math.SQRT2;
-/* Night wedges: sunset→sunrise / dusk→dawn — warm, light-leaning grays. */
-const CLOCK_NIGHT_OUTER = "#d4cdc6";
-const CLOCK_NIGHT_DEEP = "#a39a92";
+/* Night wedges: sunset→sunrise / dusk→dawn — warmer, light-leaning grays. */
+const CLOCK_NIGHT_OUTER = "#dbd2c8";
+const CLOCK_NIGHT_DEEP = "#aea299";
 /* Warm bias mixed into day-sky / horizon fills. */
-const CLOCK_WARM_TINT = "#f4d4b0";
+const CLOCK_WARM_TINT = "#f6d6a8";
 /* Outline diameter ≈ 3.47% of dial core (1/3 of the prior 10.4%). */
 const CLOCK_SUN_SIZE_PCT = 10.4 / 3;
 const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
@@ -1497,11 +1497,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           filter:
             drop-shadow(
               0 0 8px
-                color-mix(in srgb, var(--primary-background-color) 50%, transparent)
+                color-mix(in srgb, var(--primary-background-color) 25%, transparent)
             )
             drop-shadow(
               0 1px 6px
-                color-mix(in srgb, var(--primary-background-color) 50%, transparent)
+                color-mix(in srgb, var(--primary-background-color) 25%, transparent)
             );
         }
         .clock-face-ticks .clock-tick {
@@ -1526,9 +1526,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 7;
           text-shadow:
             0 0 8px
-              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
+              color-mix(in srgb, var(--primary-background-color) 25%, transparent),
             0 1px 6px
-              color-mix(in srgb, var(--primary-background-color) 50%, transparent);
+              color-mix(in srgb, var(--primary-background-color) 25%, transparent);
         }
         @media (min-width: 871px) {
           .clock-hour-label {
@@ -1557,10 +1557,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           text-align: center;
           pointer-events: none;
           white-space: nowrap;
-          /* Surface halo — readable on light sky wash and dark night disc. */
+          /* Surface halo — half strength so labels stay readable without a glow blob. */
           text-shadow:
-            0 0 4px var(--primary-background-color),
-            0 1px 2px var(--primary-background-color);
+            0 0 4px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
+            0 1px 2px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent);
         }
         /* Collision placement: below the button (see _layoutClockEventMetas). */
         .clock-event-meta.below {
@@ -10345,12 +10347,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     const skyRaw = glowLook.skyColor || glowLook.pathColor;
     // Warmer + lighter day sky / horizon rim (still reads as sky, not peach).
     const light = !this.hasAttribute("data-dark-mode");
-    const warmAmt = light ? 28 : 16;
-    const lightenAmt = light ? 14 : 8;
+    const warmAmt = light ? 36 : 20;
+    const lightenAmt = light ? 16 : 10;
     const skyWarmed = `color-mix(in srgb, ${skyRaw} ${100 - warmAmt}%, ${CLOCK_WARM_TINT} ${warmAmt}%)`;
     const sky = `color-mix(in srgb, ${skyWarmed} ${100 - lightenAmt}%, white ${lightenAmt}%)`;
     const peach = light
-      ? `color-mix(in srgb, ${peachRaw} 45%, #ebb078 55%)`
+      ? `color-mix(in srgb, ${peachRaw} 38%, #edb070 62%)`
       : `color-mix(in srgb, ${peachRaw} ${100 - warmAmt}%, ${CLOCK_WARM_TINT} ${warmAmt}%)`;
     const peachPct = Math.round(100 * nearHorizon);
     const rimFill =
