@@ -1,35 +1,50 @@
 {
   "config": {
     "abort": {
-      "already_configured": "Scene Extrapolation ya está configurado",
-      "single_instance_allowed": "Scene Extrapolation ya está configurado. Ábrelo desde la barra lateral para añadir escenas."
+      "already_configured": "Circadian Scenes ya está configurado",
+      "single_instance_allowed": "Circadian Scenes ya está configurado. Ábrelo desde la barra lateral para añadir escenas."
     },
     "error": {
       "unknown": "Error inesperado"
     },
     "step": {
       "user": {
-        "title": "Scene Extrapolation",
-        "description": "Añade Scene Extrapolation a la barra lateral. Crea y edita escenas de extrapolación desde allí: una integración, tantas habitaciones como necesites."
+        "title": "Circadian Scenes",
+        "description": "Añade Circadian Scenes a la barra lateral. Crea y edita habitaciones desde ahí: una integración, tantas áreas como necesites. Luz diurna que sigue el sol entre tus escenas."
       }
     }
   },
   "frontend": {
-    "title": "Scene Extrapolation",
+    "title": "Circadian Scenes",
     "tabs": {
-      "extrapolation": "Escenas de extrapolación",
+      "extrapolation": "Escenas circadianas",
       "created": "Escenas creadas"
     },
     "empty": {
-      "extrapolation": "Aún no hay escenas de extrapolación. Crea una para iluminar una habitación según el sol.",
-      "created": "Aún no hay escenas nativas creadas por Scene Extrapolation. Aparecen aquí al usar Configuración automática o Crear nueva escena."
+      "extrapolation": "Aún no hay escenas circadianas. Crea una para iluminar una habitación según el sol.",
+      "extrapolation_title": "Empieza a iluminar con el sol",
+      "extrapolation_body": "Circadian Scenes mezcla las luces de la habitación entre eventos solares — amanecer civil, orto, mediodía, ocaso y crepúsculo — para que brillo y color sigan el día.",
+      "extrapolation_example": "Crea una escena para una habitación, asigna escenas nativas a cada evento solar y actívala. Las actualizaciones automáticas opcionales siguen ajustando las luces a intervalos después.",
+      "created": "Aún no hay escenas nativas creadas por Circadian Scenes. Aparecen aquí con Configuración automática o Crear nueva escena.",
+      "created_title": "Aún no hay escenas creadas",
+      "created_body": "Las escenas nativas de Home Assistant creadas por Circadian Scenes aparecen aquí — desde Configuración automática o Crear nueva escena en un evento solar.",
+      "learn_more": "Más información"
+    },
+    "list": {
+      "column_name": "Nombre"
     },
     "settings": {
       "title": "Ajustes",
-      "intro": "Estos ajustes se aplican a todas las habitaciones. Los cambios surten efecto de inmediato.",
+      "intro": "Estos ajustes se aplican a todas las habitaciones. Los cambios tienen efecto de inmediato.",
       "hide_created": "Ocultar escenas creadas en Home Assistant",
-      "hide_created_helper": "Marca las escenas nativas creadas por esta integración como ocultas en la interfaz de HA (registro de entidades). Aun así puedes gestionarlas aquí.",
-      "scene_settings": "Ajustes de la escena",
+      "hide_created_helper": "Marca las escenas nativas creadas por esta integración como ocultas en la IU de HA (registro de entidades). Aún puedes gestionarlas aquí.",
+      "automatically_update_lights": "Actualizar luces automáticamente",
+      "automatically_update_lights_on_helper": "Tras activar una escena, las luces siguen ajustándose con el intervalo de Ajustes para que la habitación siga el sol. Toca para desactivarlo en todas las habitaciones.",
+      "automatically_update_lights_off_helper": "Las actualizaciones automáticas están desactivadas. Activar una escena aplica las luces una vez. Toca para volver a activar las actualizaciones en todas las habitaciones.",
+      "automatically_update_lights_interval": "Intervalo de actualización automática de luces",
+      "automatically_update_lights_interval_helper": "Tras activar una escena, sigue actualizando las luces con esa frecuencia y la misma duración de transición (objetivo = cómo debe verse la habitación al final de la transición). 0 desactiva las actualizaciones automáticas en todas las habitaciones — igual que el control de la parte superior de la lista.",
+      "automatically_update_lights_interval_minutes": "Minutos",
+      "scene_settings": "Ajustes de escena",
       "hidden_in_ha": "Oculta en Home Assistant"
     },
     "common": {
@@ -42,7 +57,7 @@
       "discard": "Descartar",
       "keep_editing": "Seguir editando",
       "choose_scene": "Elegir escena",
-      "dismiss": "Descartar",
+      "dismiss": "Cerrar",
       "change": "Cambiar",
       "preview": "Vista previa",
       "search": "Buscar",
@@ -62,82 +77,89 @@
       "dial_view": "Vista de dial",
       "preview_location": "Previsualizar otra ubicación",
       "use_home_location": "Usar ubicación de casa",
-      "reset_sun_now": "Restablecer el sol a ahora"
+      "reset_sun_now": "Restablecer el sol a la hora actual"
     },
     "draft": {
       "title": "Continuaste donde lo dejaste",
-      "detail": "Se han restaurado los cambios sin guardar de una sesión anterior."
+      "detail": "Se restauraron los cambios sin guardar de una sesión anterior."
     },
     "location": {
       "banner": "Previsualizando otra ubicación",
-      "dialog_title": "Ubicación de vista previa",
+      "dialog_title": "Previsualizar ubicación",
       "search_placeholder": "Ciudad o dirección",
-      "no_matches": "No hay coincidencias. Prueba un nombre de ciudad o mueve el mapa."
+      "no_matches": "Sin coincidencias. Prueba un nombre de ciudad o mueve el mapa."
     },
     "dialogs": {
       "delete_scene_title": "¿Eliminar escena?",
       "delete_scene_text": "¿Seguro que quieres eliminar {name}? Esto quita la escena nativa de Home Assistant.",
-      "linked_scenes": "Misma escena para alba, amanecer y atardecer",
-      "new_scene_step": "{step}/2 Nueva escena de extrapolación",
+      "linked_scenes": "Misma escena para amanecer civil, orto y ocaso",
+      "new_scene_step": "{step}/2 Nueva escena circadiana",
       "unsaved_title": "Cambios sin guardar",
       "unsaved_text": "Tienes cambios sin guardar. ¿Descartarlos?"
     },
     "chart": {
-      "fallback_note": "* La hora usa un valor estacional de respaldo porque el sol no sale ni se pone ese día.",
+      "fallback_note": "* La hora usa un valor estacional de reserva porque el sol no sale o no se pone ese día.",
       "choose_scene": "Elegir escena",
       "not_in_scene": "Aún no está en una escena asignada",
       "brightness": "Brillo",
       "brightness_sub": "0–100 % por evento solar",
-      "overridden_dusk": "{name} usa el mínimo de anochecer ({solar_time} anochecer solar)",
-      "seasonal_fallback": "Respaldo estacional (no hay evento solar real ese día)"
+      "overridden_dusk": "{name} usa el crepúsculo mínimo ({solar_time} crepúsculo solar)",
+      "seasonal_fallback": "Reserva estacional (sin evento solar real ese día)"
     },
     "fields": {
       "scene_name": {
         "label": "Nombre de la escena",
-        "helper": "Nombre de la entidad de escena de extrapolación"
+        "helper": "Nombre de la entidad de escena circadiana"
       },
       "area": {
         "label": "Área",
-        "helper": "Se usa para filtrar escenas nativas de Home Assistant y asignar la nueva escena"
+        "helper": "Filtra escenas nativas de Home Assistant y asigna la nueva escena"
       },
       "display_scenes_combined": {
-        "label": "¿Combinar escenas de alba / amanecer / atardecer?",
+        "label": "¿Combinar escenas de amanecer civil / orto / ocaso?",
         "helper": "Si está activado, configura 3 escenas en el siguiente paso. Si no, 5"
       },
       "scene_dawn": {
-        "label": "Escena del alba",
+        "label": "Escena de amanecer civil",
         "helper": "Primera luz (sol 6° bajo el horizonte)"
       },
       "scene_sunrise": {
-        "label": "Escena del amanecer",
+        "label": "Escena de orto",
         "helper": "Cuando sale el sol"
       },
       "scene_noon": {
-        "label": "Escena del mediodía",
+        "label": "Escena de mediodía",
         "helper": "Cuando el sol está en su punto más alto"
       },
       "scene_sunset": {
-        "label": "Escena del atardecer",
+        "label": "Escena de ocaso",
         "helper": "Cuando se pone el sol"
       },
       "scene_dusk": {
-        "label": "Escena del anochecer",
+        "label": "Escena de crepúsculo",
         "helper": "Última luz (sol 6° bajo el horizonte)"
       },
       "scene_dawn_sunrise_sunset": {
-        "label": "Escena de alba, amanecer y atardecer",
-        "helper": "Primera luz, amanecer y atardecer"
+        "label": "Escena de amanecer civil, orto y ocaso",
+        "helper": "Primera luz, orto y ocaso"
       },
       "scene_dusk_minimum_time_of_day": {
-        "label": "Hora más temprana para la escena del anochecer",
+        "label": "Hora más temprana para la escena de crepúsculo",
         "helper": "Para evitar que las luces se atenúen demasiado pronto"
       },
       "setup_empty_means_auto": {
         "helper": "Déjalo vacío para crear automáticamente una escena nativa para este evento"
       }
     },
+    "lights": {
+      "unavailable": "No disponible",
+      "brightness": "Brillo",
+      "color_brightness": "Brillo de color",
+      "white_brightness": "Brillo blanco",
+      "graph_sub": "0–100 % por evento solar"
+    },
     "defaults": {
-      "automatic_lighting": "Iluminación automática"
+      "circadian_scene": "Circadian"
     }
   }
 }
