@@ -5,7 +5,7 @@ This repo is a Home Assistant custom integration. Python changes only take effec
 The sandbox is configured in YAML under `dev/config/`:
 
 - `packages/` — extra virtual lights per area ([hass-virtual](https://github.com/twrecked/hass-virtual), old-style YAML)
-- `scenes.yaml` — native day/evening/night scenes per area
+- `scenes.yaml` — gitignored native scenes for this sandbox (HA writes it back from the UI)
 - `area_map.yaml` — area assignment (HA has no YAML for this; applied to the registries after first boot)
 
 Onboarding created the areas **Stue**, **Kjøkken**, and **Soverom**.
@@ -21,6 +21,7 @@ cp -R /tmp/hass-virtual/custom_components/virtual dev/config/custom_components/v
 ```
 
 ```bash
+test -f dev/config/scenes.yaml || echo '[]' > dev/config/scenes.yaml
 docker compose up -d
 ```
 
@@ -36,7 +37,7 @@ After that:
 
 1. **Settings → Devices & services → Add integration → Scene Extrapolation** (once; the form is empty)
 2. Open **Scene Extrapolation** in the sidebar
-3. **Add** a scene (area + native dag/kveld/natt scenes; optional `input_boolean.nightlights`)
+3. **Add** a scene (area + native dag/kveld/natt scenes)
 4. Activate the generated `scene.*` from **Developer tools → States**
 
 Logs: `dev/config/home-assistant.log` or `docker compose logs -f`.

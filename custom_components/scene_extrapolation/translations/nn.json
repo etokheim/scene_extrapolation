@@ -1,34 +1,49 @@
 {
   "config": {
     "abort": {
-      "already_configured": "Scene Extrapolation er allereie konfigurert",
-      "single_instance_allowed": "Scene Extrapolation er allereie konfigurert. Opne ho frå sidemenyen for å leggje til scener."
+      "already_configured": "Circadian Scenes er allereie konfigurert",
+      "single_instance_allowed": "Circadian Scenes er allereie konfigurert. Opne den frå sidemenyen for å leggje til scener."
     },
     "error": {
       "unknown": "Uventa feil"
     },
     "step": {
       "user": {
-        "title": "Scene Extrapolation",
-        "description": "Legg Scene Extrapolation til i sidemenyen. Opprett og rediger ekstrapoleringsscener derifrå — éi integrasjon, så mange rom du treng."
+        "title": "Circadian Scenes",
+        "description": "Legg Circadian Scenes til i sidemenyen. Opprett og rediger rom derfrå — éi integrasjon, så mange soner du treng. Dagslys som følgjer sola mellom scenene dine."
       }
     }
   },
   "frontend": {
-    "title": "Scene Extrapolation",
+    "title": "Circadian Scenes",
     "tabs": {
-      "extrapolation": "Ekstrapoleringsscener",
+      "extrapolation": "Circadian-scener",
       "created": "Oppretta scener"
     },
     "empty": {
-      "extrapolation": "Ingen ekstrapoleringsscener enno. Opprett éi for å styre belysninga etter sola.",
-      "created": "Ingen native scener oppretta av Scene Extrapolation enno. Dei viser seg her når du brukar Automatisk oppsett eller Opprett ny scene."
+      "extrapolation": "Ingen circadian-scener enno. Opprett éi for å styre belysninga etter sola.",
+      "extrapolation_title": "Byrja å lyse med sola",
+      "extrapolation_body": "Circadian Scenes blandar lyset i rommet mellom solhendingar — daggry, soloppgang, middag, solnedgang og skumring — så lysstyrke og farge følgjer dagen.",
+      "extrapolation_example": "Opprett ei scene for eit rom, tilordne native scener til kvar solhending, og aktiver ho. Valfrie automatiske oppdateringar justerer lysa med jamne mellomrom etterpå.",
+      "created": "Ingen native scener oppretta av Circadian Scenes enno. Dei viser her når du brukar Automatisk oppsett eller Opprett ny scene.",
+      "created_title": "Ingen oppretta scener enno",
+      "created_body": "Native Home Assistant-scener oppretta av Circadian Scenes viser her — frå Automatisk oppsett eller Opprett ny scene på ei solhending.",
+      "learn_more": "Les meir"
+    },
+    "list": {
+      "column_name": "Namn"
     },
     "settings": {
       "title": "Innstillingar",
-      "intro": "Desse innstillingane gjeld for alle rom. Endringar tek til med éin gong.",
+      "intro": "Desse innstillingane gjeld for alle rom. Endringar tek til med ein gong.",
       "hide_created": "Gøym oppretta scener i Home Assistant",
-      "hide_created_helper": "Merkjer native scener oppretta av denne integrasjonen som gøymde i HA-grensesnittet (einingssregisteret). Du kan framleis styre dei her.",
+      "hide_created_helper": "Merkjer native scener oppretta av denne integrasjonen som gøymde i HA-grensesnittet (einingaregisteret). Du kan framleis administrere dei her.",
+      "automatically_update_lights": "Oppdater lys automatisk",
+      "automatically_update_lights_on_helper": "Når du aktiverer ei scene, held lysa fram med å justerast med intervallet frå Innstillingar, slik at rommet følgjer sola. Trykk for å slå dette av for alle rom.",
+      "automatically_update_lights_off_helper": "Automatiske oppdateringar er av. Aktivering av ei scene set lysa éin gong. Trykk for å slå oppdateringar på att for alle rom.",
+      "automatically_update_lights_interval": "Intervall for automatisk lysoppdatering",
+      "automatically_update_lights_interval_helper": "Når ei scene er aktivert, hald fram med å oppdatere lysa så ofte, med same overgangslengd (målet = korleis rommet skal sjå ut ved slutten av overgangen). 0 slår automatiske oppdateringar av for alle rom — same som kontrollen øvst i lista.",
+      "automatically_update_lights_interval_minutes": "Minutt",
       "scene_settings": "Sceneinnstillingar",
       "hidden_in_ha": "Gøymd i Home Assistant"
     },
@@ -36,7 +51,7 @@
       "untitled": "Utan namn",
       "no_area": "Ingen sone",
       "back": "Tilbake",
-      "close": "Lat att",
+      "close": "Lukk",
       "cancel": "Avbryt",
       "delete": "Slett",
       "discard": "Forkast",
@@ -58,14 +73,14 @@
     },
     "actions": {
       "live_edit": "Direkte redigering",
-      "table_view": "Tabellvising",
-      "dial_view": "Urvising",
+      "table_view": "Tabellvisning",
+      "dial_view": "Urvisning",
       "preview_location": "Førehandsvis ein annan stad",
-      "use_home_location": "Bruk heimplassen",
-      "reset_sun_now": "Nullstill sol til no"
+      "use_home_location": "Bruk heimstad",
+      "reset_sun_now": "Tilbakestill sol til no"
     },
     "draft": {
-      "title": "Held fram der du slapp",
+      "title": "Held fram der du sleppte",
       "detail": "Ulagra endringar frå ei tidlegare økt er gjenoppretta."
     },
     "location": {
@@ -78,7 +93,7 @@
       "delete_scene_title": "Slette scene?",
       "delete_scene_text": "Er du sikker på at du vil slette {name}? Dette fjernar den native Home Assistant-scenen.",
       "linked_scenes": "Same scene for daggry, soloppgang og solnedgang",
-      "new_scene_step": "{step}/2 Ny ekstrapoleringsscene",
+      "new_scene_step": "{step}/2 Ny circadian-scene",
       "unsaved_title": "Ulagra endringar",
       "unsaved_text": "Du har ulagra endringar. Forkaste dei?"
     },
@@ -86,7 +101,7 @@
       "fallback_note": "* Tida brukar eit sesongmessig fallback fordi sola ikkje står opp eller går ned den dagen.",
       "choose_scene": "Vel scene",
       "not_in_scene": "Ikkje i ei tilordna scene enno",
-      "brightness": "Lysstyrke",
+      "brightness": "Lystyrke",
       "brightness_sub": "0–100 % per solhending",
       "overridden_dusk": "{name} brukar tidlegaste skumring ({solar_time} solskumring)",
       "seasonal_fallback": "Sesongmessig fallback (inga ekte solhending denne dagen)"
@@ -94,11 +109,11 @@
     "fields": {
       "scene_name": {
         "label": "Scenenamn",
-        "helper": "Namn på ekstrapoleringsscene-eininga"
+        "helper": "Namn på circadian-scene-eininga"
       },
       "area": {
         "label": "Sone",
-        "helper": "Brukt til å filtrere native Home Assistant-scener og tildele den nye scena"
+        "helper": "Blir brukt til å filtrere native Home Assistant-scener og tildele den nye scenen"
       },
       "display_scenes_combined": {
         "label": "Kombinere daggry / soloppgang / solnedgang-scener?",
@@ -129,23 +144,22 @@
         "helper": "Første lys, soloppgang og solnedgang"
       },
       "scene_dusk_minimum_time_of_day": {
-        "label": "Tidlegaste tid for skumringsscena",
-        "helper": "For å unngå at lyset dempast for mykje, for tidleg"
-      },
-      "nightlights_boolean": {
-        "label": "Nattlys-utløysar",
-        "helper": "Når denne input boolean er på, vert nattlys-scena brukt i staden"
-      },
-      "nightlights_scene": {
-        "label": "Nattlys-scene",
-        "helper": "Påkravd viss ein nattlys-utløysar er sett"
+        "label": "Tidlegaste tid for skumringsscenen",
+        "helper": "For å unngå at lyset blir dimma for mykje, for tidleg"
       },
       "setup_empty_means_auto": {
         "helper": "Lat stå tom for å opprette ei native scene automatisk for denne hendinga"
       }
     },
+    "lights": {
+      "unavailable": "Utilgjengeleg",
+      "brightness": "Lystyrke",
+      "color_brightness": "Fargelystyrke",
+      "white_brightness": "Kvitlystyrke",
+      "graph_sub": "0–100 % per solhending"
+    },
     "defaults": {
-      "automatic_lighting": "Automatisk belysning"
+      "circadian_scene": "Circadian"
     }
   }
 }

@@ -7,11 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚨 Breaking changes
+
+- 🚨 Renamed the product to **Circadian Scenes** (domain stays `scene_extrapolation`; search either name in HACS)
+- 🚨 Continuous “follow-up” preferences are now **Automatically update lights** (store migrates `continuous` / `follow_up` keys for you)
+- 🚨 Nightlights mode is gone — use a normal native scene + automation if you still need that pattern
+
+### Summary:
+
+Built-in sun-following updates, dial as the default editor, and a much calmer day/night look — plus a pile of editor fixes so Live edit, drafts, and the light rings behave.
+
 ### Added
+
+- ⭐ Built-in **automatic light updates** (on by default): after you activate a circadian scene, lights keep adjusting on an interval with a matching transition — pause per room from the list, or set the global interval to 0
+- Auto-setup creates one native scene per solar event, named after the event (`{area} Dawn` …); combined day slot is `{area} Dawn-Sunset`
+- Empty list / created-scenes copy for Circadian Scenes, plus RGBWW color/white brightness graphs in the light editor
 
 ### Changed
 
+- Dial view is the default for new users (explicit Table choice in localStorage still wins)
+- Scene list is a single table with area groups and the auto-update control at the top; friendly names everywhere
+- Chromatic color blends (HS/RGB) stay on the **wheel rim** instead of cutting through white; wheel path drawing matches
+- Dial chrome: multi-color dusk horizon into the surface, theme-split night wedges, softer vignette, portrait toolbar that pushes the dial instead of covering it
+- Create wizard “full automatic” fills all five solar events (not a combined switch)
+- Hide-managed native scenes defaults to on for new installs (migrated stores flip with 3.0)
+
 ### Fixed
+
+- Live edit no longer sends two Color descriptors to `light.turn_on` (hs + rgb) — HA rejected that exclusion group
+- Refresh on `#new` restores the local draft instead of wiping post-wizard work
+- Sun/handle drag hits no longer steal clicks from the light rings
+- Draft/location banners shrink the dial so the light list still peeks; vignette lines up with the horizon wash under banners
+- Panel boot / Store migration / auto-update stop control; dial overnight wrap and date morph; scrub-release refine flash; list flicker and unavailable lights; horizon fill with sidebar open; brightness-graph label collisions; and assorted dial layout/scroll/chrome glitches
 
 ## [2.2.0] - 2026-08-30
 

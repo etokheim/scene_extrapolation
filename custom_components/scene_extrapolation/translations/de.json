@@ -1,39 +1,54 @@
 {
   "config": {
     "abort": {
-      "already_configured": "Scene Extrapolation ist bereits konfiguriert",
-      "single_instance_allowed": "Scene Extrapolation ist bereits konfiguriert. Öffnen Sie es in der Seitenleiste, um Szenen hinzuzufügen."
+      "already_configured": "Circadian Scenes ist bereits konfiguriert",
+      "single_instance_allowed": "Circadian Scenes ist bereits konfiguriert. Öffne es in der Seitenleiste, um Szenen hinzuzufügen."
     },
     "error": {
       "unknown": "Unerwarteter Fehler"
     },
     "step": {
       "user": {
-        "title": "Scene Extrapolation",
-        "description": "Fügt Scene Extrapolation zur Seitenleiste hinzu. Erstellen und bearbeiten Sie Extrapolationsszenen dort — eine Integration, so viele Räume wie nötig."
+        "title": "Circadian Scenes",
+        "description": "Fügt Circadian Scenes zur Seitenleiste hinzu. Erstelle und bearbeite Räume dort — eine Integration, so viele Bereiche wie nötig. Tageslicht, das der Sonne zwischen deinen Szenen folgt."
       }
     }
   },
   "frontend": {
-    "title": "Scene Extrapolation",
+    "title": "Circadian Scenes",
     "tabs": {
-      "extrapolation": "Extrapolationsszenen",
+      "extrapolation": "Circadian-Szenen",
       "created": "Erstellte Szenen"
     },
     "empty": {
-      "extrapolation": "Noch keine Extrapolationsszenen. Erstellen Sie eine, um die Beleuchtung nach der Sonne zu steuern.",
-      "created": "Noch keine nativen Szenen von Scene Extrapolation. Sie erscheinen hier bei Automatischer Einrichtung oder Neue Szene erstellen."
+      "extrapolation": "Noch keine Circadian-Szenen. Erstelle eine, um einen Raum nach der Sonne zu beleuchten.",
+      "extrapolation_title": "Mit der Sonne beleuchten",
+      "extrapolation_body": "Circadian Scenes blendet die Lichter eines Raums zwischen Sonnenereignissen — Morgendämmerung, Sonnenaufgang, Mittag, Sonnenuntergang und Abenddämmerung — sodass Helligkeit und Farbe dem Tag folgen.",
+      "extrapolation_example": "Erstelle eine Szene für einen Raum, weise native Szenen den Sonnenereignissen zu und aktiviere sie. Optionale automatische Updates passen die Lichter danach im Intervall an.",
+      "created": "Noch keine von Circadian Scenes erstellten nativen Szenen. Sie erscheinen hier bei Automatischem Setup oder Neue Szene erstellen.",
+      "created_title": "Noch keine erstellten Szenen",
+      "created_body": "Native Home-Assistant-Szenen von Circadian Scenes erscheinen hier — aus dem Automatischen Setup oder Neue Szene erstellen an einem Sonnenereignis.",
+      "learn_more": "Mehr erfahren"
+    },
+    "list": {
+      "column_name": "Name"
     },
     "settings": {
       "title": "Einstellungen",
-      "intro": "Diese Einstellungen gelten für alle Räume. Änderungen wirken sofort.",
+      "intro": "Diese Einstellungen gelten für jeden Raum. Änderungen wirken sofort.",
       "hide_created": "Erstellte Szenen in Home Assistant ausblenden",
-      "hide_created_helper": "Markiert von dieser Integration erstellte native Szenen in der HA-Oberfläche als ausgeblendet (Entitätsregister). Sie können sie hier weiterhin verwalten.",
+      "hide_created_helper": "Markiert von dieser Integration erstellte native Szenen in der HA-Oberfläche als ausgeblendet (Entitätsregistry). Du kannst sie hier weiter verwalten.",
+      "automatically_update_lights": "Lichter automatisch aktualisieren",
+      "automatically_update_lights_on_helper": "Nach dem Aktivieren einer Szene passen sich die Lichter im Intervall aus den Einstellungen weiter an, damit der Raum der Sonne folgt. Tippen, um das für alle Räume auszuschalten.",
+      "automatically_update_lights_off_helper": "Automatische Updates sind aus. Das Aktivieren einer Szene setzt die Lichter einmal. Tippen, um Updates für alle Räume wieder einzuschalten.",
+      "automatically_update_lights_interval": "Intervall für automatische Licht-Updates",
+      "automatically_update_lights_interval_helper": "Nach dem Aktivieren einer Szene die Lichter so oft weiter aktualisieren, mit gleicher Übergangsdauer (Ziel = wie der Raum am Ende des Übergangs aussehen soll). 0 schaltet automatische Updates für alle Räume aus — wie die Steuerung oben in der Liste.",
+      "automatically_update_lights_interval_minutes": "Minuten",
       "scene_settings": "Szeneneinstellungen",
       "hidden_in_ha": "In Home Assistant ausgeblendet"
     },
     "common": {
-      "untitled": "Unbenannt",
+      "untitled": "Ohne Titel",
       "no_area": "Kein Bereich",
       "back": "Zurück",
       "close": "Schließen",
@@ -49,63 +64,63 @@
       "name": "Name",
       "description": "Beschreibung",
       "category": "Kategorie",
-      "labels": "Beschriftungen",
+      "labels": "Labels",
       "date": "Datum",
       "scene": "Szene",
-      "location": "Standort",
+      "location": "Ort",
       "save": "Speichern",
       "rename": "Umbenennen"
     },
     "actions": {
       "live_edit": "Live-Bearbeitung",
       "table_view": "Tabellenansicht",
-      "dial_view": "Zifferblattansicht",
-      "preview_location": "Anderen Standort vorschauen",
-      "use_home_location": "Heimatstandort verwenden",
-      "reset_sun_now": "Sonne auf jetzt zurücksetzen"
+      "dial_view": "Uhrenansicht",
+      "preview_location": "Anderen Ort vorschauen",
+      "use_home_location": "Heimatort verwenden",
+      "reset_sun_now": "Sonne auf aktuelle Zeit zurücksetzen"
     },
     "draft": {
-      "title": "Weiter dort, wo Sie aufgehört haben",
+      "title": "Dort weitergemacht, wo du aufgehört hast",
       "detail": "Ungespeicherte Änderungen aus einer früheren Sitzung wurden wiederhergestellt."
     },
     "location": {
-      "banner": "Vorschau eines anderen Standorts",
-      "dialog_title": "Standortvorschau",
+      "banner": "Vorschau eines anderen Orts",
+      "dialog_title": "Ort vorschauen",
       "search_placeholder": "Stadt oder Adresse",
-      "no_matches": "Keine Treffer. Versuchen Sie einen Städtenamen oder verschieben Sie die Karte."
+      "no_matches": "Keine Treffer. Probiere einen Stadtnamen oder verschiebe die Karte."
     },
     "dialogs": {
       "delete_scene_title": "Szene löschen?",
-      "delete_scene_text": "Möchten Sie {name} wirklich löschen? Dadurch wird die native Home Assistant-Szene entfernt.",
-      "linked_scenes": "Dieselbe Szene für Dämmerung, Sonnenaufgang und Sonnenuntergang",
-      "new_scene_step": "{step}/2 Neue Extrapolationsszene",
+      "delete_scene_text": "Möchtest du {name} wirklich löschen? Das entfernt die native Home-Assistant-Szene.",
+      "linked_scenes": "Gleiche Szene für Morgendämmerung, Sonnenaufgang und Sonnenuntergang",
+      "new_scene_step": "{step}/2 Neue Circadian-Szene",
       "unsaved_title": "Ungespeicherte Änderungen",
-      "unsaved_text": "Sie haben ungespeicherte Änderungen. Verwerfen?"
+      "unsaved_text": "Du hast ungespeicherte Änderungen. Verwerfen?"
     },
     "chart": {
       "fallback_note": "* Die Zeit nutzt einen saisonalen Fallback, weil die Sonne an diesem Tag nicht auf- oder untergeht.",
       "choose_scene": "Szene wählen",
-      "not_in_scene": "Noch keiner Szene zugewiesen",
+      "not_in_scene": "Noch nicht in einer zugewiesenen Szene",
       "brightness": "Helligkeit",
-      "brightness_sub": "0–100 % nach Sonnenereignis",
+      "brightness_sub": "0–100 % je Sonnenereignis",
       "overridden_dusk": "{name} nutzt die früheste Dämmerung ({solar_time} solare Dämmerung)",
       "seasonal_fallback": "Saisonaler Fallback (kein echtes Sonnenereignis an diesem Tag)"
     },
     "fields": {
       "scene_name": {
         "label": "Szenenname",
-        "helper": "Name der Extrapolationsszenen-Entität"
+        "helper": "Name der Circadian-Szenen-Entität"
       },
       "area": {
         "label": "Bereich",
-        "helper": "Filtert native Home Assistant-Szenen und weist die neue Szene zu"
+        "helper": "Filtert native Home-Assistant-Szenen und weist die neue Szene zu"
       },
       "display_scenes_combined": {
-        "label": "Dämmerung / Sonnenaufgang / Sonnenuntergang kombinieren?",
-        "helper": "Wenn an, konfigurieren Sie 3 Szenen im nächsten Schritt. Wenn aus, 5"
+        "label": "Morgendämmerung / Sonnenaufgang / Sonnenuntergang kombinieren?",
+        "helper": "Wenn an, 3 Szenen im nächsten Schritt. Wenn aus, 5"
       },
       "scene_dawn": {
-        "label": "Dämmerungsszene",
+        "label": "Morgendämmerungsszene",
         "helper": "Erstes Licht (Sonne 6° unter dem Horizont)"
       },
       "scene_sunrise": {
@@ -125,27 +140,26 @@
         "helper": "Letztes Licht (Sonne 6° unter dem Horizont)"
       },
       "scene_dawn_sunrise_sunset": {
-        "label": "Dämmerungs-, Sonnenaufgangs- und Sonnenuntergangsszene",
+        "label": "Morgendämmerungs-, Sonnenaufgangs- und Sonnenuntergangsszene",
         "helper": "Erstes Licht, Sonnenaufgang und Sonnenuntergang"
       },
       "scene_dusk_minimum_time_of_day": {
         "label": "Früheste Zeit für die Abenddämmerungsszene",
-        "helper": "Damit das Licht nicht zu früh zu stark gedimmt wird"
-      },
-      "nightlights_boolean": {
-        "label": "Nachtlicht-Auslöser",
-        "helper": "Wenn dieser Input Boolean an ist, wird die Nachtlicht-Szene verwendet"
-      },
-      "nightlights_scene": {
-        "label": "Nachtlicht-Szene",
-        "helper": "Erforderlich, wenn ein Nachtlicht-Auslöser gesetzt ist"
+        "helper": "Damit Lichter nicht zu früh zu stark dimmen"
       },
       "setup_empty_means_auto": {
         "helper": "Leer lassen, um für dieses Ereignis automatisch eine native Szene zu erstellen"
       }
     },
+    "lights": {
+      "unavailable": "Nicht verfügbar",
+      "brightness": "Helligkeit",
+      "color_brightness": "Farbhelligkeit",
+      "white_brightness": "Weißhelligkeit",
+      "graph_sub": "0–100 % je Sonnenereignis"
+    },
     "defaults": {
-      "automatic_lighting": "Automatische Beleuchtung"
+      "circadian_scene": "Circadian"
     }
   }
 }

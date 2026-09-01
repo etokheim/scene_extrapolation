@@ -1,34 +1,49 @@
 {
   "config": {
     "abort": {
-      "already_configured": "Scene Extrapolation is already configured",
-      "single_instance_allowed": "Scene Extrapolation is already configured. Open it from the sidebar to add scenes."
+      "already_configured": "Circadian Scenes is already configured",
+      "single_instance_allowed": "Circadian Scenes is already configured. Open it from the sidebar to add scenes."
     },
     "error": {
       "unknown": "Unexpected error"
     },
     "step": {
       "user": {
-        "title": "Scene Extrapolation",
-        "description": "Adds Scene Extrapolation to the sidebar. Create and edit extrapolation scenes from there — one integration, as many rooms as you need."
+        "title": "Circadian Scenes",
+        "description": "Adds Circadian Scenes to the sidebar. Create and edit rooms from there — one integration, as many areas as you need. Daylight that follows the sun between your scenes."
       }
     }
   },
   "frontend": {
-    "title": "Scene Extrapolation",
+    "title": "Circadian Scenes",
     "tabs": {
-      "extrapolation": "Extrapolation scenes",
+      "extrapolation": "Circadian scenes",
       "created": "Created scenes"
     },
     "empty": {
-      "extrapolation": "No extrapolation scenes yet. Create one to start lighting a room from the sun.",
-      "created": "No native scenes created by Scene Extrapolation yet. They appear here when you use Automatic setup or Create new scene."
+      "extrapolation": "No circadian scenes yet. Create one to start lighting a room from the sun.",
+      "extrapolation_title": "Start lighting with the sun",
+      "extrapolation_body": "Circadian Scenes blend your room’s lights between solar events — dawn, sunrise, noon, sunset, and dusk — so brightness and color follow the day.",
+      "extrapolation_example": "Create a scene for a room, assign native scenes to each solar event, then activate it. Optional automatic updates keep adjusting the lights on an interval after that.",
+      "created": "No native scenes created by Circadian Scenes yet. They appear here when you use Automatic setup or Create new scene.",
+      "created_title": "No created scenes yet",
+      "created_body": "Native Home Assistant scenes created by Circadian Scenes show up here — from Automatic setup or Create new scene on a solar event.",
+      "learn_more": "Learn more"
+    },
+    "list": {
+      "column_name": "Name"
     },
     "settings": {
       "title": "Settings",
       "intro": "These settings apply to every room. Changes take effect immediately.",
       "hide_created": "Hide created scenes in Home Assistant",
       "hide_created_helper": "Marks native scenes created by this integration as hidden in the HA UI (entity registry). You can still manage them here.",
+      "automatically_update_lights": "Automatically update lights",
+      "automatically_update_lights_on_helper": "After you activate a scene, lights keep adjusting on the interval from Settings so the room follows the sun. Tap to turn this off for every room.",
+      "automatically_update_lights_off_helper": "Automatic updates are off. Activating a scene applies lights once. Tap to turn updates back on for every room.",
+      "automatically_update_lights_interval": "Automatically update lights interval",
+      "automatically_update_lights_interval_helper": "After a scene is activated, keep updating the lights this often with the same transition length (target = how the room should look at the end of the transition). 0 turns automatic updates off for every room — same as the control at the top of the list.",
+      "automatically_update_lights_interval_minutes": "Minutes",
       "scene_settings": "Scene settings",
       "hidden_in_ha": "Hidden in Home Assistant"
     },
@@ -78,7 +93,7 @@
       "delete_scene_title": "Delete scene?",
       "delete_scene_text": "Are you sure you want to delete {name}? This removes the native Home Assistant scene.",
       "linked_scenes": "Same scene for dawn, sunrise, and sunset",
-      "new_scene_step": "{step}/2 New extrapolation scene",
+      "new_scene_step": "{step}/2 New circadian scene",
       "unsaved_title": "Unsaved changes",
       "unsaved_text": "You have unsaved changes. Discard them?"
     },
@@ -94,7 +109,7 @@
     "fields": {
       "scene_name": {
         "label": "Scene name",
-        "helper": "Name for the extrapolation scene entity"
+        "helper": "Name for the circadian scene entity"
       },
       "area": {
         "label": "Area",
@@ -132,20 +147,19 @@
         "label": "Earliest time for the dusk scene",
         "helper": "To avoid lights dimming too much, too early"
       },
-      "nightlights_boolean": {
-        "label": "Nightlights trigger",
-        "helper": "When this input boolean is on, the nightlights scene is used instead"
-      },
-      "nightlights_scene": {
-        "label": "Nightlights scene",
-        "helper": "Required if a nightlights trigger is set"
-      },
       "setup_empty_means_auto": {
         "helper": "Leave empty to create a native scene automatically for this event"
       }
     },
+    "lights": {
+      "unavailable": "Unavailable",
+      "brightness": "Brightness",
+      "color_brightness": "Color brightness",
+      "white_brightness": "White brightness",
+      "graph_sub": "0–100% by solar event"
+    },
     "defaults": {
-      "automatic_lighting": "Automatic Lighting"
+      "circadian_scene": "Circadian"
     }
   }
 }

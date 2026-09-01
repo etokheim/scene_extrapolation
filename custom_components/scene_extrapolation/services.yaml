@@ -1,10 +1,10 @@
 turn_on:
-  name: Turn on extrapolation scene
-  description: 'Imroved, more advanced version of the native "Activate scene" action (scene.turn_on). Activate one or more extrapolation scenes with optional brightness modifications and other advanced options. With a brightness modification, the scene will turn on directly to that brightness (a weakness with the default service is that you first have to activate the scene, and then dim the lights afterwards - which makes for a jarring experience).'
+  name: Turn on circadian scene
+  description: 'Improved, more advanced version of the native "Activate scene" action (scene.turn_on). Activate one or more circadian scenes with optional brightness modifications and other advanced options. With a brightness modification, the scene will turn on directly to that brightness (a weakness with the default service is that you first have to activate the scene, and then dim the lights afterwards - which makes for a jarring experience).'
   fields:
     entity_id:
       name: Scenes
-      description: Select one or more extrapolation scenes to activate
+      description: Select one or more circadian scenes to activate
       required: true
       selector:
         entity:
@@ -25,7 +25,7 @@ turn_on:
           mode: slider
     brightness_modifier:
       name: Brightness modifier
-      description: Modifies the brightness percentage of each light after the extrapolation is calculated
+      description: Modifies the brightness percentage of each light after the circadian blend is calculated
       required: false
       default: 0
       selector:
@@ -37,7 +37,7 @@ turn_on:
           mode: slider
     transition_percent:
       name: Transition percent
-      description: "Absolute position along the day, equally spaced between the five scenes: 0% dawn, 25% sunrise, 50% noon, 75% sunset, 100% dusk. Omit to follow the clock. When set, the scene attribute transition_percent_manual is true until the next activate without this field."
+      description: "Absolute position along the day, equally spaced between the five scenes: 0% dawn, 25% sunrise, 50% noon, 75% sunset, 100% dusk. Omit to follow the clock. When set, automatic light updates are disarmed until the next activate without this field (transition_percent_manual stays true)."
       required: false
       selector:
         number:

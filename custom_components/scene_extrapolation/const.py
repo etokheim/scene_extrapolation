@@ -1,4 +1,4 @@
-"""Constants for the Scene Extrapolation integration."""
+"""Constants for the Circadian Scenes integration (domain: scene_extrapolation)."""
 
 DOMAIN = "scene_extrapolation"
 AREA = "area"
@@ -15,10 +15,11 @@ SCENE_DUSK = "scene_dusk"
 SCENE_DUSK_MINIMUM_TIME_OF_DAY = "scene_dusk_minimum_time_of_day"
 SCENE_DAWN_SUNRISE_SUNSET = "scene_dawn_sunrise_sunset"
 
-NIGHTLIGHTS_BOOLEAN = "nightlights_boolean"
-NIGHTLIGHTS_SCENE = "nightlights_scene"
-
 DISPLAY_SCENES_COMBINED = "display_scenes_combined"
+# Per-scene preference: keep applying on an interval after activation (default on).
+AUTOMATICALLY_UPDATE_LIGHTS = "automatically_update_lights"
+# Default friendly name when area is unknown; prefer "{area} Circadian" in the panel.
+DEFAULT_SCENE_NAME = "Circadian"
 
 PANEL_URL_PATH = "scene_extrapolation"
 

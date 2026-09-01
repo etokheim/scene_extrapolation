@@ -1,4 +1,4 @@
-"""The Scene Extrapolation integration."""
+"""The Circadian Scenes integration (domain: scene_extrapolation)."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from .const import (
     DOMAIN,
     SCENE_NAME,
 )
+from .native_scene import apply_managed_native_scene_visibility
 from .panel import async_setup_panel, async_unload_panel
 from .store import SceneExtrapolationStore
 from .websocket_api import async_setup_websocket
@@ -157,7 +158,7 @@ def _is_legacy_entry(entry: ConfigEntry) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Set up Scene Extrapolation from a config entry."""
+    """Set up Circadian Scenes from a config entry."""
     domain_data = hass.data.setdefault(
         DOMAIN,
         {
@@ -175,6 +176,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     if not domain_data["store_loaded"]:
         await store.async_load()
         domain_data["store_loaded"] = True
+        if store.pending_hide_sync and store.settings.get("hide_managed_native_scenes"):
+            apply_managed_native_scene_visibility(hass, hidden=True)
+            store.pending_hide_sync = False
 
     if _is_legacy_entry(config_entry):
         await store.async_import_legacy(
@@ -209,7 +213,7 @@ async def _async_normalize_primary_entry(hass: HomeAssistant, entry_id: str) -> 
         hass.config_entries.async_update_entry(
             entry,
             unique_id=DOMAIN,
-            title="Scene Extrapolation",
+            title="Circadian Scenes",
             data={},
             options={},
         )

@@ -1,4 +1,4 @@
-"""Persistent store for extrapolation scene configurations."""
+"""Persistent store for circadian scene configurations."""
 
 from __future__ import annotations
 
@@ -7,17 +7,18 @@ import uuid
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 
 from .const import (
     AREA,
+    AUTOMATICALLY_UPDATE_LIGHTS,
     CATEGORY,
+    DEFAULT_SCENE_NAME,
     DESCRIPTION,
     DISPLAY_SCENES_COMBINED,
     DOMAIN,
     LABELS,
-    NIGHTLIGHTS_BOOLEAN,
-    NIGHTLIGHTS_SCENE,
     SCENE_DAWN,
     SCENE_DAWN_SUNRISE_SUNSET,
     SCENE_DUSK,
@@ -32,11 +33,72 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-STORAGE_VERSION = 1  # Additive settings/managed ids; do not bump without migrate_func.
+# v2 (dev-only): continuous → follow_up. v3: → automatically_update_lights; hide default on.
+STORAGE_VERSION = 3
 DEFAULT_DUSK_MINIMUM_SECONDS = 22 * 3600
 DEFAULT_SETTINGS = {
-    "hide_managed_native_scenes": False,
+    "hide_managed_native_scenes": True,
+    # Seconds; 0 disables. Same value is the light transition on auto-update ticks.
+    "automatically_update_lights_interval": 300,
 }
+
+_PREF_ALIASES = ("continuous", "follow_up")
+_INTERVAL_ALIASES = ("continuous_interval", "follow_up_interval")
+
+
+def _migrate_preference_keys(item: dict[str, Any]) -> None:
+    """Map legacy per-scene preference keys onto automatically_update_lights."""
+    if AUTOMATICALLY_UPDATE_LIGHTS in item:
+        for alias in _PREF_ALIASES:
+            item.pop(alias, None)
+        return
+    for alias in _PREF_ALIASES:
+        if alias in item:
+            item[AUTOMATICALLY_UPDATE_LIGHTS] = bool(item.pop(alias))
+            for leftover in _PREF_ALIASES:
+                item.pop(leftover, None)
+            return
+    item[AUTOMATICALLY_UPDATE_LIGHTS] = True
+
+
+def _migrate_interval_settings(settings: dict[str, Any]) -> None:
+    """Map legacy interval keys onto automatically_update_lights_interval."""
+    if "automatically_update_lights_interval" in settings:
+        for alias in _INTERVAL_ALIASES:
+            settings.pop(alias, None)
+        return
+    for alias in _INTERVAL_ALIASES:
+        if alias in settings:
+            settings["automatically_update_lights_interval"] = settings.pop(alias)
+            for leftover in _INTERVAL_ALIASES:
+                settings.pop(leftover, None)
+            return
+
+
+def _migrate_store(old_version: int, data: dict[str, Any]) -> dict[str, Any]:
+    """Migrate persisted store payloads between STORAGE_VERSION values."""
+    if data is None:
+        return {
+            "scenes": [],
+            "settings": dict(DEFAULT_SETTINGS),
+            "managed_native_scene_ids": [],
+        }
+    if old_version < 3:
+        scenes = list(data.get("scenes") or [])
+        for item in scenes:
+            if isinstance(item, dict):
+                _migrate_preference_keys(item)
+        settings = dict(data.get("settings") or {})
+        _migrate_interval_settings(settings)
+        # Product default flipped to on in 3.0; migrate everyone to the new default.
+        if old_version < 2:
+            settings["hide_managed_native_scenes"] = True
+        data = {
+            **data,
+            "scenes": scenes,
+            "settings": settings,
+        }
+    return data
 
 
 def time_to_seconds(value: Any) -> int:
@@ -73,13 +135,18 @@ def normalize_scene_config(
 ) -> dict[str, Any]:
     """Normalize UI/legacy input into a stored scene config."""
     combined = bool(raw.get(DISPLAY_SCENES_COMBINED, False))
-    name = (raw.get(SCENE_NAME) or "Automatic Lighting").strip()
+    name = (raw.get(SCENE_NAME) or DEFAULT_SCENE_NAME).strip()
     if not name:
         raise ValueError("Scene name is required")
 
     labels = raw.get(LABELS) or []
     if isinstance(labels, str):
         labels = [labels] if labels else []
+    # Missing key → True so existing rooms follow without a storage migration.
+    automatically_update_lights = raw.get(AUTOMATICALLY_UPDATE_LIGHTS, True)
+    if not isinstance(automatically_update_lights, bool):
+        automatically_update_lights = bool(automatically_update_lights)
+
     item: dict[str, Any] = {
         "id": scene_id or raw.get("id") or str(uuid.uuid4()),
         SCENE_NAME: name,
@@ -88,8 +155,7 @@ def normalize_scene_config(
         CATEGORY: raw.get(CATEGORY) or None,
         AREA: raw.get(AREA) or None,
         DISPLAY_SCENES_COMBINED: combined,
-        NIGHTLIGHTS_BOOLEAN: raw.get(NIGHTLIGHTS_BOOLEAN) or None,
-        NIGHTLIGHTS_SCENE: raw.get(NIGHTLIGHTS_SCENE) or None,
+        AUTOMATICALLY_UPDATE_LIGHTS: automatically_update_lights,
         SCENE_DUSK_MINIMUM_TIME_OF_DAY: time_to_seconds(
             raw.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
         ),
@@ -109,11 +175,6 @@ def normalize_scene_config(
     missing = [key for key in SCENE_KEYS if not item.get(key)]
     if missing:
         raise ValueError(f"Missing required scenes: {', '.join(missing)}")
-
-    if item[NIGHTLIGHTS_BOOLEAN] and not item[NIGHTLIGHTS_SCENE]:
-        raise ValueError(
-            "Nightlights scene is required when a nightlights boolean is configured"
-        )
 
     return item
 
@@ -151,8 +212,7 @@ def to_form_data(item: dict[str, Any]) -> dict[str, Any]:
         SCENE_DUSK_MINIMUM_TIME_OF_DAY: seconds_to_time(
             item.get(SCENE_DUSK_MINIMUM_TIME_OF_DAY)
         ),
-        NIGHTLIGHTS_BOOLEAN: item.get(NIGHTLIGHTS_BOOLEAN),
-        NIGHTLIGHTS_SCENE: item.get(NIGHTLIGHTS_SCENE),
+        AUTOMATICALLY_UPDATE_LIGHTS: bool(item.get(AUTOMATICALLY_UPDATE_LIGHTS, True)),
     }
     if combined:
         data[SCENE_DAWN_SUNRISE_SUNSET] = item.get(SCENE_DAWN)
@@ -163,30 +223,62 @@ def to_form_data(item: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+class _ScenesStore(Store):
+    """HA Store that migrates scene_extrapolation.scenes between major versions."""
+
+    async def _async_migrate_func(
+        self,
+        old_major_version: int,
+        old_minor_version: int,
+        old_data: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Migrate stored JSON when STORAGE_VERSION advances."""
+        return _migrate_store(old_major_version, old_data)
+
+
 class SceneExtrapolationStore:
-    """Load and persist extrapolation scene configs."""
+    """Load and persist circadian scene configs."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the store."""
         self.hass = hass
-        self._store = Store(hass, STORAGE_VERSION, STORE_KEY)
+        # Subclass Store and override _async_migrate_func — Store.__init__ has
+        # no migrate_func kwarg (that caused setup failure / Unknown command).
+        self._store = _ScenesStore(hass, STORAGE_VERSION, STORE_KEY)
         self.scenes: dict[str, dict[str, Any]] = {}
         self.settings: dict[str, Any] = dict(DEFAULT_SETTINGS)
         # YAML scene CONF_ID values created by this integration.
         self.managed_native_scene_ids: list[str] = []
+        # Set when migration forced hide-on; setup applies registry sync once.
+        self.pending_hide_sync = False
 
     async def async_load(self) -> None:
         """Load scenes from disk."""
         data = await self._store.async_load()
         raw = data or {}
         items = raw.get("scenes", [])
-        self.scenes = {item["id"]: item for item in items if "id" in item}
-        self.settings = {
+        self.scenes = {}
+        for item in items:
+            if "id" not in item:
+                continue
+            # Additive key: rooms saved before automatically_update_lights was added stay enabled.
+            if AUTOMATICALLY_UPDATE_LIGHTS not in item:
+                item[AUTOMATICALLY_UPDATE_LIGHTS] = True
+            for alias in ("continuous", "follow_up"):
+                item.pop(alias, None)
+            self.scenes[item["id"]] = item
+        settings = {
             **DEFAULT_SETTINGS,
             **(raw.get("settings") or {}),
         }
+        for alias in ("continuous_interval", "follow_up_interval"):
+            settings.pop(alias, None)
+        self.settings = settings
         ids = raw.get("managed_native_scene_ids") or []
         self.managed_native_scene_ids = [str(item) for item in ids if item]
+        # After Store migration forces hide on, sync registry once at setup.
+        if bool(self.settings.get("hide_managed_native_scenes")):
+            self.pending_hide_sync = True
 
     async def async_save(self) -> None:
         """Write scenes to disk."""
@@ -209,8 +301,31 @@ class SceneExtrapolationStore:
     async def async_upsert(self, raw: dict[str, Any]) -> dict[str, Any]:
         """Create or update a scene config."""
         scene_id = raw.get("id")
+        # Editor saves may omit automatically_update_lights; keep the play/pause preference.
+        if (
+            scene_id
+            and scene_id in self.scenes
+            and AUTOMATICALLY_UPDATE_LIGHTS not in raw
+        ):
+            raw = {
+                **raw,
+                AUTOMATICALLY_UPDATE_LIGHTS: self.scenes[scene_id].get(
+                    AUTOMATICALLY_UPDATE_LIGHTS, True
+                ),
+            }
         item = normalize_scene_config(raw, scene_id=scene_id)
         self.scenes[item["id"]] = item
+        await self.async_save()
+        return item
+
+    async def async_set_automatically_update_lights(
+        self, scene_id: str, automatically_update_lights: bool
+    ) -> dict[str, Any] | None:
+        """Toggle per-scene automatic light-update preference without a full form save."""
+        item = self.scenes.get(scene_id)
+        if item is None:
+            return None
+        item[AUTOMATICALLY_UPDATE_LIGHTS] = bool(automatically_update_lights)
         await self.async_save()
         return item
 
@@ -225,8 +340,22 @@ class SceneExtrapolationStore:
     async def async_update_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
         """Merge integration-wide settings and persist."""
         for key, value in patch.items():
-            if key in DEFAULT_SETTINGS:
-                self.settings[key] = value
+            if key not in DEFAULT_SETTINGS:
+                continue
+            if key == "automatically_update_lights_interval":
+                try:
+                    value = int(value)
+                except (TypeError, ValueError) as err:
+                    raise HomeAssistantError(
+                        "automatically_update_lights_interval must be an integer number of seconds"
+                    ) from err
+                # Panel offers 0–30 minutes; reject larger values so storage
+                # cannot exceed what light.turn_on transitions support well.
+                if value < 0 or value > 30 * 60:
+                    raise HomeAssistantError(
+                        "automatically_update_lights_interval must be between 0 and 1800 seconds"
+                    )
+            self.settings[key] = value
         await self.async_save()
         return dict(self.settings)
 

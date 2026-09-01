@@ -6,6 +6,7 @@ from custom_components.scene_extrapolation.color_math import (
     blend_entity_rgb,
     entity_rgb,
     kelvin_to_rgb,
+    rgbww_to_rgb,
     same_color_mode,
 )
 from custom_components.scene_extrapolation.preview import _display_rgb
@@ -75,3 +76,16 @@ def test_display_rgb_same_temp_uses_kelvin_path():
     final = {"entity_id": "light.test"}
     rgb = _display_rgb(from_entity, to_entity, final, "color_temp", "color_temp", 50)
     assert rgb == kelvin_to_rgb(3000)
+
+
+def test_rgbww_entity_rgb_mixes_white_not_rgb_slice():
+    entity = {
+        "state": "on",
+        "color_mode": "rgbww",
+        "rgbww_color": [10, 0, 0, 0, 200],
+    }
+    mixed = entity_rgb(entity)
+    sliced = (10, 0, 0)
+    assert mixed == rgbww_to_rgb([10, 0, 0, 0, 200])
+    assert mixed != sliced
+    assert mixed[1] > sliced[1]

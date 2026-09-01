@@ -2,6 +2,45 @@ import {
   buildClientSunDay,
   resampleLightsForEvents,
 } from "./client_solar.js";
+import {
+  draftRgb,
+  draftWheelMode,
+  rgb2hsv,
+  hueTempToRgb,
+  colorBrightnessFromDraft,
+  whiteBrightnessFromDraft,
+  setColorBrightnessOnDraft,
+  setWhiteBrightnessOnDraft,
+  createLightBrightnessGraph,
+  createSceneColorWheel,
+  medianNumber,
+  circularMeanHue,
+  lightDraftFingerprint,
+} from "./color_ui.js";
+import {
+  isoYear,
+  daysInYear,
+  dayOfYear,
+  isoFromDayOfYear,
+  todayIso,
+  formatPreviewDayMonth,
+  shiftIsoDate,
+  diffIsoDays,
+  emptyFormData,
+  timeToSeconds,
+  nowSecondsSinceMidnight,
+  formatClock,
+} from "./editor_session.js";
+import {
+  sunStrokePathRuns,
+  interpolateElevation,
+  skyLookFromElevation,
+  darkenedRgb,
+  conicGradientFromSamples,
+  interpolateLightSample,
+  easeOutCubic,
+  lerpSunPath,
+} from "./dial_clock.js";
 
 const DOMAIN = "scene_extrapolation";
 const SECONDS_PER_DAY = 24 * 3600;
@@ -35,14 +74,23 @@ const CLOCK_SCRUB_RAIL_PX = 104;
 /* Inset the landscape timeline from the panel edge (also stops the large
    day/month label from overflowing the rail and widening the page). */
 const CLOCK_SCRUB_RAIL_PAD_PX = 16;
+/* Landscape rail needs room for empty left gutter + dial + rail; below this
+   width keep the portrait toolbar (avoids empty “black bar” side columns). */
+const CLOCK_LANDSCAPE_SCRUB_MIN_WIDTH_PX = 900;
+/** Leave this much of the first light-list row visible under the dial face. */
+const DIAL_LIST_PEEK_PX = 32;
 /* Rings host inset so CSS outer edge matches CLOCK_RINGS_OUTER in viewBox. */
 const CLOCK_RINGS_INSET_PCT = 50 - CLOCK_RINGS_OUTER / 2;
 /* Wedges/rays cover the square including corners; back layer is slightly
    larger than the face so they land just outside the container. */
 const CLOCK_SKY_R = (CLOCK_VIEW / 2) * Math.SQRT2;
-/* Night wedges: near-black shades with a slight blue tint (not deep navy). */
-const CLOCK_NIGHT_OUTER = "#101218";
-const CLOCK_NIGHT_DEEP = "#06070b";
+/* Night wedges: light theme = warm gray; dark theme = near-black (CSS vars). */
+const CLOCK_NIGHT_OUTER_LIGHT = "#e4d8cc";
+const CLOCK_NIGHT_DEEP_LIGHT = "#bba89a";
+const CLOCK_NIGHT_OUTER_DARK = "#101218";
+const CLOCK_NIGHT_DEEP_DARK = "#06070b";
+/* Crispy day sky (light mode day wedge / daytime horizon glow). */
+const CLOCK_DAY_SKY_LIGHT = "rgb(79, 179, 255)";
 /* Outline diameter ≈ 3.47% of dial core (1/3 of the prior 10.4%). */
 const CLOCK_SUN_SIZE_PCT = 10.4 / 3;
 const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
@@ -63,6 +111,10 @@ const CLOCK_SUN_STROKE_MIN_PX = 0.2;
 const CLOCK_SUN_STROKE_MAX_PX = 10;
 const SIDEBAR_ANIMATION_MS = 200;
 const SIDEBAR_SWAP_MS = 160;
+/* Cubic ease-out: decelerates across more of the span than quintic. */
+const CLOCK_SUN_MOVE_MS = 1500;
+const DATE_MORPH_MS = 1500;
+const PREVIEW_REFINE_MS = 800;
 const LIGHT_BAR_HEIGHT = 108;
 const LIGHT_FEATHER_PX = 36;
 const LIGHT_BAR_EDGE_HEIGHT = LIGHT_BAR_HEIGHT - LIGHT_FEATHER_PX;
@@ -147,8 +199,6 @@ const LABELS = {
   scene_dusk: "Dusk scene",
   scene_dawn_sunrise_sunset: "Dawn, sunrise, and sunset scene",
   scene_dusk_minimum_time_of_day: "Earliest time for the dusk scene",
-  nightlights_boolean: "Nightlights trigger",
-  nightlights_scene: "Nightlights scene",
 };
 
 const HELPERS = {
@@ -162,8 +212,6 @@ const HELPERS = {
   scene_dusk: "Last light (sun 6° below the horizon)",
   scene_dawn_sunrise_sunset: "First light, sunrise, and sunset",
   scene_dusk_minimum_time_of_day: "To avoid lights dimming too much, too early",
-  nightlights_boolean: "When this input boolean is on, the nightlights scene is used instead",
-  nightlights_scene: "Required if a nightlights trigger is set",
   setup_empty_means_auto:
     "Leave empty to create a native scene automatically for this event",
 };
@@ -177,7 +225,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._editId = null;
     this._items = [];
     this._managedScenes = [];
-    this._settings = { hide_managed_native_scenes: false };
+    this._settings = {
+      hide_managed_native_scenes: true,
+      automatically_update_lights_interval: 300,
+    };
     this._listTab = "extrapolation";
     this._translationsReady = false;
     this._leaveConfirmDone = false;
@@ -207,8 +258,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sidebarEventId = null;
     this._sidebarLightId = null;
     this._clockStickySeconds = undefined;
+    this._aulResumeInterval = 300;
     this._hashConfirming = false;
-    this._lightView = "table";
+    this._lightView = "dial";
     this._liveEdit = false;
     this._liveEditSidebarHandler = null;
     this._onHashChange = () => this._syncHash();
@@ -233,21 +285,26 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (this._form) {
-      this._form.hass = hass;
-    }
+    this._syncDarkModeAttr();
     if (this._menuButtonEl) {
       this._menuButtonEl.hass = hass;
     }
     if (this._datePicker) {
       this._datePicker.hass = hass;
     }
+    // HA assigns hass on every state update — do not rebuild the list (that
+    // flickers the FAB and closes the settings sidebar). Translate once.
+    const needsTranslationPaint = !this._translationsReady;
     void this._ensureTranslations().then(() => {
-      if (this._built && this._view === "list") {
-        // Pick up language resources once they arrive.
+      if (needsTranslationPaint && this._built && this._view === "list") {
         this._renderList();
       }
     });
+    // Registry/friendly_name can change while the editor is open — keep the
+    // app-bar title in sync (same source as the list rows).
+    if (this._built && this._view === "edit" && this._editId && this._headerEl) {
+      this._headerEl.textContent = this._editorSceneTitle();
+    }
     if (!this._built && this.isConnected) {
       this._build();
     }
@@ -269,6 +326,14 @@ class SceneExtrapolationPanel extends HTMLElement {
   set route(_route) {}
 
   set panel(_panel) {}
+
+  /** Drive light/dark dial CSS (`:host([data-dark-mode])`) from HA’s theme. */
+  _syncDarkModeAttr() {
+    this.toggleAttribute(
+      "data-dark-mode",
+      Boolean(this._hass?.themes?.darkMode)
+    );
+  }
 
   connectedCallback() {
     window.addEventListener("hashchange", this._onHashChange);
@@ -367,11 +432,23 @@ class SceneExtrapolationPanel extends HTMLElement {
         :host {
           display: block;
           position: relative;
+          width: 100%;
+          /* 100vh fills when ha-panel-custom reports 0 height; max-height
+             caps to the panel outlet when that height is definite — otherwise
+             host > parent and HA’s shell scrolls beside ha-top-app-bar. */
           height: 100vh;
+          max-height: 100%;
           overflow: hidden;
           background: var(--primary-background-color);
           color: var(--primary-text-color);
           --scene-sidebar-gutter: 0px;
+          /* Night wedges: warm gray in light; near-black in dark. */
+          --clock-night-outer: ${CLOCK_NIGHT_OUTER_LIGHT};
+          --clock-night-deep: ${CLOCK_NIGHT_DEEP_LIGHT};
+        }
+        :host([data-dark-mode]) {
+          --clock-night-outer: ${CLOCK_NIGHT_OUTER_DARK};
+          --clock-night-deep: ${CLOCK_NIGHT_DEEP_DARK};
         }
         /* ha-panel-custom often computes to 0 height, so 100% on the app bar
            collapses. Fill the viewport, then stretch the bar to this host. */
@@ -387,22 +464,43 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: visible;
           position: relative;
         }
-        /* Soft black ramp under top dial controls so date/chips stay readable
-           over horizon bleed (caps at 50% opacity). */
+        /* Surface vignette on L/T/R (max 50% opacity) so date chips, Now
+           readout, and event labels read over horizon bleed in light + dark.
+           Long multi-stops ≈ soft blur (hard 88/160 edges read as a hard cut).
+           Extend under --scene-sidebar-gutter like .clock-horizon-back so the
+           right fade does not hard-cut at the drawer. */
         .sun-path.dial-view::before {
           content: "";
           position: absolute;
-          left: 0;
-          right: 0;
-          top: 0;
-          height: 160px;
+          inset: 0;
+          /* Reach the same top as .clock-horizon-back (host), including under
+             draft/location banners — measured as --dial-banner-h. */
+          top: calc(-1 * var(--dial-banner-h, 0px));
+          right: calc(-1 * var(--scene-sidebar-gutter));
           z-index: 2;
           pointer-events: none;
-          background: linear-gradient(
-            to bottom,
-            rgba(0, 0, 0, 0.5),
-            transparent
-          );
+          background:
+            linear-gradient(
+              to right,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 28%, transparent) 72px,
+              color-mix(in srgb, var(--primary-background-color) 10%, transparent) 160px,
+              transparent 260px
+            ),
+            linear-gradient(
+              to left,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 28%, transparent) 72px,
+              color-mix(in srgb, var(--primary-background-color) 10%, transparent) 160px,
+              transparent 260px
+            ),
+            linear-gradient(
+              to bottom,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 28%, transparent) 100px,
+              color-mix(in srgb, var(--primary-background-color) 10%, transparent) 220px,
+              transparent 360px
+            );
         }
         .sun-path[hidden] {
           display: none;
@@ -598,19 +696,75 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           z-index: 3;
         }
-        /* Portrait dial: date chips / day-month / year scrub float over the
-           dial graphics (same idea as the hover readout + legend). */
+        /* Portrait dial: toolbar is in-flow so the year scrub pushes the dial
+           down (ticks stay clear). Horizon glow still bleeds behind it
+           (_layoutClockHorizonBack covers the host). */
         .sun-path.dial-view .sun-toolbar:not(.toolbar-rail-only) {
-          position: absolute;
-          left: 0;
-          right: 0;
-          top: 0;
+          position: relative;
           z-index: 6;
           box-sizing: border-box;
           pointer-events: none;
+          background: transparent;
         }
         .sun-path.dial-view .sun-toolbar:not(.toolbar-rail-only) > * {
           pointer-events: auto;
+        }
+        /* Time/sun + date chips share one full-width wrapping row. */
+        .sun-toolbar-chrome {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: flex-start;
+          gap: 8px 12px;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        /* Must beat .sun-path.dial-view .sun-hover-readout position:absolute
+           (same specificity, later in the sheet) or time sits on top of chips. */
+        .sun-path.dial-view .sun-toolbar-chrome .sun-hover-readout {
+          position: static;
+          top: auto;
+          left: auto;
+          z-index: auto;
+          display: flex;
+          flex-wrap: nowrap;
+          align-items: center;
+          gap: 8px 16px;
+          flex: 0 1 auto;
+          max-width: none;
+          min-width: 0;
+          /* Match chip / reset row height so time+deg stay put when reset appears. */
+          min-height: 32px;
+          margin: 0;
+          padding: 0;
+          pointer-events: none;
+          color: var(--primary-text-color);
+          font-weight: 500;
+        }
+        .sun-path.dial-view .sun-toolbar-chrome .sun-hover-time {
+          font-weight: 600;
+          color: var(--primary-text-color);
+        }
+        .sun-path.dial-view .sun-toolbar-chrome .sun-hover-reset-slot {
+          flex: 0 0 32px;
+          width: 32px;
+          height: 32px;
+          display: inline-grid;
+          place-items: center;
+          pointer-events: none;
+        }
+        .sun-path.dial-view .sun-toolbar-chrome .sun-hover-reset {
+          pointer-events: auto;
+        }
+        .sun-toolbar-chrome .sun-chip-row {
+          flex: 0 1 auto;
+          margin-left: auto;
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
         }
         /* Scrub/date live in the right rail — do not leave empty toolbar padding
            above the dial (would push the face down). */
@@ -618,6 +772,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           padding: 0;
           gap: 0;
           min-height: 0;
+        }
+        .sun-toolbar.toolbar-rail-only .sun-toolbar-chrome {
+          display: none;
         }
         .sun-toolbar-row {
           display: flex;
@@ -633,6 +790,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           user-select: none;
           outline: none;
           cursor: pointer;
+        }
+        /* Keyboard only — pointerdown must not paint a focus ring (do not
+           call .focus() from the scrub pointer handler). */
+        .sun-year-scrub:focus {
+          outline: none;
+          box-shadow: none;
         }
         .sun-year-scrub:focus-visible {
           box-shadow: 0 0 0 2px var(--primary-color);
@@ -788,14 +951,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Flush under the app bar so horizon/bloom/ramp share one top edge
              (margin left a strip where only some bleed painted). */
           margin-top: 0;
-          /* Clip horizon bleed horizontally; allow the light list below the
-             face to extend so the page can scroll to it (landscape + portrait). */
-          overflow-x: hidden;
+          /* Clip horizon bleed on X only. Do not use overflow-x: hidden with
+             overflow-y: visible — CSS computes that Y to auto and the dial
+             grows a second vertical scrollbar beside ha-top-app-bar. */
+          overflow-x: clip;
           overflow-y: visible;
-          /* Full dial scale — legend flows under the face and must not shrink it. */
+          /* Fallback until _syncDialHeightBudget measures: fill below the
+             header, keep event-label pad + gap, leave ~32px of the first
+             light row peeking. */
           --dial-face-max: calc(
-            100vh - var(--header-height, 64px) - var(--dial-timeline-h, 0px) -
-              56px
+            100vh - var(--header-height, 64px) - 40px - 16px -
+              ${DIAL_LIST_PEEK_PX}px
           );
         }
         .sun-light-clock {
@@ -823,9 +989,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 5;
           width: min(100%, 500px);
           max-width: 500px;
+          /* Match the 8px gap between legend rows. */
+          padding-inline: 8px;
+          box-sizing: border-box;
           flex: 0 0 auto;
           pointer-events: auto;
         }
+        /* Same column width as the dial light list (under the face). */
         .sun-light-clock-empty-hint {
           margin: 0;
           padding: 0 12px;
@@ -989,8 +1159,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           --ring-soft-expand: ${(CLOCK_FEATHER_PCT * 1.35).toFixed(2)}%;
           backface-visibility: hidden;
         }
+        /* Light theme: half the bloom so rings do not wash the pale sky. */
+        :host(:not([data-dark-mode])) .sun-light-clock-glow {
+          opacity: 0.4075;
+        }
         .sun-light-clock-glow.glow-lg {
           transform: translateZ(0) scale(2.76);
+          /* Outermost bloom: half of the shared glow opacity. */
+          opacity: 0.4075;
+        }
+        :host(:not([data-dark-mode])) .sun-light-clock-glow.glow-lg {
+          opacity: 0.20375;
         }
         .sun-light-clock-glow.glow-md {
           transform: translateZ(0) scale(1.38);
@@ -1007,12 +1186,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           content: none;
           display: none;
         }
-        /* Warmth along sunrise/sunset — not clipped to the planet rim. */
+        /* Sunrise/sunset wash — not clipped to the planet rim. Paints a
+           multi-stop spectrum that ends at the surface color (normal blend). */
         .clock-horizon-glow {
           position: absolute;
           inset: 0;
           pointer-events: none;
-          mix-blend-mode: screen;
+          mix-blend-mode: normal;
           transform: translateZ(0);
           backface-visibility: hidden;
         }
@@ -1256,13 +1436,16 @@ class SceneExtrapolationPanel extends HTMLElement {
           fill: transparent;
         }
         .clock-horizon-sky .clock-sky-night {
-          fill: color-mix(in srgb, ${CLOCK_NIGHT_OUTER} 78%, transparent);
+          /* Sunset→sunrise shadow (outer night). */
+          fill: color-mix(in srgb, var(--clock-night-outer) 72%, transparent);
         }
         .clock-horizon-sky .clock-sky-deep {
-          fill: color-mix(in srgb, ${CLOCK_NIGHT_DEEP} 88%, transparent);
+          /* Dusk→dawn wrap (deeper band). */
+          fill: color-mix(in srgb, var(--clock-night-deep) 78%, transparent);
         }
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
+          stroke: #000;
           stroke-width: 1px;
           vector-effect: non-scaling-stroke;
           stroke-linejoin: round;
@@ -1271,7 +1454,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-overlay .clock-sun-path-night {
           fill: none;
-          stroke: #d8e0ff;
+          stroke: #000;
           stroke-width: 1px;
           vector-effect: non-scaling-stroke;
           stroke-dasharray: 5 4;
@@ -1280,20 +1463,31 @@ class SceneExtrapolationPanel extends HTMLElement {
           opacity: 0.5;
         }
         .sun-light-clock-overlay .clock-event-dot {
-          fill: var(--primary-text-color);
+          fill: #000;
           stroke: none;
         }
         /* Match night sun-path dash + opacity. */
         .sun-light-clock-overlay .clock-event-ray,
         .sun-light-clock-overlay .clock-event-clamp-link {
           fill: none;
-          stroke: #d8e0ff;
+          stroke: #000;
           stroke-width: 1px;
           vector-effect: non-scaling-stroke;
           stroke-dasharray: 5 4;
           stroke-linejoin: round;
           stroke-linecap: round;
           opacity: 0.5;
+        }
+        :host([data-dark-mode]) .sun-light-clock-overlay .clock-sun-day {
+          stroke: #e8eef8;
+        }
+        :host([data-dark-mode]) .sun-light-clock-overlay .clock-sun-path-night,
+        :host([data-dark-mode]) .sun-light-clock-overlay .clock-event-ray,
+        :host([data-dark-mode]) .sun-light-clock-overlay .clock-event-clamp-link {
+          stroke: #d8e0ff;
+        }
+        :host([data-dark-mode]) .sun-light-clock-overlay .clock-event-dot {
+          fill: var(--primary-text-color);
         }
         .sun-light-clock-overlay .clock-handle,
         .sun-light-clock-handle-overlay .clock-handle {
@@ -1319,10 +1513,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           left: 50%;
           bottom: 50%;
           width: 22px;
-          height: ${(CLOCK_TICK_OUTER / CLOCK_VIEW) * 100}%;
+          /* Tip only (planet rim → tick tips). A full center→rim spoke sat
+             above the light rings and ate dial clicks along the sun angle. */
+          height: ${((CLOCK_TICK_OUTER - CLOCK_RINGS_OUTER) / CLOCK_VIEW) * 100}%;
+          margin-bottom: ${(CLOCK_RINGS_OUTER / CLOCK_VIEW) * 100}%;
           transform-origin: center bottom;
           transform: translateX(-50%) rotate(var(--handle-deg, 0deg));
-          z-index: 8;
+          /* Below .sun-light-clock-rings (7) so the planet keeps ring picks. */
+          z-index: 6;
           cursor: grab;
           pointer-events: auto;
           touch-action: none;
@@ -1379,28 +1577,36 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: auto;
           cursor: grab;
           touch-action: none;
-          z-index: 7;
+          /* Below rings so an oversized night sun does not steal planet clicks. */
+          z-index: 6;
         }
-        /* Hourly ticks on the face (with hour numbers); majors every 6h. */
+        /* Hourly ticks on the face (with hour numbers); majors every 6h.
+           Text-colored (not white) so light-mode sky wash stays readable;
+           surface halo replaces the old black shadow. */
         .clock-face-ticks {
           position: absolute;
           inset: 0;
           pointer-events: none;
           overflow: visible;
           z-index: 5;
-          /* Same soft shadow as event labels, +4px blur. */
           filter:
-            drop-shadow(0 0 8px rgba(0, 0, 0, 0.3))
-            drop-shadow(0 1px 6px rgba(0, 0, 0, 0.3));
+            drop-shadow(
+              0 0 8px
+                color-mix(in srgb, var(--primary-background-color) 25%, transparent)
+            )
+            drop-shadow(
+              0 1px 6px
+                color-mix(in srgb, var(--primary-background-color) 25%, transparent)
+            );
         }
         .clock-face-ticks .clock-tick {
-          stroke: rgba(255, 255, 255, 0.21);
+          stroke: color-mix(in srgb, var(--primary-text-color) 28%, transparent);
           stroke-width: 4.5px;
           vector-effect: non-scaling-stroke;
           stroke-linecap: round;
         }
         .clock-face-ticks .clock-tick.major {
-          stroke: rgba(255, 255, 255, 0.375);
+          stroke: color-mix(in srgb, var(--primary-text-color) 42%, transparent);
           stroke-width: 6px;
         }
         /* HTML hour labels on the face, just inside the tick tips. */
@@ -1410,12 +1616,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-size: 16px;
           font-variant-numeric: tabular-nums;
           line-height: 1;
-          color: rgba(255, 255, 255, 0.4);
+          color: color-mix(in srgb, var(--primary-text-color) 48%, transparent);
           pointer-events: none;
           z-index: 7;
           text-shadow:
-            0 0 8px rgba(0, 0, 0, 0.3),
-            0 1px 6px rgba(0, 0, 0, 0.3);
+            0 0 8px
+              color-mix(in srgb, var(--primary-background-color) 25%, transparent),
+            0 1px 6px
+              color-mix(in srgb, var(--primary-background-color) 25%, transparent);
         }
         @media (min-width: 871px) {
           .clock-hour-label {
@@ -1444,10 +1652,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           text-align: center;
           pointer-events: none;
           white-space: nowrap;
-          /* Soft shadow so labels stay readable over path / horizon / rings. */
+          /* Surface halo — half strength so labels stay readable without a glow blob. */
           text-shadow:
-            0 0 4px rgba(0, 0, 0, 0.3),
-            0 1px 2px rgba(0, 0, 0, 0.3);
+            0 0 4px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
+            0 1px 2px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent);
         }
         /* Collision placement: below the button (see _layoutClockEventMetas). */
         .clock-event-meta.below {
@@ -1489,7 +1699,28 @@ class SceneExtrapolationPanel extends HTMLElement {
           cursor: pointer;
           padding: 0;
           font: inherit;
-          transition: box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
+          transform-origin: center center;
+          transition:
+            transform 160ms cubic-bezier(0.2, 0, 0, 1),
+            box-shadow 160ms cubic-bezier(0.2, 0, 0, 1),
+            border-color 160ms cubic-bezier(0.2, 0, 0, 1),
+            background 160ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .clock-event:hover,
+        .clock-event:focus-visible,
+        .clock-event:active,
+        .clock-event.selected {
+          transform: scale(1.12);
+          z-index: 1;
+        }
+        .clock-event:focus-visible {
+          outline: 2px solid var(--primary-color);
+          outline-offset: 2px;
+        }
+        .clock-event:hover:not(.selected):not(.missing),
+        .clock-event:focus-visible:not(.selected):not(.missing) {
+          border-color: var(--primary-color);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
         }
         .clock-event ha-icon {
           --mdc-icon-size: 18px;
@@ -1513,6 +1744,13 @@ class SceneExtrapolationPanel extends HTMLElement {
             var(--card-background-color) 70%,
             transparent
           );
+          transform: none;
+        }
+        .clock-event.ghost:hover,
+        .clock-event.ghost:focus-visible,
+        .clock-event.ghost:active,
+        .clock-event.ghost.selected {
+          transform: none;
         }
         .clock-event.ghost ha-icon {
           --mdc-icon-size: 13px;
@@ -1600,6 +1838,32 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-legend-row.suggested {
           opacity: 0.92;
         }
+        .clock-legend-row.unavailable {
+          opacity: 0.55;
+          filter: grayscale(1);
+          pointer-events: none;
+        }
+        .clock-legend-row.unavailable .clock-legend-icon-wrap {
+          background: color-mix(
+            in srgb,
+            var(--disabled-text-color, var(--secondary-text-color)) 18%,
+            transparent
+          );
+          color: var(--disabled-text-color, var(--secondary-text-color));
+        }
+        .clock-legend-row.unavailable .clock-legend-title,
+        .clock-legend-row.unavailable .clock-legend-sub,
+        .light-row.unavailable .light-name {
+          color: var(--disabled-text-color, var(--secondary-text-color));
+        }
+        .light-row.unavailable {
+          opacity: 0.55;
+          filter: grayscale(1);
+          pointer-events: none;
+        }
+        .light-row.unavailable .light-bar {
+          filter: grayscale(1);
+        }
         .clock-legend-icon-wrap {
           flex-shrink: 0;
           width: 40px;
@@ -1675,7 +1939,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 8px;
-          margin: 4px 0 8px;
+          margin: 0;
           padding: 10px 12px;
           border-radius: var(--ha-border-radius-lg, 12px);
           border: 1px solid var(--warning-color, var(--primary-color));
@@ -2057,7 +2321,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         .hue-wheel-stage {
           position: relative;
           margin: 8px -8px 0;
-          padding: 28px 8px 64px;
+          padding: 28px 8px 16px;
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          /* Clear air between the disk and mode/preset chrome. */
+          gap: 16px;
         }
         .hue-wheel-canvas {
           position: relative;
@@ -2176,10 +2445,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           100% { scale: 1; }
         }
         .hue-wheel-chrome {
-          position: absolute;
-          left: 8px;
-          right: 8px;
-          bottom: 16px;
+          position: relative;
           display: flex;
           flex-wrap: nowrap;
           justify-content: space-between;
@@ -2627,6 +2893,18 @@ class SceneExtrapolationPanel extends HTMLElement {
           background: var(--secondary-background-color, var(--card-background-color));
           border-color: var(--divider-color);
           box-shadow: var(--ha-box-shadow-s, 0 1px 2px rgba(0, 0, 0, 0.18));
+          transform-origin: center center;
+          transition:
+            transform 160ms cubic-bezier(0.2, 0, 0, 1),
+            border-color 160ms cubic-bezier(0.2, 0, 0, 1),
+            background 160ms cubic-bezier(0.2, 0, 0, 1),
+            box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .sun-event.clickable:hover,
+        .sun-event.clickable:focus-visible,
+        .sun-event.clickable:active,
+        .sun-event.clickable.selected {
+          transform: scale(1.04);
         }
         .sun-event.clickable:hover {
           border-color: var(--primary-color);
@@ -2635,9 +2913,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-event.clickable:focus-visible {
           outline: 2px solid var(--primary-color);
           outline-offset: 2px;
-        }
-        .sun-event.clickable:active {
-          transform: scale(0.98);
         }
         .sun-event.clickable.missing {
           border: 2px solid var(--warning-color, var(--accent-color, var(--primary-color)));
@@ -2706,6 +2981,33 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           height: ${CHART_HEIGHT}px;
         }
+        /* Same L/T/R surface vignette as dial (table view elevation chart). */
+        .sun-chart::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          z-index: 3;
+          pointer-events: none;
+          background:
+            linear-gradient(
+              to right,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 22%, transparent) 36px,
+              transparent 96px
+            ),
+            linear-gradient(
+              to left,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 22%, transparent) 36px,
+              transparent 96px
+            ),
+            linear-gradient(
+              to bottom,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 22%, transparent) 40px,
+              transparent 110px
+            );
+        }
         .sun-chart svg {
           display: block;
           width: 100%;
@@ -2723,9 +3025,21 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform: translate(-50%, -50%);
           z-index: 2;
         }
+        .sun-chart .clock-event:hover,
+        .sun-chart .clock-event:focus-visible,
+        .sun-chart .clock-event:active,
+        .sun-chart .clock-event.selected {
+          transform: translate(-50%, -50%) scale(1.12);
+        }
         .sun-chart .clock-event.ghost {
           width: 22px;
           height: 22px;
+        }
+        .sun-chart .clock-event.ghost:hover,
+        .sun-chart .clock-event.ghost:focus-visible,
+        .sun-chart .clock-event.ghost:active,
+        .sun-chart .clock-event.ghost.selected {
+          transform: translate(-50%, -50%);
         }
         /* List chart: same look, not interactive. */
         .sun-chart .clock-event.inert {
@@ -2742,6 +3056,12 @@ class SceneExtrapolationPanel extends HTMLElement {
             var(--card-background-color) 88%,
             var(--primary-text-color) 12%
           );
+        }
+        .sun-chart .clock-event.inert:hover,
+        .sun-chart .clock-event.inert:focus-visible,
+        .sun-chart .clock-event.inert:active,
+        .sun-chart .clock-event.inert.selected {
+          transform: translate(-50%, -50%);
         }
         .sun-chart .clock-event.inert.missing {
           box-shadow: none;
@@ -2781,6 +3101,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           margin: 0;
           padding: 8px 16px;
           pointer-events: none;
+          color: var(--primary-text-color);
         }
         .sun-hover-time {
           font-weight: 500;
@@ -2909,6 +3230,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           margin-right: calc(-1 * var(--scene-sidebar-gutter));
           width: calc(100% + var(--scene-sidebar-gutter));
           padding-right: var(--scene-sidebar-gutter);
+          /* FAB clearance under the light list (~156px). */
+          padding-bottom: 156px;
           box-sizing: border-box;
           position: relative;
           /* Event chips sit near the face edge — do not clip them. */
@@ -2920,15 +3243,15 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Must follow .page.dial-wide { overflow: visible } — that shorthand
            was overriding an earlier mobile overflow-x and letting
-           .clock-horizon-back widen ha-top-app-bar’s .ha-scrollbar. */
+           .clock-horizon-back widen ha-top-app-bar’s .ha-scrollbar.
+           Only clip the page shell / dial-wide — not stage/body/clock, or
+           overflow-x:clip promotes overflow-y to a scrollport and the huge
+           absolute horizon-back inflates scroll height below the light list. */
         @media (max-width: 870px) {
           .page-shell,
           .page.dial-wide,
-          .sun-path.dial-view,
-          .sun-path-stage,
-          .sun-path-body,
-          .sun-light-clock {
-            overflow-x: hidden;
+          .sun-path.dial-view {
+            overflow-x: clip;
           }
         }
         /* Sidebar open: let horizon/bloom paint under the drawer (desktop). */
@@ -2940,18 +3263,25 @@ class SceneExtrapolationPanel extends HTMLElement {
         :host([data-sidebar-docked]) .sun-light-clock {
           overflow: visible;
         }
+        /* Shared inset for draft + location banners (dial zeroes .page padding). */
+        .page-banners {
+          position: relative;
+          z-index: 5;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: var(--ha-space-3);
+          margin-inline: 12px;
+        }
+        .page-banners[hidden] {
+          display: none;
+        }
         .draft-restore {
           position: relative;
-          /* Above dial sky/horizon bleed that paints past the face. */
-          z-index: 5;
           display: flex;
           align-items: center;
           gap: 8px;
-          margin-top: var(--ha-space-3);
-          /* Dial view zeroes .page padding; keep the banner inset either way.
-             Sidebar gutter clears the drawer only (no extra left gap) so this
-             margin is not doubled when the drawer is open. */
-          margin-inline: 12px;
+          margin: 0;
           padding: 10px 12px;
           border-radius: var(--ha-border-radius-lg, 12px);
           border: 1px solid var(--info-color, var(--primary-color));
@@ -2991,17 +3321,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 5;
           padding: var(--ha-space-3) 0 88px;
         }
+        /* Dial editor leaves content empty — do not reserve FAB pad twice. */
+        .content:empty {
+          display: none;
+          padding: 0;
+        }
         .content.wide {
           width: 100%;
           box-sizing: border-box;
         }
         .card-content {
           padding: 16px;
-        }
-        .empty {
-          text-align: center;
-          padding: 48px 16px;
-          color: var(--secondary-text-color);
         }
         .list {
           display: flex;
@@ -3027,6 +3357,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-shrink: 0;
           margin-top: 2px;
         }
+        .list-settings-dialog .automatically-update-lights-interval-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .list-settings-dialog .automatically-update-lights-interval-row ha-selector {
+          width: 100%;
+          margin-top: 8px;
+        }
         .row .row-actions {
           display: flex;
           align-items: center;
@@ -3035,6 +3373,185 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .row .row-actions ha-icon-button {
           --mdc-icon-button-size: 40px;
+          color: var(--secondary-text-color);
+        }
+        /* Shared with create-wizard mode cards; list uses the same chrome. */
+        .setup-mode-card {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
+          width: 100%;
+          text-align: left;
+          padding: 14px 16px;
+          border-radius: var(--ha-border-radius-lg, 12px);
+          border: 2px solid var(--divider-color);
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          cursor: pointer;
+          box-sizing: border-box;
+        }
+        /* After .setup-mode-card so row layout wins (same specificity otherwise
+           leaves the switch under the copy). */
+        .setup-mode-card.list-aul-card {
+          margin-bottom: 12px;
+          flex-direction: row;
+          align-items: center;
+          gap: 12px;
+        }
+        .list-aul-card .aul-copy {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
+        }
+        .list-aul-card .mode-detail {
+          padding-left: 30px;
+        }
+        .list-aul-card ha-switch {
+          flex-shrink: 0;
+          pointer-events: auto;
+        }
+        .setup-mode-card:hover {
+          border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+        }
+        .setup-mode-card.selected {
+          border-color: var(--primary-color);
+          background: color-mix(
+            in srgb,
+            var(--primary-color) 10%,
+            var(--card-background-color)
+          );
+        }
+        .setup-mode-card .mode-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 15px;
+          font-weight: 600;
+        }
+        .setup-mode-card .mode-title ha-icon {
+          --mdc-icon-size: 22px;
+          color: var(--primary-color);
+        }
+        .setup-mode-card .mode-detail {
+          font-size: 13px;
+          line-height: 1.35;
+          color: var(--secondary-text-color);
+          padding-left: 30px;
+        }
+        /* Scene list: HA data-table-like surface (custom panels cannot load
+           ha-data-table reliably — lazy chunk, Lit column templates). */
+        .list.scene-table {
+          gap: 0;
+          border: 1px solid var(--divider-color);
+          border-radius: var(--ha-card-border-radius, 12px);
+          overflow: hidden;
+          background: var(--card-background-color);
+        }
+        .list.scene-table .scene-table-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 0 16px;
+          height: 48px;
+          box-sizing: border-box;
+          color: var(--secondary-text-color);
+          font-size: 12px;
+          font-weight: 500;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          border-bottom: 1px solid var(--divider-color);
+          background: var(--card-background-color);
+        }
+        .list.scene-table .scene-table-group {
+          display: flex;
+          align-items: center;
+          padding: 8px 16px;
+          box-sizing: border-box;
+          font-size: 14px;
+          font-weight: 500;
+          color: var(--secondary-text-color);
+          background: var(--primary-background-color);
+          border-bottom: 1px solid var(--divider-color);
+        }
+        .list.scene-table .scene-table-header .meta {
+          flex: 1;
+          min-width: 0;
+        }
+        .list.scene-table .scene-table-header .row-actions {
+          width: 88px;
+          flex-shrink: 0;
+        }
+        .list.scene-table .row {
+          border: none;
+          border-radius: 0;
+          border-bottom: 1px solid var(--divider-color);
+          background: transparent;
+        }
+        .list.scene-table .row:last-child {
+          border-bottom: none;
+        }
+        .list.scene-table .row:hover {
+          background: color-mix(
+            in srgb,
+            var(--primary-text-color) 6%,
+            var(--card-background-color)
+          );
+        }
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          box-sizing: border-box;
+          width: 100%;
+          max-width: 480px;
+          margin-inline: auto;
+          padding: 48px 24px 112px;
+          /* Prefer the scrollport height over 100vh so empty states do not
+             force a second scrollbar outside ha-top-app-bar. */
+          min-height: calc(100% - 96px);
+        }
+        .empty-state > ha-icon {
+          --mdc-icon-size: 80px;
+          color: var(--primary-text-color);
+          margin-bottom: 16px;
+        }
+        .empty-state h1 {
+          margin: 0 0 16px;
+          font-size: 1.5rem;
+          font-weight: 400;
+          line-height: 1.3;
+          color: var(--primary-text-color);
+        }
+        .empty-state p {
+          margin: 0 0 12px;
+          font-size: 14px;
+          line-height: 1.5;
+          color: var(--secondary-text-color);
+        }
+        .empty-state a.learn-more {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          margin-top: 8px;
+          color: var(--primary-color);
+          text-decoration: none;
+          font-size: 14px;
+        }
+        .empty-state a.learn-more:hover {
+          text-decoration: underline;
+        }
+        .empty-state a.learn-more ha-icon {
+          --mdc-icon-size: 16px;
+        }
+        .empty {
+          text-align: center;
+          padding: 48px 16px;
           color: var(--secondary-text-color);
         }
         .row {
@@ -3050,8 +3567,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         .row:hover {
           background: var(--secondary-background-color);
         }
-        .row ha-icon {
+        .row ha-icon,
+        .row ha-state-icon {
           color: var(--secondary-text-color);
+          --mdc-icon-size: 24px;
         }
         .row .meta {
           flex: 1;
@@ -3115,49 +3634,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: flex;
           flex-direction: column;
           gap: 10px;
-        }
-        .area-dialog .setup-mode-card {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 4px;
-          width: 100%;
-          text-align: left;
-          padding: 14px 16px;
-          border-radius: var(--ha-border-radius-lg, 12px);
-          border: 2px solid var(--divider-color);
-          background: var(--card-background-color);
-          color: var(--primary-text-color);
-          cursor: pointer;
-          box-sizing: border-box;
-        }
-        .area-dialog .setup-mode-card:hover {
-          border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
-        }
-        .area-dialog .setup-mode-card.selected {
-          border-color: var(--primary-color);
-          background: color-mix(
-            in srgb,
-            var(--primary-color) 10%,
-            var(--card-background-color)
-          );
-        }
-        .area-dialog .setup-mode-card .mode-title {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 15px;
-          font-weight: 600;
-        }
-        .area-dialog .setup-mode-card .mode-title ha-icon {
-          --mdc-icon-size: 22px;
-          color: var(--primary-color);
-        }
-        .area-dialog .setup-mode-card .mode-detail {
-          font-size: 13px;
-          line-height: 1.35;
-          color: var(--secondary-text-color);
-          padding-left: 30px;
         }
         .area-dialog .setup-error {
           margin: 0;
@@ -3232,16 +3708,29 @@ class SceneExtrapolationPanel extends HTMLElement {
         <div slot="title"></div>
         <div class="page-shell">
         <div class="page">
-          <div class="draft-restore" hidden>
-            <ha-icon icon="mdi:history"></ha-icon>
-            <div class="draft-restore-copy">
-              <div class="title"></div>
-              <div class="detail"></div>
+          <div class="page-banners" hidden>
+            <div class="sun-location-override" hidden>
+              <ha-icon icon="mdi:map-marker"></ha-icon>
+              <div class="sun-location-copy">
+                <div class="title">Previewing another location</div>
+                <div class="coords"></div>
+              </div>
+              <ha-button class="sun-location-change" appearance="plain">Change</ha-button>
+              <ha-icon-button class="sun-location-reset" label="Use home location">
+                <ha-icon icon="mdi:close"></ha-icon>
+              </ha-icon-button>
             </div>
-            <ha-button class="draft-restore-discard" appearance="plain">Discard</ha-button>
-            <ha-icon-button class="draft-restore-dismiss" label="Dismiss">
-              <ha-icon icon="mdi:close"></ha-icon>
-            </ha-icon-button>
+            <div class="draft-restore" hidden>
+              <ha-icon icon="mdi:history"></ha-icon>
+              <div class="draft-restore-copy">
+                <div class="title"></div>
+                <div class="detail"></div>
+              </div>
+              <ha-button class="draft-restore-discard" appearance="plain">Discard</ha-button>
+              <ha-icon-button class="draft-restore-dismiss" label="Dismiss">
+                <ha-icon icon="mdi:close"></ha-icon>
+              </ha-icon-button>
+            </div>
           </div>
           <div class="sun-path" hidden>
             <div class="sun-path-stage">
@@ -3274,6 +3763,18 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._draftBannerDismissed = true;
         this._syncDraftBanner();
       });
+    // Location banner lives with draft under .page-banners (shared inset).
+    this._locationBanner = this.shadowRoot.querySelector(
+      ".sun-location-override",
+    );
+    this._locationCoords = this._locationBanner?.querySelector(".coords");
+    this._locationBanner
+      ?.querySelector(".sun-location-change")
+      ?.addEventListener("click", () => this._openLocationDialog());
+    this._locationBanner
+      ?.querySelector(".sun-location-reset")
+      ?.addEventListener("click", () => this._setPreviewLocation(null));
+    this._syncDarkModeAttr();
     this._syncHash();
   }
 
@@ -3365,7 +3866,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._items = items;
       this._managedScenes = managed || [];
       this._settings = {
-        hide_managed_native_scenes: false,
+        hide_managed_native_scenes: true,
+        automatically_update_lights_interval: 300,
         ...(settings || {}),
       };
       this._error = null;
@@ -3466,6 +3968,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._liveEdit = false;
     this._liveEditSidebarHandler = null;
     this._cancelClockSunArc();
+    this._cancelSunPathMorph();
     this._form = undefined;
     // Drop dial preview state so the list chart uses the light sun_path API.
     if (this._sunPathKey && !String(this._sunPathKey).startsWith("list-sun:")) {
@@ -3474,7 +3977,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     this._headerEl.textContent = this._t(
       "frontend.title",
-      "Scene Extrapolation"
+      "Circadian Scenes"
     );
     this._setNavigationIcon(this._menuButton());
     this._contentEl.classList.remove("wide");
@@ -3525,36 +4028,260 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
     page.appendChild(tabs);
 
-    const wrap = document.createElement("div");
     if (this._listTab === "created") {
       if (!this._managedScenes.length) {
-        wrap.className = "empty";
-        wrap.textContent = this._t(
-          "frontend.empty.created",
-          "No native scenes created by Scene Extrapolation yet. They appear here when you use Automatic setup or Create new scene."
+        page.appendChild(
+          this._buildEmptyState({
+            icon: "mdi:palette-swatch-outline",
+            title: this._t(
+              "frontend.empty.created_title",
+              "No created scenes yet"
+            ),
+            paragraphs: [
+              this._t(
+                "frontend.empty.created_body",
+                "Native Home Assistant scenes created by Circadian Scenes show up here — from Automatic setup or Create new scene on a solar event."
+              ),
+            ],
+            learnMore: false,
+          })
         );
       } else {
-        wrap.className = "list";
-        for (const item of this._managedScenes) {
-          wrap.appendChild(this._managedSceneRow(item));
+        const wrap = document.createElement("div");
+        wrap.className = "list scene-table";
+        const header = document.createElement("div");
+        header.className = "scene-table-header";
+        const headerIcon = document.createElement("div");
+        headerIcon.style.width = "24px";
+        headerIcon.style.flexShrink = "0";
+        const headerMeta = document.createElement("div");
+        headerMeta.className = "meta";
+        headerMeta.textContent = this._t("frontend.list.column_name", "Name");
+        const headerActions = document.createElement("div");
+        headerActions.className = "row-actions";
+        header.append(headerIcon, headerMeta, headerActions);
+        wrap.appendChild(header);
+        for (const group of this._groupScenesByArea(this._managedScenes, "name")) {
+          const groupEl = document.createElement("div");
+          groupEl.className = "scene-table-group";
+          groupEl.textContent = group.label;
+          wrap.appendChild(groupEl);
+          for (const item of group.items) {
+            wrap.appendChild(this._managedSceneRow(item, { grouped: true }));
+          }
         }
+        page.appendChild(wrap);
       }
     } else if (!this._items.length) {
-      wrap.className = "empty";
-      wrap.textContent = this._t(
-        "frontend.empty.extrapolation",
-        "No extrapolation scenes yet. Create one to start lighting a room from the sun."
+      page.appendChild(
+        this._buildEmptyState({
+          icon: "mdi:white-balance-sunny",
+          title: this._t(
+            "frontend.empty.extrapolation_title",
+            "Start lighting with the sun"
+          ),
+          paragraphs: [
+            this._t(
+              "frontend.empty.extrapolation_body",
+              "Circadian Scenes blend your room’s lights between solar events — dawn, sunrise, noon, sunset, and dusk — so brightness and color follow the day."
+            ),
+            this._t(
+              "frontend.empty.extrapolation_example",
+              "Create a scene for a room, assign native scenes to each solar event, then activate it. Optional automatic updates keep adjusting the lights on an interval after that."
+            ),
+          ],
+          learnMore: true,
+        })
       );
     } else {
-      wrap.className = "list";
+      page.appendChild(this._buildAutomaticallyUpdateLightsCard());
+      const wrap = document.createElement("div");
+      wrap.className = "list scene-table";
+      const header = document.createElement("div");
+      header.className = "scene-table-header";
+      const headerIcon = document.createElement("div");
+      headerIcon.style.width = "24px";
+      headerIcon.style.flexShrink = "0";
+      const headerMeta = document.createElement("div");
+      headerMeta.className = "meta";
+      headerMeta.textContent = this._t("frontend.list.column_name", "Name");
+      const headerActions = document.createElement("div");
+      headerActions.className = "row-actions";
+      header.append(headerIcon, headerMeta, headerActions);
+      wrap.appendChild(header);
       for (const item of this._items) {
         wrap.appendChild(this._listRow(item));
       }
+      page.appendChild(wrap);
     }
-    page.appendChild(wrap);
     this._contentEl.replaceChildren(page);
     this._setActionItems(this._listSettingsButton());
     this._setFab(this._addButton());
+  }
+
+  _buildEmptyState({ icon, title, paragraphs, learnMore = false }) {
+    const el = document.createElement("div");
+    el.className = "empty-state";
+    const iconEl = document.createElement("ha-icon");
+    iconEl.setAttribute("icon", icon);
+    el.appendChild(iconEl);
+    const heading = document.createElement("h1");
+    heading.textContent = title;
+    el.appendChild(heading);
+    for (const text of paragraphs) {
+      const p = document.createElement("p");
+      p.textContent = text;
+      el.appendChild(p);
+    }
+    if (learnMore) {
+      const link = document.createElement("a");
+      link.className = "learn-more";
+      link.href = "https://github.com/etokheim/scene_extrapolation";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = this._t("frontend.empty.learn_more", "Learn more");
+      const openIcon = document.createElement("ha-icon");
+      openIcon.setAttribute("icon", "mdi:open-in-new");
+      link.appendChild(openIcon);
+      el.appendChild(link);
+    }
+    return el;
+  }
+
+  _automaticallyUpdateLightsIntervalSeconds() {
+    return Number(this._settings?.automatically_update_lights_interval ?? 300);
+  }
+
+  _buildAutomaticallyUpdateLightsCard() {
+    const interval = this._automaticallyUpdateLightsIntervalSeconds();
+    const on = interval > 0;
+    if (on) {
+      this._aulResumeInterval = interval;
+    }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `setup-mode-card list-aul-card${on ? " selected" : ""}`;
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+
+    const copy = document.createElement("div");
+    copy.className = "aul-copy";
+    const titleRow = document.createElement("div");
+    titleRow.className = "mode-title";
+    const icon = document.createElement("ha-icon");
+    icon.setAttribute("icon", "mdi:brightness-auto");
+    const title = document.createElement("span");
+    title.textContent = this._t(
+      "frontend.settings.automatically_update_lights",
+      "Automatically update lights"
+    );
+    titleRow.append(icon, title);
+    const detail = document.createElement("div");
+    detail.className = "mode-detail";
+    detail.textContent = on
+      ? this._t(
+          "frontend.settings.automatically_update_lights_on_helper",
+          "After you activate a scene, lights keep adjusting on the interval from Settings so the room follows the sun. Tap to turn this off for every room."
+        )
+      : this._t(
+          "frontend.settings.automatically_update_lights_off_helper",
+          "Automatic updates are off. Activating a scene applies lights once. Tap to turn updates back on for every room."
+        );
+    copy.append(titleRow, detail);
+
+    const toggle = document.createElement("ha-switch");
+    toggle.checked = on;
+    toggle.setAttribute(
+      "aria-label",
+      this._t(
+        "frontend.settings.automatically_update_lights",
+        "Automatically update lights"
+      )
+    );
+
+    const apply = async (nextOn) => {
+      const current = this._automaticallyUpdateLightsIntervalSeconds();
+      const currentlyOn = current > 0;
+      if (nextOn === currentlyOn) {
+        toggle.checked = currentlyOn;
+        return;
+      }
+      const resume =
+        this._aulResumeInterval > 0 ? this._aulResumeInterval : 300;
+      const nextSeconds = nextOn ? resume : 0;
+      btn.disabled = true;
+      toggle.disabled = true;
+      try {
+        if (currentlyOn && current > 0) {
+          this._aulResumeInterval = current;
+        }
+        const result = await this._hass.callWS({
+          type: `${DOMAIN}/update_settings`,
+          settings: { automatically_update_lights_interval: nextSeconds },
+        });
+        this._settings = {
+          hide_managed_native_scenes: true,
+          automatically_update_lights_interval: 300,
+          ...(result?.settings || {}),
+        };
+        if (this._view === "list") {
+          this._renderList({ keepSidebar: true });
+        }
+      } catch (err) {
+        toggle.checked = currentlyOn;
+        window.alert(err.message || String(err));
+      } finally {
+        btn.disabled = false;
+        toggle.disabled = false;
+      }
+    };
+
+    // Switch handles its own pointer; don't also fire the card click.
+    toggle.addEventListener("click", (ev) => ev.stopPropagation());
+    toggle.addEventListener("change", () => {
+      void apply(Boolean(toggle.checked));
+    });
+    btn.addEventListener("click", () => {
+      void apply(!toggle.checked);
+    });
+
+    btn.append(copy, toggle);
+    return btn;
+  }
+
+  _groupScenesByArea(items, nameKey) {
+    const noArea = this._t("frontend.common.no_area", "No area");
+    const groups = new Map();
+    for (const item of items) {
+      const key = item.area_id || "";
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          label: item.area_name || noArea,
+          items: [],
+        });
+      }
+      groups.get(key).items.push(item);
+    }
+    const sorted = [...groups.values()];
+    sorted.sort((a, b) => {
+      if (!a.key && b.key) {
+        return 1;
+      }
+      if (a.key && !b.key) {
+        return -1;
+      }
+      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
+    });
+    for (const group of sorted) {
+      group.items.sort((a, b) => {
+        const an =
+          this._entityFriendlyName(a.entity_id, a[nameKey]) || a[nameKey] || "";
+        const bn =
+          this._entityFriendlyName(b.entity_id, b[nameKey]) || b[nameKey] || "";
+        return an.localeCompare(bn, undefined, { sensitivity: "base" });
+      });
+    }
+    return sorted;
   }
 
   _listSettingsButton() {
@@ -3572,21 +4299,29 @@ class SceneExtrapolationPanel extends HTMLElement {
     row.className = "row";
     row.addEventListener("click", () => this._go(`edit/${item.id}`));
 
-    const icon = document.createElement("ha-icon");
-    icon.setAttribute("icon", "mdi:auto-fix");
-    row.appendChild(icon);
+    row.appendChild(
+      this._entityStateIcon(item.entity_id, "mdi:auto-fix")
+    );
 
     const meta = document.createElement("div");
     meta.className = "meta";
     const name = document.createElement("div");
     name.className = "name";
     name.textContent =
-      item.scene_name || this._t("frontend.common.untitled", "Untitled");
+      this._entityFriendlyName(item.entity_id, item.scene_name) ||
+      this._t("frontend.common.untitled", "Untitled");
     const sub = document.createElement("div");
     sub.className = "sub";
+    const objectId = this._entityObjectId(item.entity_id);
+    const subBits = [];
+    if (item.area_name) {
+      subBits.push(item.area_name);
+    }
+    if (objectId) {
+      subBits.push(objectId);
+    }
     sub.textContent =
-      item.area_name ||
-      item.entity_id ||
+      subBits.join(" · ") ||
       this._t("frontend.common.no_area", "No area");
     meta.append(name, sub);
     row.appendChild(meta);
@@ -3617,7 +4352,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     deleteBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
       const confirmed = await this._confirmExtrapolationDelete(
-        item.scene_name || item.entity_id || item.id
+        this._entityFriendlyName(item.entity_id, item.scene_name) ||
+          item.entity_id ||
+          item.id
       );
       if (!confirmed) {
         return;
@@ -3639,37 +4376,41 @@ class SceneExtrapolationPanel extends HTMLElement {
     return row;
   }
 
-  _managedSceneRow(item) {
+  _managedSceneRow(item, { grouped = false } = {}) {
     const row = document.createElement("div");
     row.className = "row created-scene";
     row.addEventListener("click", () => {
       this._showEntityMoreInfo(item.entity_id, "settings");
     });
 
-    const icon = document.createElement("ha-icon");
-    icon.setAttribute("icon", "mdi:palette");
-    row.appendChild(icon);
+    row.appendChild(
+      this._entityStateIcon(item.entity_id, "mdi:palette")
+    );
 
     const meta = document.createElement("div");
     meta.className = "meta";
     const name = document.createElement("div");
     name.className = "name";
     name.textContent =
-      item.name ||
-      item.entity_id ||
+      this._entityFriendlyName(item.entity_id, item.name) ||
       this._t("frontend.common.untitled", "Untitled");
     const sub = document.createElement("div");
     sub.className = "sub";
     const bits = [];
-    if (item.area_name) {
+    // Area is the group header when grouped — keep object id / hidden only.
+    if (!grouped && item.area_name) {
       bits.push(item.area_name);
+    }
+    const objectId = this._entityObjectId(item.entity_id);
+    if (objectId) {
+      bits.push(objectId);
     }
     if (item.hidden) {
       bits.push(
         this._t("frontend.settings.hidden_in_ha", "Hidden in Home Assistant")
       );
     }
-    sub.textContent = bits.join(" · ") || item.entity_id || "";
+    sub.textContent = bits.join(" · ") || objectId || "";
     meta.append(name, sub);
     row.appendChild(meta);
 
@@ -3695,7 +4436,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     deleteBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
       const confirmed = await this._confirmNativeSceneDelete(
-        item.name || item.entity_id
+        this._entityFriendlyName(item.entity_id, item.name) || item.entity_id
       );
       if (!confirmed) {
         return;
@@ -3717,6 +4458,13 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   async _openListSettingsSidebar() {
+    const existing = this.shadowRoot?.querySelector(
+      ".scene-sidebar.list-settings-dialog"
+    );
+    if (existing && !existing._closing) {
+      await this._requestCloseSceneSidebar(existing);
+      return;
+    }
     const opened = await this._openSceneSidebar({
       title: this._t("frontend.settings.title", "Settings"),
       className: "list-settings-dialog",
@@ -3761,7 +4509,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           settings: { hide_managed_native_scenes: next },
         });
         this._settings = {
-          hide_managed_native_scenes: false,
+          hide_managed_native_scenes: true,
+          automatically_update_lights_interval: 300,
           ...(result?.settings || {}),
         };
         this._managedScenes = await this._hass.callWS({
@@ -3780,6 +4529,73 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
     row.append(labelWrap, toggle);
     body.appendChild(row);
+
+    const intervalRow = document.createElement("div");
+    intervalRow.className = "setup-link-row automatically-update-lights-interval-row";
+    const intervalLabelWrap = document.createElement("div");
+    const intervalLabel = document.createElement("div");
+    intervalLabel.className = "name";
+    intervalLabel.textContent = this._t(
+      "frontend.settings.automatically_update_lights_interval",
+      "Automatically update lights interval"
+    );
+    const intervalHelper = document.createElement("div");
+    intervalHelper.className = "sidebar-note";
+    intervalHelper.style.margin = "4px 0 0";
+    intervalHelper.textContent = this._t(
+      "frontend.settings.automatically_update_lights_interval_helper",
+      "After a scene is activated, keep updating the lights this often with the same transition length (target = how the room should look at the end of the transition). 0 turns automatic updates off for every room — same as the control at the top of the list."
+    );
+    intervalLabelWrap.append(intervalLabel, intervalHelper);
+    const intervalField = document.createElement("ha-selector");
+    intervalField.hass = this._hass;
+    intervalField.label = this._t(
+      "frontend.settings.automatically_update_lights_interval_minutes",
+      "Minutes"
+    );
+    const currentSeconds = Number(this._settings?.automatically_update_lights_interval ?? 300);
+    intervalField.value = Math.round(currentSeconds / 60);
+    intervalField.selector = {
+      number: { min: 0, max: 30, step: 1, mode: "box", unit_of_measurement: "min" },
+    };
+    let intervalSaveTimer;
+    const saveInterval = async () => {
+      const minutes = Number(intervalField.value);
+      const seconds = Number.isFinite(minutes)
+        ? Math.max(0, Math.min(30, Math.round(minutes))) * 60
+        : 300;
+      try {
+        const result = await this._hass.callWS({
+          type: `${DOMAIN}/update_settings`,
+          settings: { automatically_update_lights_interval: seconds },
+        });
+        this._settings = {
+          hide_managed_native_scenes: true,
+          automatically_update_lights_interval: 300,
+          ...(result?.settings || {}),
+        };
+        const saved = Number(
+          this._settings.automatically_update_lights_interval || 0
+        );
+        if (saved > 0) {
+          this._aulResumeInterval = saved;
+        }
+        intervalField.value = Math.round(saved / 60);
+        if (this._view === "list") {
+          this._renderList({ keepSidebar: true });
+        }
+      } catch (err) {
+        intervalField.value = Math.round(currentSeconds / 60);
+        window.alert(err.message || String(err));
+      }
+    };
+    intervalField.addEventListener("value-changed", (ev) => {
+      window.clearTimeout(intervalSaveTimer);
+      intervalSaveTimer = window.setTimeout(saveInterval, 400);
+      ev.stopPropagation();
+    });
+    intervalRow.append(intervalLabelWrap, intervalField);
+    body.appendChild(intervalRow);
   }
 
   _addButton() {
@@ -3924,7 +4740,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     viewBtn.className = "light-view-toggle-btn";
     viewBtn.appearance = "plain";
     viewBtn.addEventListener("click", () => {
-      this._setLightView(this._lightView === "clock" ? "table" : "clock");
+      this._setLightView(this._lightView === "dial" ? "table" : "dial");
     });
     this._lightViewToggleBtn = viewBtn;
     this._syncLightViewButtons();
@@ -4094,14 +4910,18 @@ class SceneExtrapolationPanel extends HTMLElement {
   _readLightView() {
     try {
       const raw = window.localStorage.getItem(this._lightViewStorageKey());
-      return raw === "clock" ? "clock" : "table";
+      // Explicit table stays table; migrate legacy "clock" → dial.
+      if (raw === "table") {
+        return "table";
+      }
+      return "dial";
     } catch (_err) {
-      return "table";
+      return "dial";
     }
   }
 
   _setLightView(view) {
-    const next = view === "clock" ? "clock" : "table";
+    const next = view === "dial" || view === "clock" ? "dial" : "table";
     if (this._lightView === next) {
       this._syncLightViewButtons();
       this._syncEditorChrome();
@@ -4128,7 +4948,7 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _syncEditorChrome() {
     const dial =
-      this._view === "edit" && this._lightView === "clock";
+      this._view === "edit" && this._lightView === "dial";
     this.shadowRoot?.querySelector(".page")?.classList.toggle("dial-wide", dial);
     this._sunPathEl?.classList.toggle("dial-view", dial);
   }
@@ -4139,12 +4959,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     // Label is the destination view (single toggle in the app bar).
     this._lightViewToggleBtn.textContent =
-      this._lightView === "clock"
+      this._lightView === "dial"
         ? this._t("frontend.actions.table_view", "Table view")
         : this._t("frontend.actions.dial_view", "Dial view");
     this._lightViewToggleBtn.setAttribute(
       "aria-label",
-      this._lightView === "clock" ? "Switch to table view" : "Switch to dial view"
+      this._lightView === "dial" ? "Switch to table view" : "Switch to dial view"
     );
   }
 
@@ -4181,18 +5001,27 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!payload) {
       return null;
     }
-    const server = this._snapshotSession();
-    if (!this._sessionEqual(payload.baseline, server)) {
-      // Server copy moved on; the local draft was based on an older save.
-      this._clearPersistedDraft();
-      return null;
-    }
-    if (this._sessionEqual(payload.session, server)) {
+    // Existing scenes: drop the draft if HA's form moved on since we buffered.
+    // #new has no server entity — after refresh we always reset to emptyFormData(),
+    // so comparing baseline to that "server" would wipe every post-wizard draft.
+    if (this._editId) {
+      const server = this._snapshotSession();
+      if (!this._sessionEqual(payload.baseline, server)) {
+        this._clearPersistedDraft();
+        return null;
+      }
+      if (this._sessionEqual(payload.session, server)) {
+        this._clearPersistedDraft();
+        return null;
+      }
+    } else if (this._sessionEqual(payload.session, payload.baseline)) {
       this._clearPersistedDraft();
       return null;
     }
     this._formData = structuredClone(payload.session.form);
     this._nativeDrafts = structuredClone(payload.session.nativeDrafts);
+    // Keep the buffered baseline so dirty/discard match the pre-refresh session.
+    this._sessionBaseline = structuredClone(payload.baseline);
     this._syncPreviewOverlay();
     this._clearPreviewCache();
     return { savedAt: payload.savedAt };
@@ -4293,6 +5122,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._sessionIsDirty() &&
       !this._draftBannerDismissed;
     el.hidden = !show;
+    this._syncPageBannersVisibility();
     if (!show) {
       return;
     }
@@ -4300,6 +5130,19 @@ class SceneExtrapolationPanel extends HTMLElement {
     el.querySelector(".title").textContent = "Picked up where you left off";
     el.querySelector(".detail").textContent =
       `Unsaved edits from ${age}. This browser only — save the scene to keep them.`;
+  }
+
+  _syncPageBannersVisibility() {
+    const stack = this.shadowRoot?.querySelector(".page-banners");
+    if (!stack) {
+      return;
+    }
+    const anyVisible = [...stack.children].some((child) => !child.hidden);
+    stack.hidden = !anyVisible;
+    // Banner show/hide changes the dial height budget and vignette reach.
+    if (this._sunPathEl?.classList.contains("dial-view")) {
+      requestAnimationFrame(() => this._syncDialHeightBudget());
+    }
   }
 
   async _discardRestoredDraft() {
@@ -4340,9 +5183,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._forceCloseSceneSidebar();
     this._formData = structuredClone(snapshot.form);
     this._nativeDrafts = structuredClone(snapshot.nativeDrafts);
-    if (this._form) {
-      this._form.data = this._formData;
-    }
+    this._syncEditorSceneTitle();
     this._syncPreviewOverlay();
     this._sunPath = null;
     this._clearPreviewCache();
@@ -4785,9 +5626,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._formData.scene_dawn_sunrise_sunset === fromId) {
       this._formData.scene_dawn_sunrise_sunset = toId;
     }
-    if (this._formData.nightlights_scene === fromId) {
-      this._formData.nightlights_scene = toId;
-    }
   }
 
   _overflowMenu() {
@@ -4839,8 +5677,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       );
       addItem(
         "toggle-view",
-        this._lightView === "clock" ? "Table view" : "Dial view",
-        this._lightView === "clock" ? "mdi:table" : "mdi:clock-outline"
+        this._lightView === "dial" ? "Table view" : "Dial view",
+        this._lightView === "dial" ? "mdi:table" : "mdi:clock-outline"
       );
     }
     addItem(
@@ -4916,7 +5754,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     if (action === "toggle-view") {
-      this._setLightView(this._lightView === "clock" ? "table" : "clock");
+      this._setLightView(this._lightView === "dial" ? "table" : "dial");
       return;
     }
     if (action === "apply") {
@@ -4983,7 +5821,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._pendingNewForm = {
       ...this._formData,
       labels: [...(this._formData.labels || [])],
-      scene_name: `${this._formData.scene_name || "Automatic Lighting"} (${suffix})`,
+      scene_name: `${this._formData.scene_name || "Circadian"} (${suffix})`,
     };
     this._go("new");
   }
@@ -5026,7 +5864,35 @@ class SceneExtrapolationPanel extends HTMLElement {
     this.style.setProperty("--scene-sidebar-gutter", gutter);
     this.toggleAttribute("data-sidebar-docked", on);
     this._syncYearScrubLayout();
-    this._layoutClockHorizonBack();
+    // Face translates with the gutter padding transition; ResizeObserver only
+    // sees size changes, so remeasure horizon reach through the slide.
+    this._scheduleClockHorizonRelayout();
+  }
+
+  _scheduleClockHorizonRelayout() {
+    if (this._horizonRelayoutRaf != null) {
+      cancelAnimationFrame(this._horizonRelayoutRaf);
+      this._horizonRelayoutRaf = undefined;
+    }
+    if (this._horizonRelayoutTimer != null) {
+      clearTimeout(this._horizonRelayoutTimer);
+      this._horizonRelayoutTimer = undefined;
+    }
+    const started = performance.now();
+    const tick = (now) => {
+      this._layoutClockHorizonBack();
+      if (now - started < SIDEBAR_ANIMATION_MS + 32) {
+        this._horizonRelayoutRaf = requestAnimationFrame(tick);
+        return;
+      }
+      this._horizonRelayoutRaf = undefined;
+      // One more pass after transition settles (subpixel / late layout).
+      this._horizonRelayoutTimer = window.setTimeout(() => {
+        this._horizonRelayoutTimer = undefined;
+        this._layoutClockHorizonBack();
+      }, 48);
+    };
+    this._horizonRelayoutRaf = requestAnimationFrame(tick);
   }
 
   _fillSidebarHeader(header, { title, subtitle, actionItems, host }) {
@@ -5369,43 +6235,39 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _renderEditor() {
-    this._headerEl.textContent = this._editId
-      ? this._formData.scene_name || "Edit scene"
-      : "New scene";
+    this._syncEditorSceneTitle();
     this._setNavigationIcon(this._backButton());
     this._setEditorActions();
     this._syncEditorChrome();
     this._syncSaveFab();
     this._contentEl.classList.add("wide");
 
-    const wrap = document.createElement("div");
     if (this._error) {
       const error = document.createElement("p");
       error.className = "error";
       error.textContent = this._error;
-      wrap.appendChild(error);
+      this._contentEl.replaceChildren(error);
+    } else {
+      this._contentEl.replaceChildren();
     }
+  }
 
-    const form = document.createElement("ha-form");
-    form.hass = this._hass;
-    form.data = this._formData;
-    form.schema = this._schema();
-    form.computeLabel = (schema) => this._fieldLabel(schema.name);
-    form.computeHelper = (schema) => this._fieldHelper(schema.name);
-    form.addEventListener("value-changed", (ev) => {
-      this._commitUndo();
-      this._formData = { ...this._formData, ...ev.detail.value };
-      this._error = null;
-      this._schedulePreview();
-    });
-    this._form = form;
-    const card = document.createElement("ha-card");
-    const cardContent = document.createElement("div");
-    cardContent.className = "card-content";
-    cardContent.appendChild(form);
-    card.appendChild(cardContent);
-    wrap.appendChild(card);
-    this._contentEl.replaceChildren(wrap);
+  /** App-bar / dialogs: prefer HA friendly_name over stored scene_name. */
+  _editorSceneTitle() {
+    if (!this._editId) {
+      return this._t("frontend.common.new_scene", "New scene");
+    }
+    return (
+      this._entityFriendlyName(this._entityId, this._formData.scene_name) ||
+      this._t("frontend.common.edit_scene", "Edit scene")
+    );
+  }
+
+  _syncEditorSceneTitle() {
+    if (!this._headerEl || this._view !== "edit") {
+      return;
+    }
+    this._headerEl.textContent = this._editorSceneTitle();
   }
 
   _setNavigationIcon(node) {
@@ -5479,18 +6341,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     return button;
   }
 
-  _schema() {
-    const areaId = this._formData.area || null;
-    const sceneSelector = entitySelector(this._hass, "scene", areaId, true);
-    return [
-      {
-        name: "nightlights_boolean",
-        selector: { entity: { domain: "input_boolean", multiple: false } },
-      },
-      { name: "nightlights_scene", selector: sceneSelector },
-    ];
-  }
-
   _resolvableSceneId(sceneId) {
     if (!sceneId) {
       return null;
@@ -5531,8 +6381,72 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (draft?.deleted) {
       return "";
     }
+    return this._entityFriendlyName(entityId, entityId.replace(/^scene\./, ""));
+  }
+
+  _entityObjectId(entityId) {
+    if (!entityId) {
+      return "";
+    }
+    const dot = entityId.indexOf(".");
+    return dot >= 0 ? entityId.slice(dot + 1) : entityId;
+  }
+
+  _entityFriendlyName(entityId, fallback) {
+    if (!entityId) {
+      return fallback || "";
+    }
     const state = this._hass?.states?.[entityId];
-    return state?.attributes?.friendly_name || entityId.replace(/^scene\./, "");
+    const friendly = state?.attributes?.friendly_name;
+    if (friendly) {
+      return friendly;
+    }
+    return fallback || this._entityObjectId(entityId);
+  }
+
+  _entityStateIcon(entityId, fallbackIcon) {
+    const state = this._hass?.states?.[entityId];
+    if (customElements.get("ha-state-icon") && (state || entityId)) {
+      const icon = document.createElement("ha-state-icon");
+      icon.hass = this._hass;
+      if (state) {
+        icon.stateObj = state;
+      }
+      if (entityId) {
+        icon.entityId = entityId;
+      }
+      return icon;
+    }
+    const icon = document.createElement("ha-icon");
+    const entry = this._hass?.entities?.[entityId];
+    const named =
+      entry?.icon || state?.attributes?.icon || fallbackIcon || "mdi:palette";
+    icon.setAttribute(
+      "icon",
+      typeof named === "string" && named.startsWith("mdi:")
+        ? named
+        : fallbackIcon || "mdi:palette"
+    );
+    return icon;
+  }
+
+  _lightIsUnavailable(entityId) {
+    const state = this._hass?.states?.[entityId];
+    return !state || state.state === "unavailable";
+  }
+
+  _clockRingLights(lights) {
+    return (lights || []).filter(
+      (light) => !light.suggested && !this._lightIsUnavailable(light.entity_id)
+    );
+  }
+
+  _legendLights(lights) {
+    const rows = [...(lights || [])];
+    const rank = (light) =>
+      this._lightIsUnavailable(light.entity_id) ? 2 : light.suggested ? 1 : 0;
+    rows.sort((a, b) => rank(a) - rank(b));
+    return rows;
   }
 
   _uniqueAssignedScenes(events) {
@@ -5834,9 +6748,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._formData.scene_dawn_sunrise_sunset === entityId) {
       this._formData.scene_dawn_sunrise_sunset = null;
     }
-    if (this._formData.nightlights_scene === entityId) {
-      this._formData.nightlights_scene = null;
-    }
   }
 
   _promptText({ title, label, value, confirmLabel }) {
@@ -6009,18 +6920,25 @@ class SceneExtrapolationPanel extends HTMLElement {
       return { service: "turn_off", data: { entity_id: entityId } };
     }
     const data = { entity_id: entityId };
-    for (const key of [
-      "brightness",
-      "color_temp_kelvin",
-      "hs_color",
-      "rgb_color",
-      "rgbw_color",
-      "rgbww_color",
-      "effect",
-    ]) {
-      if (stored[key] != null && stored[key] !== "none") {
-        data[key] = stored[key];
-      }
+    if (stored.brightness != null) {
+      data.brightness = stored.brightness;
+    }
+    if (stored.effect != null && stored.effect !== "none") {
+      data.effect = stored.effect;
+    }
+    // HA rejects two+ members of the Color descriptors exclusion group
+    // (e.g. hs_color + rgb_color). Drafts often store both; live entity
+    // snapshots do too — send exactly one.
+    if (stored.rgbww_color != null) {
+      data.rgbww_color = stored.rgbww_color;
+    } else if (stored.rgbw_color != null) {
+      data.rgbw_color = stored.rgbw_color;
+    } else if (stored.hs_color != null) {
+      data.hs_color = stored.hs_color;
+    } else if (stored.rgb_color != null) {
+      data.rgb_color = stored.rgb_color;
+    } else if (stored.color_temp_kelvin != null) {
+      data.color_temp_kelvin = stored.color_temp_kelvin;
     }
     return { service: "turn_on", data };
   }
@@ -6156,6 +7074,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     let liveApplied = false;
     let wheelCtl = null;
     let brightnessGraphCtl = null;
+    let colorBriGraphCtl = null;
+    let whiteBriGraphCtl = null;
+    const whiteKind = supported.includes("rgbww")
+      ? "rgbww"
+      : supported.includes("rgbw")
+        ? "rgbw"
+        : null;
 
     const sceneEntityId = () => this._eventSceneId(currentEvent.id);
     const currentEntry = () => drafts.get(sceneEntityId());
@@ -6240,6 +7165,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._ensureSunPath();
         restoreLive();
         brightnessGraphCtl?.disconnect();
+        colorBriGraphCtl?.disconnect();
+        whiteBriGraphCtl?.disconnect();
         wheelCtl?.disconnect();
       },
     });
@@ -6254,8 +7181,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     const subtitleEl = header.querySelector("[slot='subtitle']");
     const chipsHost = document.createElement("div");
     const brightnessGraphMount = document.createElement("div");
+    const colorBriMount = document.createElement("div");
+    const whiteBriMount = document.createElement("div");
     const wheelMount = document.createElement("div");
-    body.append(chipsHost, brightnessGraphMount, wheelMount);
+    body.append(
+      chipsHost,
+      brightnessGraphMount,
+      colorBriMount,
+      whiteBriMount,
+      wheelMount
+    );
 
     const selectScene = async (next, { fromWheel = false } = {}) => {
       const nextId = this._eventSceneId(next.id);
@@ -6274,6 +7209,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       paintChips();
       brightnessGraphCtl?.sync();
+      colorBriGraphCtl?.sync();
+      whiteBriGraphCtl?.sync();
       if (!fromWheel) {
         const mode = draftWheelMode(currentDraft(), hasColor, hasTemp);
         wheelCtl?.setMode(mode, { convertDraft: false });
@@ -6326,10 +7263,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       applyToSession();
       wheelCtl?.syncPresets();
       brightnessGraphCtl?.sync();
+      colorBriGraphCtl?.sync();
+      whiteBriGraphCtl?.sync();
       await applyLive();
     };
 
     brightnessGraphCtl = createLightBrightnessGraph({
+      title: this._t("frontend.lights.brightness", "Brightness"),
+      subtitle: this._t("frontend.lights.graph_sub", "0–100% by solar event"),
       getPoints: () => {
         const activeId = sceneEntityId();
         return events
@@ -6448,6 +7389,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._schedulePreview();
         await selectScene(next);
         brightnessGraphCtl?.sync();
+        colorBriGraphCtl?.sync();
+        whiteBriGraphCtl?.sync();
         wheelCtl?.sync();
         await applyLive();
       },
@@ -6462,6 +7405,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         applyToSession();
         brightnessGraphCtl?.sync();
+        colorBriGraphCtl?.sync();
+        whiteBriGraphCtl?.sync();
         await applyLive();
       },
       onDragEnd: () => {
@@ -6469,6 +7414,102 @@ class SceneExtrapolationPanel extends HTMLElement {
       },
     });
     brightnessGraphMount.appendChild(brightnessGraphCtl.el);
+
+    if (whiteKind) {
+      const extraPoints = (valueOf) => () => {
+        const activeId = sceneEntityId();
+        return events
+          .map((item) => {
+            const sceneId = this._eventSceneId(item.id);
+            if (!sceneId) {
+              return null;
+            }
+            const entry = drafts.get(sceneId);
+            const member = Boolean(entry?.member && entry.draft);
+            const draft = entry?.draft;
+            return {
+              eventId: item.id,
+              sceneId,
+              seconds: item.seconds,
+              name: item.name,
+              icon: item.icon,
+              member,
+              brightness: member ? valueOf(draft) : 0,
+              rgb: member ? draftRgb(draft) : [128, 128, 128],
+              active: member && sceneId === activeId,
+            };
+          })
+          .filter(Boolean);
+      };
+      colorBriGraphCtl = createLightBrightnessGraph({
+        title: this._t("frontend.lights.color_brightness", "Color brightness"),
+        subtitle: this._t("frontend.lights.graph_sub", "0–100% by solar event"),
+        getPoints: extraPoints(colorBrightnessFromDraft),
+        onSelect: (eventId) => {
+          const next = events.find((item) => item.id === eventId);
+          if (next) {
+            selectScene(next);
+          }
+        },
+        onAdd: async (_sceneId, eventId) => {
+          const next = events.find((item) => item.id === eventId);
+          if (next) {
+            await selectScene(next);
+          }
+        },
+        onBrightness: async (sceneId, brightness) => {
+          const entry = drafts.get(sceneId);
+          if (!entry?.member || !entry.draft) {
+            return;
+          }
+          setColorBrightnessOnDraft(entry.draft, brightness, whiteKind);
+          applyToSession();
+          brightnessGraphCtl?.sync();
+          colorBriGraphCtl?.sync();
+          whiteBriGraphCtl?.sync();
+          wheelCtl?.sync();
+          await applyLive();
+        },
+        onDragEnd: () => {
+          wheelCtl?.sync();
+        },
+      });
+      whiteBriGraphCtl = createLightBrightnessGraph({
+        title: this._t("frontend.lights.white_brightness", "White brightness"),
+        subtitle: this._t("frontend.lights.graph_sub", "0–100% by solar event"),
+        getPoints: extraPoints(whiteBrightnessFromDraft),
+        onSelect: (eventId) => {
+          const next = events.find((item) => item.id === eventId);
+          if (next) {
+            selectScene(next);
+          }
+        },
+        onAdd: async (_sceneId, eventId) => {
+          const next = events.find((item) => item.id === eventId);
+          if (next) {
+            await selectScene(next);
+          }
+        },
+        onBrightness: async (sceneId, brightness) => {
+          const entry = drafts.get(sceneId);
+          if (!entry?.member || !entry.draft) {
+            return;
+          }
+          setWhiteBrightnessOnDraft(entry.draft, brightness, whiteKind);
+          applyToSession();
+          brightnessGraphCtl?.sync();
+          colorBriGraphCtl?.sync();
+          whiteBriGraphCtl?.sync();
+          wheelCtl?.sync();
+          await applyLive();
+        },
+        onDragEnd: () => {
+          wheelCtl?.sync();
+        },
+      });
+      colorBriMount.appendChild(colorBriGraphCtl.el);
+      whiteBriMount.appendChild(whiteBriGraphCtl.el);
+    }
 
     if (hasColor || hasTemp) {
       wheelCtl = createSceneColorWheel({
@@ -6532,7 +7573,7 @@ class SceneExtrapolationPanel extends HTMLElement {
   async _openSaveDialog({ rename = false, focus } = {}) {
     this.shadowRoot.querySelector("ha-dialog.save-dialog")?.remove();
     const data = {
-      scene_name: this._formData.scene_name || "Automatic Lighting",
+      scene_name: this._formData.scene_name || "Circadian",
       area: this._formData.area || null,
       description: this._formData.description || "",
       labels: [...(this._formData.labels || [])],
@@ -6721,6 +7762,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._formData.description = data.description;
       this._formData.labels = data.labels;
       this._formData.category = data.category || null;
+      this._syncEditorSceneTitle();
       dialog.open = false;
       await this._save();
     });
@@ -6837,10 +7879,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     );
     dialog.open = true;
     const text = document.createElement("p");
+    const displayName = this._editorSceneTitle();
     text.textContent = this._loc(
       "ui.panel.config.scene.picker.delete_confirm_text",
-      `Are you sure you want to delete ${this._formData.scene_name}?`,
-      { name: this._formData.scene_name }
+      `Are you sure you want to delete ${displayName}?`,
+      { name: displayName }
     );
     dialog.appendChild(text);
     const footer = customElements.get("ha-dialog-footer")
@@ -6904,7 +7947,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const step1Intro = document.createElement("p");
     step1Intro.className = "setup-intro";
     step1Intro.innerHTML =
-      "Creates a scene which, when activated, lights your room based on the sun. Best paired with an automation that triggers it every few minutes.<br><br>" +
+      "Creates a scene which, when activated, lights your room based on the sun. Automatic light updates are built in: it keeps adjusting lights on an interval (toggle from the scene list).<br><br>" +
       "<span class=\"muted\">Only <strong>native Home Assistant scenes</strong> are supported (not Hue/integration scenes). All settings can be changed later.</span>";
     step1.appendChild(step1Intro);
 
@@ -6925,7 +7968,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         icon: "mdi:auto-fix",
         title: "Set up automatically",
         detail:
-          "Finds lights in the area and creates Bright, Dimmed, and Low lights scenes for noon, day, and dusk.",
+          "Finds lights in the area and creates a native scene for each solar event (dawn, sunrise, noon, sunset, dusk).",
       },
       {
         id: "manual",
@@ -7148,12 +8191,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       setError("");
       try {
         const linked =
-          state.mode === "automatic" ? true : Boolean(state.linked);
+          state.mode === "automatic" ? false : Boolean(state.linked);
         const assignments =
           state.mode === "automatic"
             ? {
+                dawn: SETUP_AUTOMATIC,
+                sunrise: SETUP_AUTOMATIC,
                 noon: SETUP_AUTOMATIC,
-                linked: SETUP_AUTOMATIC,
+                sunset: SETUP_AUTOMATIC,
                 dusk: SETUP_AUTOMATIC,
               }
             : buildAssignmentsPayload();
@@ -7336,6 +8381,110 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sunPathKey = undefined;
   }
 
+  _takePathMorphMs(from, to) {
+    const ms = this._pathMorphMs || 0;
+    this._pathMorphMs = 0;
+    if (
+      !ms ||
+      !from?.curve?.length ||
+      !to?.curve?.length ||
+      this._view !== "edit" ||
+      this._lightView !== "dial" ||
+      !this._clockRingsHost
+    ) {
+      return 0;
+    }
+    return ms;
+  }
+
+  _commitSunPath(payload, key) {
+    const from = this._displayedSunPath || this._sunPath;
+    const morphMs = this._takePathMorphMs(from, payload);
+    this._sunPath = payload;
+    this._sunPathKey = key;
+    if (morphMs && from && from !== payload) {
+      this._morphSunPath(from, payload, morphMs);
+      return;
+    }
+    this._drawSunPath();
+  }
+
+  _cancelSunPathMorph() {
+    if (this._sunPathMorphRaf) {
+      window.cancelAnimationFrame(this._sunPathMorphRaf);
+      this._sunPathMorphRaf = undefined;
+    }
+  }
+
+  _morphSunPath(from, to, durationMs) {
+    this._cancelSunPathMorph();
+    // Scrub uses 5-event knots (CSS ramps between stops). Morphing that straight
+    // into Astral's dense samples flashes — especially the midnight wrap at the
+    // bottom of the dial. Densify the "from" lights onto a 5-minute grid first
+    // so frame 0 already matches how we paint rings during the morph.
+    const fromDense = this._withDenseScrubLights(from);
+    this._sunPath = fromDense;
+    this._displayedSunPath = fromDense;
+    if (this._lightView === "dial" && this._clockRingsHost) {
+      this._patchLightClock(fromDense, { morphing: true });
+    }
+    const started = performance.now();
+    const tick = (now) => {
+      const u = Math.min(1, (now - started) / durationMs);
+      const eased = easeOutCubic(u);
+      const frame = lerpSunPath(fromDense, to, eased);
+      this._sunPath = frame;
+      this._displayedSunPath = frame;
+      const patched =
+        this._lightView === "dial" &&
+        this._patchLightClock(frame, { morphing: true });
+      if (!patched) {
+        this._drawSunPath();
+        this._cancelSunPathMorph();
+        this._sunPath = to;
+        this._displayedSunPath = to;
+        return;
+      }
+      if (u < 1) {
+        this._sunPathMorphRaf = window.requestAnimationFrame(tick);
+        return;
+      }
+      this._sunPathMorphRaf = undefined;
+      this._sunPath = to;
+      this._displayedSunPath = to;
+      // Full paint once: bloom + horizon wedges (skipped mid-morph to avoid
+      // stacked translucent flashes under the dial).
+      this._patchLightClock(to, { morphing: false });
+    };
+    this._sunPathMorphRaf = window.requestAnimationFrame(tick);
+  }
+
+  /**
+   * Expand knot-only scrub lights to a dense sample grid before refine morph.
+   * Leaves already-dense Astral payloads unchanged.
+   */
+  _withDenseScrubLights(payload) {
+    const lights = payload?.lights;
+    if (!lights?.length || !payload?.events?.length) {
+      return payload;
+    }
+    const sparse = lights.some(
+      (light) =>
+        !light.suggested &&
+        (light.samples?.length || 0) > 0 &&
+        (light.samples?.length || 0) <= 8
+    );
+    if (!sparse) {
+      return payload;
+    }
+    return {
+      ...payload,
+      lights: resampleLightsForEvents(lights, payload.events, draftRgb, {
+        stepMinutes: 5,
+      }),
+    };
+  }
+
   async _ensureSunPath() {
     if (!this._hass || !this._sunPathEl) {
       return;
@@ -7356,9 +8505,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         const cached = this._previewCache.get(key);
         if (cached) {
-          this._sunPath = cached;
-          this._sunPathKey = key;
-          this._drawSunPath();
+          if (listView || !this._previewOverlay) {
+            this._rememberPreview(key, cached);
+          }
+          this._commitSunPath(cached, key);
           continue;
         }
         try {
@@ -7395,12 +8545,10 @@ class SceneExtrapolationPanel extends HTMLElement {
             this._previewQueued = true;
             continue;
           }
-          this._sunPath = payload;
-          this._sunPathKey = key;
           if (listView || !this._previewOverlay) {
             this._rememberPreview(key, payload);
           }
-          this._drawSunPath();
+          this._commitSunPath(payload, key);
         } catch (err) {
           if (this._chartKey() !== key) {
             this._previewQueued = true;
@@ -7443,13 +8591,29 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!changed) {
       return;
     }
-    // Keep sticky scrub time across date changes (curve updates underneath).
-    this._sunPathKey = undefined;
     // Dial year scrub: client sun + in-place patch (no mid-drag HA preview).
-    if (this._yearScrubbing && this._lightView === "clock") {
+    if (this._yearScrubbing && this._lightView === "dial") {
       this._applyClientScrubDay(iso);
       return;
     }
+    // Date picker / chips: walk intermediate calendar days on the dial so the
+    // year does not crossfade in one fade (dusk clamp would also jump).
+    const fromIso = this._displayedSunPath?.date || this._sunPath?.date;
+    if (
+      this._view === "edit" &&
+      this._lightView === "dial" &&
+      fromIso &&
+      fromIso !== iso &&
+      this._sunPath?.lights
+    ) {
+      this._morphAcrossDates(fromIso, iso);
+      return;
+    }
+    if (!this._yearScrubbing) {
+      this._pathMorphMs = DATE_MORPH_MS;
+    }
+    // Keep sticky scrub time across date changes (curve updates underneath).
+    this._sunPathKey = undefined;
     if (debounce) {
       this._schedulePreview();
     } else {
@@ -7458,10 +8622,51 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   /**
-   * Mid-drag year scrub: local sun geometry + resampled rings. HA Astral
-   * preview reconciles on pointer-up via _ensureSunPath.
+   * Animate the dial through each calendar day from→to, then refine with HA.
    */
-  _applyClientScrubDay(iso) {
+  _morphAcrossDates(fromIso, toIso) {
+    this._cancelSunPathMorph();
+    const span = diffIsoDays(fromIso, toIso);
+    if (!span) {
+      this._sunPathKey = undefined;
+      this._pathMorphMs = DATE_MORPH_MS;
+      this._ensureSunPath();
+      return;
+    }
+    const absSpan = Math.abs(span);
+    const sign = span > 0 ? 1 : -1;
+    const started = performance.now();
+    let lastIso = null;
+    const tick = (now) => {
+      const u = Math.min(1, (now - started) / DATE_MORPH_MS);
+      const eased = easeOutCubic(u);
+      const dayOffset = Math.round(eased * absSpan) * sign;
+      const iso = shiftIsoDate(fromIso, dayOffset);
+      if (iso !== lastIso) {
+        lastIso = iso;
+        this._previewDate = iso;
+        this._syncDateToolbar();
+        this._applyClientScrubDay(iso, { keepMorph: true });
+      }
+      if (u < 1) {
+        this._sunPathMorphRaf = window.requestAnimationFrame(tick);
+        return;
+      }
+      this._sunPathMorphRaf = undefined;
+      this._previewDate = toIso;
+      this._syncDateToolbar();
+      this._sunPathKey = undefined;
+      this._pathMorphMs = PREVIEW_REFINE_MS;
+      this._ensureSunPath();
+    };
+    this._sunPathMorphRaf = window.requestAnimationFrame(tick);
+  }
+
+  /**
+   * Mid-drag year scrub: local sun geometry + 5-event ring knots (CSS ramps
+   * between them). HA Astral preview reconciles on pointer-up via _ensureSunPath.
+   */
+  _applyClientScrubDay(iso, { keepMorph = false } = {}) {
     const loc = this._previewLocation || this._homeLocation();
     if (!loc || !this._sunPath?.lights) {
       return;
@@ -7473,12 +8678,18 @@ class SceneExtrapolationPanel extends HTMLElement {
       longitude: loc.longitude,
       timeZone,
       duskMinimum: this._duskMinimumSeconds() ?? null,
+      // Coarse elevation curve while dragging; release uses Astral.
+      curveStepMinutes: 30,
     });
     const lights = resampleLightsForEvents(
       this._sunPath.lights,
       sunDay.events,
-      draftRgb
+      draftRgb,
+      { knotsOnly: true }
     );
+    if (!keepMorph) {
+      this._cancelSunPathMorph();
+    }
     this._sunPath = {
       ...sunDay,
       lights,
@@ -7488,6 +8699,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       // Face not built yet — thumb still moves; full draw on release.
       return;
     }
+    this._displayedSunPath = this._sunPath;
   }
 
   _buildDateToolbar() {
@@ -7555,31 +8767,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     // the landscape rail (column + align-end).
     dateTools.append(chipRow, dateBtn);
 
-    const banner = document.createElement("div");
-    banner.className = "sun-location-override";
-    banner.hidden = true;
-    const bannerIcon = document.createElement("ha-icon");
-    bannerIcon.setAttribute("icon", "mdi:map-marker");
-    const copy = document.createElement("div");
-    copy.className = "sun-location-copy";
-    const title = document.createElement("div");
-    title.className = "title";
-    title.textContent = "Previewing another location";
-    const coords = document.createElement("div");
-    coords.className = "coords";
-    copy.append(title, coords);
-    const change = document.createElement("ha-button");
-    change.appearance = "plain";
-    change.textContent = "Change";
-    change.addEventListener("click", () => this._openLocationDialog());
-    const reset = document.createElement("ha-icon-button");
-    reset.label = "Use home location";
-    const resetIcon = document.createElement("ha-icon");
-    resetIcon.setAttribute("icon", "mdi:close");
-    reset.appendChild(resetIcon);
-    reset.addEventListener("click", () => this._setPreviewLocation(null));
-    banner.append(bannerIcon, copy, change, reset);
-
     const scrubBlock = document.createElement("div");
     scrubBlock.className = "sun-scrub-block";
     scrubBlock.append(dateTools, this._buildYearScrub());
@@ -7591,9 +8778,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._dateTools = dateTools;
     this._chipRow = chipRow;
     this._scrubBlock = scrubBlock;
-    this._locationBanner = banner;
-    this._locationCoords = coords;
-    toolbar.append(banner, scrubBlock);
+    // Location banner is in .page-banners (wired in first render), not toolbar.
+    toolbar.append(scrubBlock);
     this._syncLocationToolbar();
     this._syncScrubDateLabel();
     return toolbar;
@@ -7693,6 +8879,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._locationBanner) {
       this._locationBanner.hidden = !active;
     }
+    this._syncPageBannersVisibility();
     if (this._locationCoords && this._previewLocation) {
       this._locationCoords.textContent = formatLatLng(
         this._previewLocation.latitude,
@@ -7909,7 +9096,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         return;
       }
       ev.preventDefault();
-      scrub.focus({ preventScroll: true });
+      // Do not focus on pointer — :focus-visible still rings in some browsers
+      // after programmatic focus from click. Tab / arrows keep working via tabindex.
       scrub.setPointerCapture(ev.pointerId);
       this._yearScrubbing = true;
       applyPointer(ev);
@@ -7948,6 +9136,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       this._syncDateToolbar();
       this._syncYearScrubLayout();
+      this._pathMorphMs = PREVIEW_REFINE_MS;
       this._ensureSunPath();
     };
     scrub.addEventListener("pointerup", endScrub);
@@ -8095,6 +9284,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       window.matchMedia("(orientation: landscape)").matches;
   }
 
+  /** Wide enough for the dual-gutter landscape scrub rail. */
+  _landscapeScrubFits() {
+    return window.matchMedia(
+      `(min-width: ${CLOCK_LANDSCAPE_SCRUB_MIN_WIDTH_PX}px)`
+    ).matches;
+  }
+
   _sceneSidebarIsOpen() {
     const el = this.shadowRoot?.querySelector(".scene-sidebar");
     if (!el || el._closing) {
@@ -8104,6 +9300,16 @@ class SceneExtrapolationPanel extends HTMLElement {
       return Boolean(el.open);
     }
     return el.classList.contains("open");
+  }
+
+  _ensureToolbarChrome() {
+    if (this._toolbarChrome?.isConnected) {
+      return this._toolbarChrome;
+    }
+    const chrome = document.createElement("div");
+    chrome.className = "sun-toolbar-chrome";
+    this._toolbarChrome = chrome;
+    return chrome;
   }
 
   _syncYearScrubLayout() {
@@ -8118,11 +9324,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     const landscape = this._isLandscape();
     const clock =
       this._view === "edit" &&
-      this._lightView === "clock" &&
+      this._lightView === "dial" &&
       Boolean(this._clockScrubRail) &&
       Boolean(this.shadowRoot?.querySelector(".sun-light-clock-face"));
     const sidebarOpen = this._sceneSidebarIsOpen();
-    const landscapeClock = landscape && clock;
+    // Portrait chrome below this width — empty left rail reads as a black bar.
+    const landscapeClock = landscape && clock && this._landscapeScrubFits();
     // Collapse the rail (animated width) instead of yanking it out — that
     // fought the sidebar/page-gutter transition and looked jagged.
     const collapse = landscapeClock && sidebarOpen;
@@ -8139,14 +9346,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._chipRow) {
       this._chipRow.hidden = collapse || hideToolbarScrub;
     }
-    // Dial: chips left of (or above, in the rail) the date; table: date first.
-    if (this._dateTools && this._chipRow && this._scrubDateBtn) {
-      if (clock) {
-        this._dateTools.append(this._chipRow, this._scrubDateBtn);
-      } else {
-        this._dateTools.append(this._scrubDateBtn, this._chipRow);
-      }
-    }
 
     if (landscapeClock) {
       this._clockScrubRail.hidden = false;
@@ -8154,6 +9353,23 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._scrubBlock.hidden = false;
       if (this._scrubBlock.parentNode !== this._clockScrubRail) {
         this._clockScrubRail.appendChild(this._scrubBlock);
+      }
+      // Rail: chips above date; readout stays on the dial body (top-left).
+      if (this._toolbarChrome) {
+        this._toolbarChrome.remove();
+      }
+      if (
+        this._hoverReadout &&
+        this._sunPathBodyEl &&
+        this._hoverReadout.parentNode !== this._sunPathBodyEl
+      ) {
+        this._sunPathBodyEl.insertBefore(
+          this._hoverReadout,
+          this._sunPathBodyEl.firstChild
+        );
+      }
+      if (this._dateTools && this._chipRow && this._scrubDateBtn) {
+        this._dateTools.append(this._chipRow, this._scrubDateBtn);
       }
     } else {
       this._sunPathStage?.classList.remove("scrub-collapsed");
@@ -8170,28 +9386,116 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       this._scrubBlock.hidden = hideToolbarScrub;
       this._yearScrub.classList.remove("vertical");
+
+      if (clock) {
+        // Portrait dial: time/sun + chips in one wrapping chrome row; date +
+        // year scrub below (in-flow so the timeline pushes the dial down).
+        const chrome = this._ensureToolbarChrome();
+        if (this._hoverReadout && this._hoverReadout.parentNode !== chrome) {
+          chrome.appendChild(this._hoverReadout);
+        }
+        if (this._chipRow && this._chipRow.parentNode !== chrome) {
+          chrome.appendChild(this._chipRow);
+        }
+        if (chrome.parentNode !== this._dateToolbar) {
+          this._dateToolbar.insertBefore(chrome, this._scrubBlock);
+        }
+        if (this._dateTools && this._scrubDateBtn) {
+          this._dateTools.replaceChildren(this._scrubDateBtn);
+        }
+      } else {
+        // Table / list chart: chips with date; readout stays in the body.
+        if (this._toolbarChrome) {
+          this._toolbarChrome.remove();
+        }
+        if (
+          this._hoverReadout &&
+          this._sunPathBodyEl &&
+          this._hoverReadout.parentNode !== this._sunPathBodyEl
+        ) {
+          this._sunPathBodyEl.insertBefore(
+            this._hoverReadout,
+            this._sunPathBodyEl.firstChild
+          );
+        }
+        if (this._dateTools && this._chipRow && this._scrubDateBtn) {
+          this._dateTools.append(this._scrubDateBtn, this._chipRow);
+        }
+      }
     }
     this._syncYearScrub();
     if (landscapeClock) {
       requestAnimationFrame(() => this._alignYearScrubRail());
     }
-    // Portrait timeline overlays the dial; landscape rail is beside it.
+    // Portrait timeline is in-flow — remeasure face budget after chrome settles.
     requestAnimationFrame(() => this._syncDialHeightBudget(landscapeClock));
   }
 
-  _syncDialHeightBudget(_landscapeClock) {
+  _syncDialHeightBudget(landscapeClock) {
     const path = this._sunPathEl;
     if (!path) {
       return;
     }
     if (!path.classList.contains("dial-view")) {
       path.style.removeProperty("--dial-timeline-h");
+      path.style.removeProperty("--dial-face-max");
+      path.style.removeProperty("--dial-banner-h");
       return;
     }
-    // Portrait date/scrub overlay the dial — do not shrink the face for them.
-    // Light list always flows under the face (same in landscape) and must not
-    // reduce --dial-face-max.
-    path.style.setProperty("--dial-timeline-h", "0px");
+    const landscape =
+      landscapeClock ??
+      this._sunPathStage?.classList.contains("landscape-clock-scrub");
+    // Portrait: toolbar (chips + year scrub) is in-flow — reserve its height so
+    // the face shrinks instead of the timeline covering hour ticks. Landscape
+    // rail sits beside the face (timeline-h = 0).
+    let toolbarH = 0;
+    if (
+      !landscape &&
+      this._dateToolbar &&
+      !this._dateToolbar.classList.contains("toolbar-rail-only")
+    ) {
+      toolbarH = Math.ceil(this._dateToolbar.getBoundingClientRect().height) || 0;
+    }
+    path.style.setProperty("--dial-timeline-h", `${toolbarH}px`);
+
+    // Face fills available height under the app bar, minus overhead above the
+    // face (event-label pad) and gap, leaving ~32px of the first light row
+    // peeking so the list is discoverable without shrinking on mobile past
+    // the width/aspect lock. Draft/location banners sit above .sun-path —
+    // reserve their reach so the dial shrinks instead of pushing the list
+    // below the fold.
+    const hostRect = this.getBoundingClientRect();
+    const hostH = this.clientHeight || window.innerHeight;
+    const headerVar = parseFloat(
+      getComputedStyle(this).getPropertyValue("--header-height")
+    );
+    const headerH = Number.isFinite(headerVar) && headerVar > 0 ? headerVar : 64;
+    const pathTop = path.getBoundingClientRect().top;
+    // Vignette / horizon: extend to the host top (under app bar + banners).
+    const vignetteReach = Math.max(0, Math.round(pathTop - hostRect.top));
+    // Face budget: only the stack below the app bar (banners), not the header
+    // itself (already subtracted as headerH).
+    const bannerH = Math.max(0, Math.round(pathTop - (hostRect.top + headerH)));
+    path.style.setProperty("--dial-banner-h", `${vignetteReach}px`);
+    const clock = path.querySelector(".sun-light-clock");
+    let overhead = 40 + 16;
+    if (clock) {
+      const cs = getComputedStyle(clock);
+      const padTop = parseFloat(cs.paddingTop);
+      const gap = parseFloat(cs.rowGap || cs.gap);
+      overhead =
+        (Number.isFinite(padTop) ? padTop : 40) +
+        (Number.isFinite(gap) ? gap : 16);
+    }
+    const maxPx = Math.max(
+      160,
+      Math.floor(
+        hostH - headerH - bannerH - overhead - toolbarH - DIAL_LIST_PEEK_PX
+      )
+    );
+    path.style.setProperty("--dial-face-max", `${maxPx}px`);
+    // Face size may have changed — re-align landscape rail / chrome next frame.
+    requestAnimationFrame(() => this._alignYearScrubRail());
   }
 
   _alignYearScrubRail() {
@@ -8235,6 +9539,24 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _drawSunPath() {
     if (!this._sunPathEl || !this._sunPath || !this._sunPath.curve?.length) {
+      return;
+    }
+    if (this._view === "edit" && !this._dateToolbar) {
+      this._lightView = this._readLightView();
+    }
+    const useClock = this._view === "edit" && this._lightView === "dial";
+    if (useClock && this._clockRingsHost && this._patchLightClock(this._sunPath)) {
+      this._displayedSunPath = this._sunPath;
+      if (this._dateToolbar) {
+        if (this._yearScrubbing) {
+          this._syncYearScrub();
+        } else {
+          this._syncDateToolbar();
+        }
+      }
+      this._syncEditorChrome();
+      this._syncYearScrubLayout();
+      this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
       return;
     }
     const { events, curve } = this._sunPath;
@@ -8476,13 +9798,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     const hoverLine = document.createElement("div");
     hoverLine.className = "sun-hover-line";
     this._hoverLine = hoverLine;
-    // Read before painting lights: toolbar build (below) also syncs the
-    // toggle, but the graphs must use storage on the first paint or the
-    // highlight and the rendered view disagree after refresh.
-    if (this._view === "edit" && !this._dateToolbar) {
-      this._lightView = this._readLightView();
-    }
-    const useClock = this._view === "edit" && this._lightView === "clock";
     let clockEl = null;
     if (this._view === "edit") {
       if (useClock) {
@@ -8555,6 +9870,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._syncEditorChrome();
     }
     this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
+    this._displayedSunPath = this._sunPath;
   }
 
   _secondsFromPlotPointer(ev, plots) {
@@ -8634,8 +9950,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     const sun = document.createElement("span");
     const elev = interpolateElevation(this._sunPath.curve, seconds);
     sun.textContent = `Sun ${elev.toFixed(1)}°`;
-    readout.append(time, sun);
-    if (sticky && this._view === "edit" && this._lightView === "clock") {
+    // Always reserve the reset slot so time/° do not shift when sticky.
+    const resetSlot = document.createElement("span");
+    resetSlot.className = "sun-hover-reset-slot";
+    if (sticky && this._view === "edit" && this._lightView === "dial") {
       const reset = document.createElement("button");
       reset.type = "button";
       reset.className = "sun-hover-reset";
@@ -8648,8 +9966,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         ev.stopPropagation();
         this._resetClockSunToNow();
       });
-      readout.appendChild(reset);
+      resetSlot.appendChild(reset);
     }
+    readout.append(time, sun, resetSlot);
   }
 
   _resetClockSunToNow() {
@@ -8658,12 +9977,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._hoverSeconds = undefined;
     this._clockSunLive = false;
     const now = nowSecondsSinceMidnight();
-    this._moveClockSunTo(now, { durationMs: 840 });
+    this._moveClockSunTo(now, { durationMs: CLOCK_SUN_MOVE_MS });
     this._fillHoverReadout(now, { hovering: false });
   }
 
   /** Ease the sun along the path when it relocates (event pin, reset, etc.). */
-  _moveClockSunTo(toSeconds, { durationMs = 760 } = {}) {
+  _moveClockSunTo(toSeconds, { durationMs = CLOCK_SUN_MOVE_MS } = {}) {
     if (!this._clockSunEl || toSeconds == null) {
       return;
     }
@@ -8971,7 +10290,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     return event?.seconds != null ? event.seconds : null;
   }
 
-  _applyClockSunAppearance(seconds) {
+  _applyClockSunAppearance(seconds, { skipHorizonGlow = false } = {}) {
     const curve = this._sunPath?.curve;
     if (!curve?.length) {
       return;
@@ -9013,7 +10332,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       );
     }
     // Dial glow is a blurred clone of the rings — not elevation-tinted.
-    this._updateHorizonGlow(elev, glowLook);
+    // Skip rim rebuild mid-morph — sunrise/sunset lerps made the bottom flash.
+    if (!skipHorizonGlow) {
+      this._updateHorizonGlow(elev, glowLook);
+    }
     this._updateOverrideArc(this._clockStickySeconds);
   }
 
@@ -9064,19 +10386,32 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const cx = fr.left + fr.width / 2;
     const cy = fr.top + fr.height / 2;
-    // Reach the light list under the face so horizon/bloom fill behind it.
+    // Reach the light list under the face so horizon/bloom fill behind it —
+    // but stop ~156px past the list so an abspos back cannot inflate scroll
+    // height when an ancestor becomes a scrollport (overflow-x: clip quirk).
     const clock = face.closest(".sun-light-clock");
-    const clockBottom =
-      clock?.getBoundingClientRect().bottom ?? Math.max(fr.bottom, host.bottom);
+    const legend = this._clockLegendEl;
+    const listBottom =
+      legend?.getBoundingClientRect().bottom ??
+      clock?.getBoundingClientRect().bottom ??
+      fr.bottom;
+    const contentBottom = listBottom + 156;
+    // Cover the full panel host from the face center — including when the
+    // dial shifts left for an open sidebar (gutter). Axis + corners so a
+    // square always fills the viewport under the drawer.
     const reach = Math.max(
       cx - host.left,
       host.right - cx,
       cy - host.top,
-      host.bottom - cy,
-      clockBottom - cy,
+      Math.min(host.bottom, contentBottom) - cy,
+      contentBottom - cy,
+      Math.hypot(cx - host.left, cy - host.top),
+      Math.hypot(host.right - cx, cy - host.top),
+      Math.hypot(cx - host.left, Math.min(host.bottom, contentBottom) - cy),
+      Math.hypot(host.right - cx, Math.min(host.bottom, contentBottom) - cy),
       fr.width * 0.62
     );
-    const side = reach * 2;
+    const side = reach * 2 + 2;
     back.style.width = `${side}px`;
     back.style.height = `${side}px`;
   }
@@ -9228,7 +10563,197 @@ class SceneExtrapolationPanel extends HTMLElement {
     return 0.5 * (1 + Math.cos((delta / band) * Math.PI));
   }
 
-  _updateHorizonGlow(elev, glowLook) {
+  _rgbCss(rgb) {
+    return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+  }
+
+  _lerpRgb(a, b, t) {
+    return [
+      Math.round(a[0] + (b[0] - a[0]) * t),
+      Math.round(a[1] + (b[1] - a[1]) * t),
+      Math.round(a[2] + (b[2] - a[2]) * t),
+    ];
+  }
+
+  /**
+   * Continuous core→outer RGB stops for the horizon rim (then → surface).
+   * Colorful gold→pink→purple only through civil twilight; at dusk (sun −6°,
+   * “last light”) and below the rim is dark blue only — no afterglow pinks.
+   * Elevation keyframes share the same stop count so scrub never jumps.
+   */
+  _horizonSpectrumStops(elev) {
+    const light = !this.hasAttribute("data-dark-mode");
+    // 5 stops: near-sun → mid → far, then caller mixes into surface.
+    // Dusk/dawn in this product = civil ±6° (see scene_dusk helper copy).
+    const keys = light
+      ? [
+          {
+            e: -90,
+            stops: [
+              [130, 145, 175],
+              [145, 158, 185],
+              [160, 172, 198],
+              [175, 185, 208],
+              [190, 198, 218],
+            ],
+          },
+          {
+            // At/after dusk: dark-blue wash only (soft for light surfaces).
+            e: -6,
+            stops: [
+              [120, 140, 180],
+              [135, 152, 188],
+              [150, 165, 198],
+              [168, 180, 208],
+              [185, 195, 218],
+            ],
+          },
+          {
+            e: 0,
+            // Gold → coral → pink → mauve → soft sky (sunset / last civil light).
+            stops: [
+              [255, 178, 88],
+              [245, 140, 96],
+              [236, 120, 150],
+              [196, 148, 210],
+              [158, 200, 245],
+            ],
+          },
+          {
+            e: 8,
+            stops: [
+              [126, 200, 255],
+              [140, 206, 255],
+              [168, 216, 250],
+              [196, 228, 252],
+              [220, 238, 255],
+            ],
+          },
+          {
+            e: 90,
+            stops: [
+              [79, 179, 255],
+              [120, 198, 255],
+              [158, 214, 252],
+              [190, 226, 255],
+              [220, 238, 255],
+            ],
+          },
+        ]
+      : [
+          {
+            e: -90,
+            stops: [
+              [8, 12, 28],
+              [10, 16, 40],
+              [12, 20, 48],
+              [14, 24, 56],
+              [18, 30, 68],
+            ],
+          },
+          {
+            // At/after dusk (−6°): dark blue only — pink/purple end with last light.
+            e: -6,
+            stops: [
+              [28, 45, 100],
+              [22, 38, 85],
+              [16, 30, 70],
+              [12, 22, 55],
+              [10, 16, 42],
+            ],
+          },
+          {
+            e: 0,
+            // Gold/orange core (Rayleigh), then pink, mauve, blue through twilight.
+            stops: [
+              [255, 170, 85],
+              [245, 140, 100],
+              [232, 120, 160],
+              [150, 90, 180],
+              [70, 120, 200],
+            ],
+          },
+          {
+            e: 8,
+            stops: [
+              [100, 185, 250],
+              [79, 179, 255],
+              [70, 150, 230],
+              [50, 110, 190],
+              [36, 80, 150],
+            ],
+          },
+          {
+            e: 90,
+            stops: [
+              [79, 179, 255],
+              [64, 165, 250],
+              [50, 130, 220],
+              [36, 90, 170],
+              [28, 64, 120],
+            ],
+          },
+        ];
+    let lo = keys[0];
+    let hi = keys[keys.length - 1];
+    for (let i = 0; i < keys.length - 1; i += 1) {
+      if (elev >= keys[i].e && elev <= keys[i + 1].e) {
+        lo = keys[i];
+        hi = keys[i + 1];
+        break;
+      }
+      if (elev < keys[0].e) {
+        lo = hi = keys[0];
+        break;
+      }
+    }
+    if (elev > keys[keys.length - 1].e) {
+      lo = hi = keys[keys.length - 1];
+    }
+    const span = hi.e - lo.e || 1;
+    const t = lo === hi ? 0 : (elev - lo.e) / span;
+    return lo.stops.map((a, i) => this._lerpRgb(a, hi.stops[i], t));
+  }
+
+  /** Color along spectrum for band weight 1 (event) → 0 (surface). */
+  _horizonBandColor(weight, spectrumStops) {
+    const SURFACE = "var(--primary-background-color)";
+    const u = 1 - Math.min(1, Math.max(0, weight));
+    // Evenly space RGB stops, then a final segment into the surface color.
+    const n = spectrumStops.length;
+    const pos = u * n;
+    if (pos >= n - 1e-6) {
+      return SURFACE;
+    }
+    const i = Math.min(n - 1, Math.floor(pos));
+    const f = pos - i;
+    if (i >= n - 1) {
+      const pct = Math.round((1 - f) * 100);
+      if (pct >= 100) {
+        return this._rgbCss(spectrumStops[n - 1]);
+      }
+      if (pct <= 0) {
+        return SURFACE;
+      }
+      return `color-mix(in srgb, ${this._rgbCss(spectrumStops[n - 1])} ${pct}%, ${SURFACE})`;
+    }
+    return this._rgbCss(this._lerpRgb(spectrumStops[i], spectrumStops[i + 1], f));
+  }
+
+  /**
+   * Day-wedge sky from elevation (smooth; light = crispy blue).
+   */
+  _horizonDaySky(elev, spectrumStops) {
+    const light = !this.hasAttribute("data-dark-mode");
+    if (light) {
+      return CLOCK_DAY_SKY_LIGHT;
+    }
+    return elev >= 4
+      ? this._rgbCss(spectrumStops[0])
+      : "rgb(79, 179, 255)";
+  }
+
+  _updateHorizonGlow(elev, _glowLook) {
     const el = this._clockHorizonGlowEl;
     if (!el) {
       return;
@@ -9236,6 +10761,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const sunrise = this._clockSunriseSeconds;
     const sunset = this._clockSunsetSeconds;
     if (sunrise == null && sunset == null) {
+      this._horizonGlowCacheKey = null;
       el.style.background = "transparent";
       if (this._clockSkyDayEl) {
         this._clockSkyDayEl.setAttribute("fill", "transparent");
@@ -9243,26 +10769,24 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     const maxElev = Math.max(this._sunPath?.max_elevation || 0, 1e-6);
+    // Skip rebuild when scrub elev has not moved enough to change the wash.
+    const elevQ = Math.round(elev / 0.25) * 0.25;
+    const cacheKey = `${elevQ}|${sunrise}|${sunset}|${maxElev.toFixed(2)}`;
+    if (cacheKey === this._horizonGlowCacheKey) {
+      return;
+    }
+    this._horizonGlowCacheKey = cacheKey;
     // Climb 0 at/below horizon → 1 at that day's peak (smooth; no hard palette cut).
     const climb = Math.min(1, Math.max(0, elev) / maxElev);
     const nearHorizon = elev < 0 ? 1 : 1 - climb;
-    const strength = 0.35 + 0.65 * nearHorizon;
-    // Narrower rim band than the prior ~4.2h window.
-    const band = 2.5 * 3600;
-    // Cosine ramp is smooth enough at 36 stops; half the scrub-time string work.
-    const steps = 36;
+    // Keep some wash at noon so sky blue still peeks; stronger near horizon.
+    const strength = 0.42 + 0.58 * nearHorizon;
+    // Wider band so gold→pink→purple→blue can stretch into surface.
+    const band = 5 * 3600;
+    const steps = 48;
     const stops = [];
-    // Peach → sky as the sun climbs. A binary nearHorizon threshold flipped the
-    // whole conic in one frame mid-morning.
-    const peach = glowLook.horizonFill || glowLook.pathColor;
-    const sky = glowLook.skyColor || glowLook.pathColor;
-    const peachPct = Math.round(100 * nearHorizon);
-    const rimFill =
-      peachPct >= 100
-        ? peach
-        : peachPct <= 0
-          ? sky
-          : `color-mix(in srgb, ${peach} ${peachPct}%, ${sky})`;
+    const spectrum = this._horizonSpectrumStops(elev);
+    const daySky = this._horizonDaySky(elev, spectrum);
     for (let i = 0; i <= steps; i += 1) {
       const seconds = (i / steps) * SECONDS_PER_DAY;
       let weight = 0;
@@ -9272,14 +10796,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (sunset != null) {
         weight = Math.max(weight, this._horizonWeight(seconds, sunset, band));
       }
-      const mix = weight * strength;
+      const mix = Math.min(1, weight * strength);
       stops.push(
-        `color-mix(in srgb, ${rimFill} ${Math.round(mix * 100)}%, transparent) ${((i / steps) * 100).toFixed(2)}%`
+        `${this._horizonBandColor(mix, spectrum)} ${((i / steps) * 100).toFixed(2)}%`
       );
     }
     el.style.background = `conic-gradient(from 180deg, ${stops.join(", ")})`;
 
-    // Day wedge (sunrise→sunset): Apple Solar–style sky blue behind the planet.
+    // Day wedge (sunrise→sunset): crispy sky blue in light; elevation sky in dark.
     const dayEl = this._clockSkyDayEl;
     if (dayEl) {
       // Bridge civil twilight so fill alpha does not jump at elev=0.
@@ -9288,7 +10812,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       const dayAlpha = 0.16 + 0.26 * twilight + 0.38 * climb;
       dayEl.setAttribute(
         "fill",
-        `color-mix(in srgb, ${sky} ${Math.round(dayAlpha * 100)}%, transparent)`
+        `color-mix(in srgb, ${daySky} ${Math.round(dayAlpha * 100)}%, transparent)`
       );
     }
   }
@@ -9412,8 +10936,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._applyClockSunAppearance(from);
     const tick = (now) => {
       const u = Math.min(1, (now - started) / durationMs);
-      // Strong ease-out so the pin settles softly (quintic).
-      const eased = 1 - (1 - u) ** 5;
+      // Cubic ease-out: decelerates across more of the 1.5s than quintic.
+      const eased = easeOutCubic(u);
       let s = from + delta * eased;
       s = ((s % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
       this._applyClockSunAppearance(s);
@@ -9484,7 +11008,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         path.setAttribute("class", "clock-sun-path-night");
       } else {
         path.setAttribute("class", "clock-sun-day");
-        path.style.stroke = skyLookFromElevation(run.midElev).pathColor;
       }
       path.setAttribute("d", d);
       path.setAttribute("vector-effect", "non-scaling-stroke");
@@ -9546,7 +11069,13 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     // Year-scrub patch only refreshes path/marks — recreating sun chrome here
     // would replace _clockSunEl with a detached node and skip spoke layout.
+    // Re-append the fill group so new paths stay *under* the sun (append order
+    // otherwise paints the path on top of the fill; HTML outline is separate).
     if (!includeSun) {
+      const dayGroup = overlay.querySelector(".clock-sun-day-group");
+      if (dayGroup) {
+        overlay.appendChild(dayGroup);
+      }
       return;
     }
 
@@ -9937,7 +11466,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           )
         ) >= 1
       ) {
-        this._moveClockSunTo(finalSeconds, { durationMs: 2000 });
+        this._moveClockSunTo(finalSeconds, { durationMs: CLOCK_SUN_MOVE_MS });
       } else {
         this._applyClockSunAppearance(finalSeconds);
       }
@@ -9975,14 +11504,18 @@ class SceneExtrapolationPanel extends HTMLElement {
   /**
    * Update an existing dial face for year scrub without replaceChildren.
    * Returns false when the light set changed and a full rebuild is required.
+   *
+   * morphing: mid refine/date morph — update ring fills + sun only. Skip bloom
+   * clones and horizon wedge rebuilds (those are translucent layers that stack
+   * and flash under the dial when destroyed/recreated every frame).
    */
-  _patchLightClock(payload) {
+  _patchLightClock(payload, { morphing = false } = {}) {
     const ringsHost = this._clockRingsHost;
     const overlay = this._clockOverlayEl;
     if (!ringsHost || !overlay || !payload?.events) {
       return false;
     }
-    const ringLights = (payload.lights || []).filter((light) => !light.suggested);
+    const ringLights = this._clockRingLights(payload.lights || []);
     const rings = [...ringsHost.querySelectorAll(":scope > .clock-ring")];
     if (rings.length !== ringLights.length) {
       return false;
@@ -9999,16 +11532,21 @@ class SceneExtrapolationPanel extends HTMLElement {
         fill.style.background = bg;
       }
     }
-    for (const glow of this._clockGlowLayer?.querySelectorAll(
-      ":scope > .sun-light-clock-glow"
-    ) || []) {
-      const glowRings = glow.querySelectorAll(":scope > .clock-ring");
-      for (let index = 0; index < glowRings.length; index += 1) {
-        const fill = glowRings[index].querySelector(".clock-ring-fill");
-        if (fill && ringLights[index]) {
-          fill.style.background = conicGradientFromSamples(
-            ringLights[index].samples || []
-          );
+    // Bloom is two semi-transparent blurred clones of the same conics. Updating
+    // them every morph frame doubles the mid-transition chroma under the dial;
+    // sync once when morphing finishes.
+    if (!morphing) {
+      for (const glow of this._clockGlowLayer?.querySelectorAll(
+        ":scope > .sun-light-clock-glow"
+      ) || []) {
+        const glowRings = glow.querySelectorAll(":scope > .clock-ring");
+        for (let index = 0; index < glowRings.length; index += 1) {
+          const fill = glowRings[index].querySelector(".clock-ring-fill");
+          if (fill && ringLights[index]) {
+            fill.style.background = conicGradientFromSamples(
+              ringLights[index].samples || []
+            );
+          }
         }
       }
     }
@@ -10022,12 +11560,17 @@ class SceneExtrapolationPanel extends HTMLElement {
       overlay.querySelectorAll(sel).forEach((el) => el.remove());
     }
     this._paintClockSunPath(overlay, payload.events, { includeSun: false });
-    const sky = this._clockHorizonSkyEl;
-    if (sky) {
-      while (sky.firstChild) {
-        sky.removeChild(sky.firstChild);
+    if (!morphing) {
+      const sky = this._clockHorizonSkyEl;
+      if (sky) {
+        while (sky.firstChild) {
+          sky.removeChild(sky.firstChild);
+        }
+        this._paintHorizonShadow(sky, payload.events);
       }
-      this._paintHorizonShadow(sky, payload.events);
+    } else {
+      // Keep wedge geometry in sync without tear-down (avoids bottom flash).
+      this._syncHorizonShadowPaths(payload.events);
     }
     this._syncClockEventAnchorsForScrub(payload.events);
     this._layoutDialChromeFn?.();
@@ -10035,11 +11578,49 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._clockStickySeconds ??
       this._clockSunDisplayedSeconds ??
       this._clockSunIdleSeconds();
-    this._applyClockSunAppearance(seconds);
+    this._applyClockSunAppearance(seconds, { skipHorizonGlow: morphing });
     if (this._hoverReadout) {
       this._fillHoverReadout(seconds, { hovering: false });
     }
     return true;
+  }
+
+  /** Update night/day wedge path `d` in place during morph (no node churn). */
+  _syncHorizonShadowPaths(events) {
+    const sky = this._clockHorizonSkyEl;
+    if (!sky) {
+      return;
+    }
+    const sunrise = this._clockEventSeconds(events, "sunrise");
+    const sunset = this._clockEventSeconds(events, "sunset");
+    const dawn = this._clockEventSeconds(events, "dawn");
+    const dusk = this._clockEventSeconds(events, "dusk");
+    this._clockSunriseSeconds = sunrise;
+    this._clockSunsetSeconds = sunset;
+    const dayEl = sky.querySelector(".clock-sky-day");
+    const nightEl = sky.querySelector(".clock-sky-night");
+    const deepEl = sky.querySelector(".clock-sky-deep");
+    if (sunrise != null && sunset != null) {
+      if (dayEl) {
+        dayEl.setAttribute(
+          "d",
+          this._clockWedgePath(sunrise, sunset, CLOCK_SKY_R)
+        );
+        this._clockSkyDayEl = dayEl;
+      }
+      if (nightEl) {
+        nightEl.setAttribute(
+          "d",
+          this._clockWedgePath(sunset, sunrise, CLOCK_SKY_R)
+        );
+      }
+    }
+    if (dusk != null && dawn != null && deepEl) {
+      deepEl.setAttribute(
+        "d",
+        this._clockWedgePath(dusk, dawn, CLOCK_SKY_R)
+      );
+    }
   }
 
   /** Reposition / relabel event buttons mid-scrub (ghosts move with solar marks). */
@@ -10101,7 +11682,8 @@ class SceneExtrapolationPanel extends HTMLElement {
   _buildLightClock(events) {
     this._lightNameLabels = [];
     const lights = this._sunPath.lights || [];
-    const ringLights = lights.filter((light) => !light.suggested);
+    const ringLights = this._clockRingLights(lights);
+    const legendLights = this._legendLights(lights);
     const suggested = lights.filter((light) => light.suggested);
     const wrap = document.createElement("div");
     wrap.className = "sun-light-clock";
@@ -10649,7 +12231,7 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const legend = document.createElement("div");
     legend.className = "sun-light-clock-legend";
-    for (const light of [...ringLights, ...suggested]) {
+    for (const light of legendLights) {
       legend.appendChild(this._clockLegendRow(light, events));
     }
     this._clockLegendEl = legend;
@@ -10667,6 +12249,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (light.in_area === false) {
       row.classList.add("out-of-area");
+    }
+    if (this._lightIsUnavailable(light.entity_id)) {
+      row.classList.add("unavailable");
     }
     if (light.entity_id === this._sidebarLightId) {
       row.classList.add("selected");
@@ -10692,12 +12277,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const sub = document.createElement("div");
     sub.className = "clock-legend-sub";
-    if (suggested) {
+    const unavailable = this._lightIsUnavailable(light.entity_id);
+    if (unavailable) {
+      sub.textContent = this._t("frontend.lights.unavailable", "Unavailable");
+    } else if (suggested) {
       sub.textContent = "Not in an assigned scene yet";
     }
     meta.append(title, sub);
     row.appendChild(meta);
-    if (!suggested) {
+    if (!suggested && !unavailable) {
       this._lightNameLabels.push({ light, titleEl: title, subEl: sub });
     }
 
@@ -10842,7 +12430,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const wrap = document.createElement("div");
     wrap.className = "sun-lights";
-    for (const light of lights) {
+    for (const light of this._legendLights(lights)) {
       wrap.appendChild(this._lightRow(light, xOf, events));
     }
     return wrap;
@@ -10858,6 +12446,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (light.in_area === false) {
       row.classList.add("out-of-area");
+    }
+    if (this._lightIsUnavailable(light.entity_id)) {
+      row.classList.add("unavailable");
     }
     if (!suggested && light.entity_id === this._sidebarLightId) {
       row.classList.add("selected");
@@ -10889,10 +12480,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     const name = document.createElement("span");
     name.className = "light-name";
     name.textContent = light.name;
+    if (this._lightIsUnavailable(light.entity_id)) {
+      name.textContent = `${light.name} · ${this._t(
+        "frontend.lights.unavailable",
+        "Unavailable"
+      )}`;
+    }
     if (light.in_area === false) {
       name.title = "This light is not in the selected area";
     }
-    if (!suggested) {
+    if (!suggested && !this._lightIsUnavailable(light.entity_id)) {
       this._lightNameLabels.push({ light, el: name });
     }
     bar.appendChild(name);
@@ -11022,1509 +12619,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     return row;
   }
 }
-
-function isoYear(iso) {
-  return Number(iso.slice(0, 4));
-}
-
-function daysInYear(year) {
-  return new Date(year, 1, 29).getDate() === 29 ? 366 : 365;
-}
-
-function dayOfYear(iso) {
-  const [year, month, day] = iso.split("-").map(Number);
-  return Math.round((Date.UTC(year, month - 1, day) - Date.UTC(year, 0, 1)) / 86400000);
-}
-
-function isoFromDayOfYear(year, dayIndex) {
-  const date = new Date(Date.UTC(year, 0, 1 + dayIndex));
-  const nextYear = date.getUTCFullYear();
-  const nextMonth = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const nextDay = String(date.getUTCDate()).padStart(2, "0");
-  return `${nextYear}-${nextMonth}-${nextDay}`;
-}
-
-const HUE_WHEEL_RENDER = 600;
-const HUE_COLOR_PRESETS = [
-  "#ff3b30",
-  "#ff9500",
-  "#ffcc00",
-  "#34c759",
-  "#5ac8fa",
-  "#007aff",
-  "#5856d6",
-  "#af52de",
-];
-const HUE_TEMP_PRESETS = [2200, 2700, 3000, 4000, 5000, 6500];
-const HUE_PIN_PATH =
-  "M 24,0 C 10.745166,0 0,10.575951 0,23.622046 0,39.566928 21,57.578739 22.05,58.346457 L 24,60 25.95,58.346457 C 27,57.578739 48,39.566928 48,23.622046 48,10.575951 37.254834,0 24,0 Z";
-const HUE_DOT_PATH = "M6 0A6 6 0 006 12 6 6 0 006 0Z";
-const HUE_DOT_OUTLINE_PATH = "M8 0A8 8 0 008 16 8 8 0 008 0Z";
-const HUE_PATH_STEPS = 24;
-const _hueWheelImageCache = new Map();
-
-function hueLinearScale(t, min, max) {
-  return (max - min) * t + min;
-}
-
-function hueCurveScale(t, min, max) {
-  let addon = 0;
-  const coef = max / min / 65;
-  if (t <= 0.1) {
-    addon = hueLinearScale(t * 10, 0, coef);
-  } else if (t <= 0.97) {
-    addon = coef - hueLinearScale((t - 0.1) / 0.9, 0, 2 * coef);
-  } else {
-    addon = -coef + hueLinearScale((t - 0.97) / 0.03, 0, coef);
-  }
-  return (Math.pow(max / min, Math.pow(t, 1.55)) + addon) * min;
-}
-
-function inverseHueCurveScale(targetValue, min, max) {
-  const epsilon = 0.0001;
-  let low = 0;
-  let high = 1;
-  let t = 0.5;
-  while (high - low > epsilon) {
-    const midValue = hueCurveScale(t, min, max);
-    if (midValue < targetValue) {
-      low = t;
-    } else {
-      high = t;
-    }
-    t = (low + high) / 2;
-  }
-  return t;
-}
-
-function xy2polar(x, y) {
-  return [Math.sqrt(x * x + y * y), Math.atan2(y, x)];
-}
-
-function polar2xy(r, phi) {
-  return [r * Math.cos(phi), r * Math.sin(phi)];
-}
-
-function rad2deg(rad) {
-  return ((rad + Math.PI) / (2 * Math.PI)) * 360;
-}
-
-function deg2rad(deg) {
-  return (deg / 360) * 2 * Math.PI - Math.PI;
-}
-
-function hueFromDeg(deg) {
-  deg -= 70;
-  if (deg < 0) {
-    deg += 360;
-  }
-  return deg;
-}
-
-function degFromHue(hue) {
-  hue += 70;
-  if (hue > 360) {
-    hue -= 360;
-  }
-  return hue;
-}
-
-function saturationFromR(r, radius) {
-  const exp = 1.9;
-  const saturation = Math.pow(r, exp) / Math.pow(radius, exp);
-  return saturation > 1 ? 1 : saturation;
-}
-
-function rFromSaturation(saturation, radius) {
-  const exp = 1.9;
-  return Math.pow(saturation * Math.pow(radius, exp), 1 / exp);
-}
-
-function fixHSValue(value, r, radius, hue, fixPoint, lower, maxOffset = 5) {
-  const precondition = lower
-    ? r > radius / 2
-    : r < (3 * radius) / 4 && r > radius / 4;
-  if (
-    precondition &&
-    hue >= fixPoint - maxOffset &&
-    hue <= fixPoint + maxOffset
-  ) {
-    let offset = fixPoint - hue;
-    if (offset < 0) {
-      offset = -offset;
-    }
-    offset = maxOffset - offset;
-    value += lower ? -offset / 360 : offset / 360;
-  }
-  return value;
-}
-
-function hsValue(hue, r, radius) {
-  let value = 0.95;
-  value = fixHSValue(value, r, radius, hue, 60, true);
-  value = fixHSValue(value, r, radius, hue, 180, true);
-  value = fixHSValue(value, r, radius, hue, 240, false);
-  value = fixHSValue(value, r, radius, hue, 300, true);
-  return value > 1 ? 1 : value;
-}
-
-function hsv2rgb(hue, saturation, value) {
-  const chroma = value * saturation;
-  const hue1 = hue / 60;
-  const x = chroma * (1 - Math.abs((hue1 % 2) - 1));
-  let r1 = 0;
-  let g1 = 0;
-  let b1 = 0;
-  if (hue1 >= 0 && hue1 <= 1) {
-    [r1, g1, b1] = [chroma, x, 0];
-  } else if (hue1 >= 1 && hue1 <= 2) {
-    [r1, g1, b1] = [x, chroma, 0];
-  } else if (hue1 >= 2 && hue1 <= 3) {
-    [r1, g1, b1] = [0, chroma, x];
-  } else if (hue1 >= 3 && hue1 <= 4) {
-    [r1, g1, b1] = [0, x, chroma];
-  } else if (hue1 >= 4 && hue1 <= 5) {
-    [r1, g1, b1] = [x, 0, chroma];
-  } else if (hue1 >= 5 && hue1 <= 6) {
-    [r1, g1, b1] = [chroma, 0, x];
-  }
-  const m = value - chroma;
-  return [
-    Math.round(255 * (r1 + m)),
-    Math.round(255 * (g1 + m)),
-    Math.round(255 * (b1 + m)),
-  ];
-}
-
-function rgb2hsv(r, g, b) {
-  const rabs = r / 255;
-  const gabs = g / 255;
-  const babs = b / 255;
-  const v = Math.max(rabs, gabs, babs);
-  const diff = v - Math.min(rabs, gabs, babs);
-  const diffc = (c) => (v - c) / 6 / diff + 1 / 2;
-  let h = 0;
-  let s = 0;
-  if (diff !== 0) {
-    s = diff / v;
-    const rr = diffc(rabs);
-    const gg = diffc(gabs);
-    const bb = diffc(babs);
-    if (rabs === v) {
-      h = bb - gg;
-    } else if (gabs === v) {
-      h = 1 / 3 + rr - bb;
-    } else {
-      h = 2 / 3 + gg - rr;
-    }
-    if (h < 0) {
-      h += 1;
-    } else if (h > 1) {
-      h -= 1;
-    }
-  }
-  return [Math.round(h * 360), Math.round(s * 100) / 100, Math.round(v * 100) / 100];
-}
-
-function hueTempToRgb(kelvin) {
-  const start = 2000;
-  const tres = 4200;
-  const end = 6500;
-  const startRgb = [255, 180, 55];
-  const tresRgb = [255, 255, 255];
-  const endRgb = [190, 228, 243];
-  let k = kelvin;
-  if (k < start) {
-    k = start;
-  }
-  if (k > end) {
-    k = end;
-  }
-  if (k < tres) {
-    const t = (k - start) / (tres - start);
-    return [
-      Math.round(hueLinearScale(t, startRgb[0], tresRgb[0])),
-      Math.round(hueLinearScale(t, startRgb[1], tresRgb[1])),
-      Math.round(hueLinearScale(t, startRgb[2], tresRgb[2])),
-    ];
-  }
-  const t = (k - tres) / (end - tres);
-  return [
-    Math.round(hueLinearScale(t, tresRgb[0], endRgb[0])),
-    Math.round(hueLinearScale(t, tresRgb[1], endRgb[1])),
-    Math.round(hueLinearScale(t, tresRgb[2], endRgb[2])),
-  ];
-}
-
-function hexToRgb(hex) {
-  const n = hex.replace("#", "");
-  return [
-    parseInt(n.slice(0, 2), 16),
-    parseInt(n.slice(2, 4), 16),
-    parseInt(n.slice(4, 6), 16),
-  ];
-}
-
-function rgbCss([r, g, b]) {
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
-function pinForeground(rgb) {
-  const luminance = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
-  return luminance > 192 ? "rgba(0,0,0,0.7)" : "#fff";
-}
-
-function draftWheelMode(draft, hasColor, hasTemp) {
-  if (
-    draft?.rgb_color ||
-    draft?.hs_color ||
-    draft?.rgbw_color ||
-    draft?.rgbww_color
-  ) {
-    return hasColor ? "color" : "temp";
-  }
-  if (draft?.color_temp_kelvin != null) {
-    return hasTemp ? "temp" : "color";
-  }
-  return hasColor ? "color" : "temp";
-}
-
-function draftRgb(draft) {
-  if (draft?.rgb_color) {
-    return draft.rgb_color;
-  }
-  if (draft?.hs_color) {
-    return hsv2rgb(draft.hs_color[0], draft.hs_color[1] / 100, 1);
-  }
-  if (draft?.rgbww_color) {
-    return draft.rgbww_color.slice(0, 3);
-  }
-  if (draft?.rgbw_color) {
-    return draft.rgbw_color.slice(0, 3);
-  }
-  if (draft?.color_temp_kelvin != null) {
-    return hueTempToRgb(draft.color_temp_kelvin);
-  }
-  return [255, 214, 170];
-}
-
-function applyColorToDraft(draft, rgb, hsv) {
-  draft.rgb_color = rgb;
-  draft.hs_color = [hsv[0], Math.round(hsv[1] * 100)];
-  draft.color_temp_kelvin = undefined;
-  draft.rgbw_color = undefined;
-  draft.rgbww_color = undefined;
-  draft.state = "on";
-}
-
-function applyTempToDraft(draft, kelvin) {
-  draft.color_temp_kelvin = kelvin;
-  draft.rgb_color = undefined;
-  draft.hs_color = undefined;
-  draft.rgbw_color = undefined;
-  draft.rgbww_color = undefined;
-  draft.state = "on";
-}
-
-function inferDraftColorKind(draft) {
-  if (draft?.rgbww_color) {
-    return "rgbww";
-  }
-  if (draft?.rgbw_color) {
-    return "rgbw";
-  }
-  if (draft?.rgb_color) {
-    return "rgb";
-  }
-  if (draft?.hs_color) {
-    return "hs";
-  }
-  if (draft?.color_temp_kelvin != null) {
-    return "temp";
-  }
-  return null;
-}
-
-function collapseSceneCycle(sequence) {
-  const ids = [];
-  for (const id of sequence || []) {
-    if (!id) {
-      continue;
-    }
-    if (!ids.length || ids[ids.length - 1] !== id) {
-      ids.push(id);
-    }
-  }
-  if (ids.length > 1 && ids[0] === ids[ids.length - 1]) {
-    ids.pop();
-  }
-  return ids;
-}
-
-function lerpNumber(from, to, t) {
-  return from + (to - from) * t;
-}
-
-function interpolateDraftSample(fromDraft, toDraft, t) {
-  const fromKind = inferDraftColorKind(fromDraft);
-  const toKind = inferDraftColorKind(toDraft);
-  // Same kind: channel-native lerp. Different kinds: RGB-lerp endpoints so the
-  // wheel path / preview does not snap at the old 50% mode switch.
-  if (fromKind && toKind && fromKind === toKind) {
-    if (fromKind === "temp") {
-      const fromK = fromDraft?.color_temp_kelvin;
-      const toK = toDraft?.color_temp_kelvin;
-      const start = fromK != null ? fromK : toK;
-      const end = toK != null ? toK : fromK;
-      if (start == null || end == null) {
-        return { rgb: draftRgb(t < 0.5 ? fromDraft : toDraft) };
-      }
-      const kelvin = lerpNumber(start, end, t);
-      return { kelvin, rgb: hueTempToRgb(kelvin) };
-    }
-    if (fromKind === "hs") {
-      const start = fromDraft?.hs_color || toDraft?.hs_color;
-      const end = toDraft?.hs_color || fromDraft?.hs_color;
-      if (!start || !end) {
-        return { rgb: draftRgb(t < 0.5 ? fromDraft : toDraft) };
-      }
-      const hs = [lerpNumber(start[0], end[0], t), lerpNumber(start[1], end[1], t)];
-      return { hs, rgb: hsv2rgb(hs[0], hs[1] / 100, 1) };
-    }
-    if (fromKind === "rgbw" && fromDraft?.rgbw_color && toDraft?.rgbw_color) {
-      const rgbw = fromDraft.rgbw_color.map((value, index) =>
-        lerpNumber(value, toDraft.rgbw_color[index], t)
-      );
-      return { rgb: rgbw.slice(0, 3) };
-    }
-    if (fromKind === "rgbww" && fromDraft?.rgbww_color && toDraft?.rgbww_color) {
-      const rgbww = fromDraft.rgbww_color.map((value, index) =>
-        lerpNumber(value, toDraft.rgbww_color[index], t)
-      );
-      return { rgb: rgbww.slice(0, 3) };
-    }
-  }
-  const start = draftRgb(fromDraft);
-  const end = draftRgb(toDraft);
-  return {
-    rgb: [
-      lerpNumber(start[0], end[0], t),
-      lerpNumber(start[1], end[1], t),
-      lerpNumber(start[2], end[2], t),
-    ],
-  };
-}
-
-function colorWheelXY(hue, saturation, radius) {
-  const phi = deg2rad(degFromHue(hue));
-  const r = rFromSaturation(saturation, radius);
-  const [x, y] = polar2xy(r, phi);
-  return { x, y };
-}
-
-function wheelPointForSample(sample, wheelMode, radius, tempMin, tempMax) {
-  if (wheelMode === "temp") {
-    if (sample.kelvin == null) {
-      return null;
-    }
-    const coords = coordinatesForTemp(sample.kelvin, radius, tempMin, tempMax);
-    return { x: coords.x + radius, y: coords.y + radius, rgb: sample.rgb };
-  }
-  let hue;
-  let saturation;
-  if (sample.hs) {
-    hue = sample.hs[0];
-    saturation = sample.hs[1] / 100;
-  } else {
-    const hsv = rgb2hsv(sample.rgb[0], sample.rgb[1], sample.rgb[2]);
-    hue = hsv[0];
-    saturation = hsv[1];
-  }
-  const coords = colorWheelXY(hue, saturation, radius);
-  return { x: coords.x + radius, y: coords.y + radius, rgb: sample.rgb };
-}
-
-function hueColorAt(x, y, radius) {
-  const [r, phi] = xy2polar(x, y);
-  if (r - 2 > radius) {
-    return null;
-  }
-  const hue = hueFromDeg(rad2deg(phi));
-  const saturation = saturationFromR(r, radius);
-  const value = hsValue(hue, r, radius);
-  return { rgb: hsv2rgb(hue, saturation, value), hsv: [hue, saturation, value] };
-}
-
-function hueTempAt(x, y, radius, tempMin, tempMax) {
-  const [r] = xy2polar(x, y);
-  if (r - 2 > radius) {
-    return null;
-  }
-  const rowLength = 2 * radius;
-  const n = (y + radius) / rowLength;
-  const kelvin = Math.round(hueCurveScale(n, tempMin, tempMax));
-  return { rgb: hueTempToRgb(kelvin), kelvin };
-}
-
-function coordinatesForColor(hue, saturation, radius) {
-  const phi = deg2rad(degFromHue(hue));
-  const r = rFromSaturation(saturation, radius);
-  const [x, y] = polar2xy(r, phi);
-  return { x: Math.round(x), y: Math.round(y) };
-}
-
-function coordinatesForTemp(kelvin, radius, tempMin, tempMax) {
-  let k = kelvin;
-  if (k < tempMin) {
-    k = tempMin;
-  } else if (k > tempMax) {
-    k = tempMax;
-  }
-  const n = inverseHueCurveScale(k, tempMin, tempMax);
-  const y = Math.round(n * 2 * radius - radius);
-  const maxX = Math.ceil(Math.sqrt(Math.max(0, radius * radius - y * y)));
-  return { x: 0, y, maxX };
-}
-
-function limitToWheel(x, y, radius) {
-  const dx = x - radius;
-  const dy = y - radius;
-  const dist = Math.hypot(dx, dy);
-  if (dist <= radius || dist === 0) {
-    return { x, y };
-  }
-  const scale = radius / dist;
-  return { x: radius + dx * scale, y: radius + dy * scale };
-}
-
-function drawHueWheelImage(mode, tempMin, tempMax) {
-  const key =
-    mode === "temp"
-      ? `temp:${HUE_WHEEL_RENDER}:${tempMin}:${tempMax}`
-      : `color:${HUE_WHEEL_RENDER}`;
-  const cached = _hueWheelImageCache.get(key);
-  if (cached) {
-    return cached;
-  }
-  const canvas = document.createElement("canvas");
-  canvas.width = HUE_WHEEL_RENDER;
-  canvas.height = HUE_WHEEL_RENDER;
-  const ctx = canvas.getContext("2d");
-  const radius = HUE_WHEEL_RENDER / 2;
-  const image = ctx.createImageData(HUE_WHEEL_RENDER, HUE_WHEEL_RENDER);
-  const data = image.data;
-  for (let x = -radius; x < radius; x++) {
-    for (let y = -radius; y < radius; y++) {
-      const sample =
-        mode === "color"
-          ? hueColorAt(x, y, radius)
-          : hueTempAt(x, y, radius, tempMin, tempMax);
-      if (!sample) {
-        continue;
-      }
-      const adjustedX = x + radius;
-      const adjustedY = y + radius;
-      const index = (adjustedX + adjustedY * HUE_WHEEL_RENDER) * 4;
-      data[index] = sample.rgb[0];
-      data[index + 1] = sample.rgb[1];
-      data[index + 2] = sample.rgb[2];
-      data[index + 3] = 255;
-    }
-  }
-  ctx.putImageData(image, 0, 0);
-  const url = canvas.toDataURL();
-  _hueWheelImageCache.set(key, url);
-  return url;
-}
-
-function createLightBrightnessGraph({
-  getPoints,
-  onSelect,
-  onAdd,
-  onBrightness,
-  onDragEnd,
-}) {
-  // Full-bleed plot — 0/100% live in the heading subtext, not axis labels.
-  // Height stays fixed in CSS (120px); viewBox width tracks the element so
-  // circles stay round when the sidebar grows (no aspect-ratio lock).
-  const HEIGHT = 120;
-  const PAD_L = 8;
-  const PAD_R = 8;
-  const PAD_T = 14;
-  const PAD_B = 22;
-  const PLOT_H = HEIGHT - PAD_T - PAD_B;
-  let plotW = 300 - PAD_L - PAD_R;
-  let viewW = 300;
-
-  const el = document.createElement("div");
-  el.className = "light-brightness-graph";
-  el.setAttribute("role", "group");
-  el.setAttribute("aria-label", "Brightness by solar event, 0 to 100 percent");
-
-  const heading = document.createElement("div");
-  heading.className = "light-brightness-graph-heading";
-  const title = document.createElement("div");
-  title.className = "light-brightness-graph-title";
-  title.textContent = "Brightness";
-  const sub = document.createElement("div");
-  sub.className = "light-brightness-graph-sub";
-  sub.textContent = "0–100% by solar event";
-  heading.append(title, sub);
-
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", `0 0 ${viewW} ${HEIGHT}`);
-  svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
-
-  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-  const gradient = document.createElementNS(
-    "http://www.w3.org/2000/svg",
-    "linearGradient"
-  );
-  const gradientId = `light-bri-grad-${Math.random().toString(36).slice(2, 9)}`;
-  gradient.setAttribute("id", gradientId);
-  gradient.setAttribute("gradientUnits", "userSpaceOnUse");
-  gradient.setAttribute("x1", String(PAD_L));
-  gradient.setAttribute("y1", "0");
-  gradient.setAttribute("x2", String(PAD_L + plotW));
-  gradient.setAttribute("y2", "0");
-  defs.appendChild(gradient);
-
-  const frame = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  frame.setAttribute("class", "bg-frame");
-  frame.setAttribute("x", String(PAD_L));
-  frame.setAttribute("y", String(PAD_T));
-  frame.setAttribute("width", String(plotW));
-  frame.setAttribute("height", String(PLOT_H));
-  frame.setAttribute("rx", "6");
-
-  const fillArea = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  fillArea.setAttribute("class", "fill-area");
-  fillArea.setAttribute("fill", `url(#${gradientId})`);
-
-  const curve = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  curve.setAttribute("class", "curve");
-
-  const handlesLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  handlesLayer.setAttribute("class", "handles");
-
-  svg.append(defs, frame, fillArea, curve, handlesLayer);
-  el.append(heading, svg);
-
-  let drag = null;
-  let dragNode = null;
-
-  const applyLayout = (widthPx) => {
-    viewW = Math.max(Math.round(widthPx) || 300, 120);
-    plotW = Math.max(viewW - PAD_L - PAD_R, 40);
-    svg.setAttribute("viewBox", `0 0 ${viewW} ${HEIGHT}`);
-    frame.setAttribute("width", String(plotW));
-    gradient.setAttribute("x2", String(PAD_L + plotW));
-  };
-
-  const xOf = (seconds, minS, maxS) => {
-    const span = maxS - minS || 1;
-    return PAD_L + ((seconds - minS) / span) * plotW;
-  };
-  const yOf = (brightness) =>
-    PAD_T + PLOT_H * (1 - Math.max(0, Math.min(255, brightness)) / 255);
-  const brightnessFromY = (clientY) => {
-    const rect = svg.getBoundingClientRect();
-    const scaleY = HEIGHT / (rect.height || HEIGHT);
-    const y = (clientY - rect.top) * scaleY;
-    const t = 1 - (y - PAD_T) / PLOT_H;
-    return Math.round(Math.max(0, Math.min(1, t)) * 255);
-  };
-
-  const unbindWindowDrag = () => {
-    window.removeEventListener("pointermove", onWindowPointerMove);
-    window.removeEventListener("pointerup", onWindowPointerUp);
-    window.removeEventListener("pointercancel", onWindowPointerUp);
-  };
-
-  const onWindowPointerMove = (ev) => {
-    if (!drag || drag.pointerId !== ev.pointerId) {
-      return;
-    }
-    onBrightness(drag.sceneId, brightnessFromY(ev.clientY));
-  };
-
-  const onWindowPointerUp = (ev) => {
-    endDrag(ev);
-  };
-
-  const paintGeometry = (points) => {
-    gradient.replaceChildren();
-    const members = points.filter((point) => point.member);
-    if (!points.length) {
-      fillArea.setAttribute("d", "");
-      curve.setAttribute("d", "");
-      return [];
-    }
-    const minS = points[0].seconds;
-    const maxS = points[points.length - 1].seconds;
-    const span = Math.max(maxS - minS, 1);
-    for (const point of members) {
-      const stop = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "stop"
-      );
-      const offset = ((point.seconds - minS) / span) * 100;
-      const [r, g, b] = point.rgb;
-      stop.setAttribute("offset", `${offset.toFixed(2)}%`);
-      stop.setAttribute("stop-color", `rgb(${r},${g},${b})`);
-      gradient.appendChild(stop);
-    }
-    if (members.length === 1) {
-      const [r, g, b] = members[0].rgb;
-      const end = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "stop"
-      );
-      end.setAttribute("offset", "100%");
-      end.setAttribute("stop-color", `rgb(${r},${g},${b})`);
-      gradient.appendChild(end);
-    }
-    if (members.length) {
-      const memberCoords = members.map((point) => ({
-        x: xOf(point.seconds, minS, maxS),
-        y: yOf(point.brightness),
-      }));
-      const top = memberCoords
-        .map(
-          (c, i) => `${i === 0 ? "M" : "L"}${c.x.toFixed(1)},${c.y.toFixed(1)}`
-        )
-        .join(" ");
-      const area = `${top} L${memberCoords[memberCoords.length - 1].x.toFixed(
-        1
-      )},${(PAD_T + PLOT_H).toFixed(1)} L${memberCoords[0].x.toFixed(1)},${(
-        PAD_T + PLOT_H
-      ).toFixed(1)} Z`;
-      fillArea.setAttribute("d", area);
-      curve.setAttribute("d", top);
-    } else {
-      fillArea.setAttribute("d", "");
-      curve.setAttribute("d", "");
-    }
-    return points.map((point) => ({
-      x: xOf(point.seconds, minS, maxS),
-      y: point.member ? yOf(point.brightness) : PAD_T + PLOT_H,
-      point,
-    }));
-  };
-
-  const syncDragVisual = () => {
-    const points = [...getPoints()].sort((a, b) => a.seconds - b.seconds);
-    const coords = paintGeometry(points);
-    for (const node of handlesLayer.querySelectorAll(".handle")) {
-      const match = coords.find((c) => c.point.eventId === node.dataset.eventId);
-      if (!match) {
-        continue;
-      }
-      node.classList.toggle("active", Boolean(match.point.active));
-      node.classList.toggle("add", !match.point.member);
-      for (const circle of node.querySelectorAll("circle")) {
-        circle.setAttribute("cx", match.x.toFixed(1));
-        circle.setAttribute("cy", match.y.toFixed(1));
-      }
-      const plus = node.querySelector(".handle-plus");
-      if (plus) {
-        plus.setAttribute("x", match.x.toFixed(1));
-        plus.setAttribute("y", match.y.toFixed(1));
-      }
-      const fill = node.querySelector(".handle-fill");
-      if (fill) {
-        const [r, g, b] = match.point.rgb;
-        fill.setAttribute("fill", `rgb(${r},${g},${b})`);
-        fill.style.display = match.point.member ? "" : "none";
-      }
-    }
-  };
-
-  const endDrag = (ev) => {
-    if (!drag || (ev && drag.pointerId !== ev.pointerId)) {
-      return;
-    }
-    const node = dragNode;
-    const pointerId = drag.pointerId;
-    drag = null;
-    dragNode = null;
-    unbindWindowDrag();
-    if (ev && node) {
-      try {
-        node.releasePointerCapture(pointerId);
-      } catch (_err) {
-        /* already released */
-      }
-    }
-    sync();
-    onDragEnd?.();
-  };
-
-  const sync = () => {
-    if (drag) {
-      syncDragVisual();
-      return;
-    }
-    const points = [...getPoints()].sort((a, b) => a.seconds - b.seconds);
-    handlesLayer.replaceChildren();
-    const coords = paintGeometry(points);
-    if (!points.length) {
-      el.hidden = true;
-      return;
-    }
-    el.hidden = false;
-    for (const c of coords) {
-      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      const classes = ["handle"];
-      if (c.point.active) {
-        classes.push("active");
-      }
-      if (!c.point.member) {
-        classes.push("add");
-      }
-      group.setAttribute("class", classes.join(" "));
-      group.dataset.eventId = c.point.eventId;
-      group.dataset.sceneId = c.point.sceneId;
-      const hit = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle"
-      );
-      hit.setAttribute("class", "handle-hit");
-      hit.setAttribute("cx", c.x.toFixed(1));
-      hit.setAttribute("cy", c.y.toFixed(1));
-      hit.setAttribute("r", "14");
-      const fill = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle"
-      );
-      fill.setAttribute("class", "handle-fill");
-      fill.setAttribute("cx", c.x.toFixed(1));
-      fill.setAttribute("cy", c.y.toFixed(1));
-      fill.setAttribute("r", "5");
-      const [r, gCh, b] = c.point.rgb;
-      fill.setAttribute("fill", `rgb(${r},${gCh},${b})`);
-      if (!c.point.member) {
-        fill.style.display = "none";
-      }
-      const dot = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle"
-      );
-      dot.setAttribute("class", "handle-dot");
-      dot.setAttribute("cx", c.x.toFixed(1));
-      dot.setAttribute("cy", c.y.toFixed(1));
-      dot.setAttribute("r", "7");
-      const label = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "text"
-      );
-      label.setAttribute("class", "handle-label");
-      label.setAttribute("x", c.x.toFixed(1));
-      label.setAttribute("y", String(HEIGHT - 6));
-      label.textContent = c.point.name;
-      group.append(hit, dot, fill);
-      if (!c.point.member) {
-        const plus = document.createElementNS(
-          "http://www.w3.org/2000/svg",
-          "text"
-        );
-        plus.setAttribute("class", "handle-plus");
-        plus.setAttribute("x", c.x.toFixed(1));
-        plus.setAttribute("y", c.y.toFixed(1));
-        plus.textContent = "+";
-        group.appendChild(plus);
-        group.setAttribute(
-          "aria-label",
-          `Add to ${c.point.name}`
-        );
-        group.addEventListener("click", (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          onAdd?.(c.point.sceneId, c.point.eventId);
-        });
-      } else {
-        group.addEventListener("pointerdown", (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          // Window listeners so release outside the SVG still ends the drag
-          // (SVG setPointerCapture alone is flaky across the sidebar chrome).
-          unbindWindowDrag();
-          try {
-            group.setPointerCapture(ev.pointerId);
-          } catch (_err) {
-            /* capture optional when window listeners are bound */
-          }
-          dragNode = group;
-          drag = {
-            sceneId: c.point.sceneId,
-            eventId: c.point.eventId,
-            pointerId: ev.pointerId,
-          };
-          window.addEventListener("pointermove", onWindowPointerMove);
-          window.addEventListener("pointerup", onWindowPointerUp);
-          window.addEventListener("pointercancel", onWindowPointerUp);
-          onSelect(c.point.eventId);
-          onBrightness(c.point.sceneId, brightnessFromY(ev.clientY));
-        });
-      }
-      group.appendChild(label);
-      handlesLayer.appendChild(group);
-    }
-  };
-
-  const resizeObserver =
-    typeof ResizeObserver !== "undefined"
-      ? new ResizeObserver((entries) => {
-          const width = entries[0]?.contentRect?.width;
-          if (!(width > 0)) {
-            return;
-          }
-          applyLayout(width);
-          sync();
-        })
-      : null;
-  resizeObserver?.observe(el);
-  // First paint before layout may be 0 — sync again after mount.
-  requestAnimationFrame(() => {
-    applyLayout(el.clientWidth || 300);
-    sync();
-  });
-
-  sync();
-  return {
-    el,
-    sync,
-    disconnect: () => {
-      resizeObserver?.disconnect();
-      unbindWindowDrag();
-      drag = null;
-      dragNode = null;
-    },
-  };
-}
-
-function createSceneColorWheel({
-  hasColor,
-  hasTemp,
-  tempMin,
-  tempMax,
-  getState,
-  onSelect,
-  onChange,
-}) {
-  // Polar HSV + kelvin disk, pin/dot markers, and presets match etokheim/huemane-light-card.
-  let mode = hasColor ? "color" : "temp";
-  const stage = document.createElement("div");
-  stage.className = "hue-wheel-stage";
-  const canvasWrap = document.createElement("div");
-  canvasWrap.className = "hue-wheel-canvas";
-  const glow = document.createElement("canvas");
-  glow.className = "hue-wheel-glow";
-  glow.setAttribute("aria-hidden", "true");
-  glow.width = HUE_WHEEL_RENDER;
-  glow.height = HUE_WHEEL_RENDER;
-  const bg = document.createElement("canvas");
-  bg.className = "hue-wheel-bg";
-  bg.width = HUE_WHEEL_RENDER;
-  bg.height = HUE_WHEEL_RENDER;
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("class", "hue-wheel-svg");
-  svg.innerHTML = `
-    <defs>
-      <filter id="se-dot-shadow">
-        <feDropShadow dx="0" dy="0.5" stdDeviation="1" flood-opacity="1"></feDropShadow>
-      </filter>
-      <filter id="se-active-shadow">
-        <feOffset dx="0" dy="-10" />
-        <feGaussianBlur stdDeviation="7" result="offset-blur"/>
-        <feComposite operator="out" in="SourceGraphic" in2="offset-blur" result="inverse"/>
-        <feFlood flood-color="#0005" flood-opacity=".95" result="color"/>
-        <feComposite operator="in" in="color" in2="inverse" result="shadow"/>
-        <feComposite operator="over" in="shadow" in2="SourceGraphic"/>
-        <feDropShadow dx="0" dy="1.0" stdDeviation="2.0" flood-opacity="1"></feDropShadow>
-      </filter>
-    </defs>
-  `;
-  const pathLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  pathLayer.setAttribute("class", "hue-wheel-paths");
-  svg.appendChild(pathLayer);
-  canvasWrap.append(glow, svg, bg);
-  const chrome = document.createElement("div");
-  chrome.className = "hue-wheel-chrome";
-  const pill = document.createElement("div");
-  pill.className = "hue-mode-pill";
-  const presets = document.createElement("div");
-  presets.className = "hue-presets";
-  const presetTrack = document.createElement("div");
-  presetTrack.className = "hue-presets-track";
-  presetTrack.setAttribute("role", "list");
-  presets.appendChild(presetTrack);
-  chrome.append(pill, presets);
-  stage.append(canvasWrap, chrome);
-
-  const markers = new Map();
-  let drag = null;
-  let glideTimer;
-
-  const radiusPx = () => canvasWrap.clientWidth / 2;
-
-  const paintWheel = () => {
-    const url = drawHueWheelImage(mode, tempMin, tempMax);
-    const img = new Image();
-    img.onload = () => {
-      const bgCtx = bg.getContext("2d");
-      bgCtx.clearRect(0, 0, HUE_WHEEL_RENDER, HUE_WHEEL_RENDER);
-      bgCtx.drawImage(img, 0, 0);
-      const glowCtx = glow.getContext("2d");
-      glowCtx.clearRect(0, 0, HUE_WHEEL_RENDER, HUE_WHEEL_RENDER);
-      glowCtx.drawImage(img, 0, 0);
-    };
-    img.src = url;
-  };
-
-  const markerOffset = (active) =>
-    active ? { x: 24, y: 60 } : { x: 6, y: 6 };
-
-  const placeMarker = (marker, x, y, active) => {
-    const offset = markerOffset(active);
-    marker.g.style.transform = `translate(${x - offset.x}px, ${y - offset.y}px)`;
-    marker.g.style.transformOrigin = `${x}px ${y}px`;
-    marker.x = x;
-    marker.y = y;
-  };
-
-  const positionForDraft = (draft, markerMode, radius) => {
-    if (markerMode === "color") {
-      const rgb = draftRgb(draft);
-      const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
-      const coords = coordinatesForColor(hsv[0], hsv[1], radius);
-      return { x: coords.x + radius, y: coords.y + radius, rgb };
-    }
-    const kelvin = draft.color_temp_kelvin ?? 2700;
-    const coords = coordinatesForTemp(kelvin, radius, tempMin, tempMax);
-    const rgb = hueTempToRgb(kelvin);
-    return { x: coords.x + radius, y: coords.y + radius, rgb };
-  };
-
-  const applyAtPoint = (draft, x, y, radius) => {
-    const limited = limitToWheel(x, y, radius);
-    const cx = limited.x - radius;
-    const cy = limited.y - radius;
-    if (mode === "color") {
-      const sample = hueColorAt(cx, cy, radius);
-      if (!sample) {
-        return limited;
-      }
-      applyColorToDraft(draft, sample.rgb, sample.hsv);
-    } else {
-      const sample = hueTempAt(cx, cy, radius, tempMin, tempMax);
-      if (!sample) {
-        return limited;
-      }
-      applyTempToDraft(draft, sample.kelvin);
-    }
-    return limited;
-  };
-
-  const updatePresetOverflow = () => {
-    const maxScroll = presetTrack.scrollWidth - presetTrack.clientWidth;
-    presets.classList.toggle(
-      "can-scroll-end",
-      maxScroll > 1 && presetTrack.scrollLeft < maxScroll - 1
-    );
-  };
-
-  const syncPresets = () => {
-    presetTrack.replaceChildren();
-    const { scenes, activeId } = getState();
-    const active = scenes.find((item) => item.id === activeId);
-    const list = mode === "color" ? HUE_COLOR_PRESETS : HUE_TEMP_PRESETS;
-    presetTrack.setAttribute(
-      "aria-label",
-      mode === "color" ? "Colors" : "Color temperature"
-    );
-    for (const item of list) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "hue-preset";
-      btn.setAttribute("role", "listitem");
-      if (mode === "color") {
-        btn.style.backgroundColor = item;
-        const rgb = hexToRgb(item);
-        const current = active ? draftRgb(active.draft) : null;
-        if (
-          current &&
-          current[0] === rgb[0] &&
-          current[1] === rgb[1] &&
-          current[2] === rgb[2]
-        ) {
-          btn.classList.add("active");
-        }
-        btn.addEventListener("click", () => {
-          if (!active) {
-            return;
-          }
-          const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
-          applyColorToDraft(active.draft, rgb, hsv);
-          const marker = markers.get(active.id);
-          if (marker) {
-            marker.g.classList.add("glide");
-            clearTimeout(glideTimer);
-            glideTimer = setTimeout(() => marker.g.classList.remove("glide"), 450);
-          }
-          onChange();
-          sync();
-        });
-      } else {
-        const rgb = hueTempToRgb(item);
-        btn.style.backgroundColor = rgbCss(rgb);
-        if (active?.draft?.color_temp_kelvin === item) {
-          btn.classList.add("active");
-        }
-        btn.addEventListener("click", () => {
-          if (!active) {
-            return;
-          }
-          applyTempToDraft(active.draft, item);
-          const marker = markers.get(active.id);
-          if (marker) {
-            marker.g.classList.add("glide");
-            clearTimeout(glideTimer);
-            glideTimer = setTimeout(() => marker.g.classList.remove("glide"), 450);
-          }
-          onChange();
-          sync();
-        });
-      }
-      presetTrack.appendChild(btn);
-    }
-    requestAnimationFrame(updatePresetOverflow);
-  };
-
-  const paintPill = () => {
-    pill.replaceChildren();
-    if (!(hasColor && hasTemp)) {
-      pill.hidden = true;
-      return;
-    }
-    pill.hidden = false;
-    for (const option of ["color", "temp"]) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "hue-mode-btn";
-      if (option === mode) {
-        btn.classList.add("active");
-      }
-      btn.setAttribute(
-        "aria-label",
-        option === "color" ? "Color" : "Color temperature"
-      );
-      const swatch = document.createElement("span");
-      swatch.className = `hue-mode-swatch ${option}`;
-      btn.appendChild(swatch);
-      btn.addEventListener("click", () => setMode(option, { convertDraft: true }));
-      pill.appendChild(btn);
-    }
-  };
-
-  const sync = () => {
-    const radius = radiusPx();
-    const { scenes, activeId } = getState();
-    const seen = new Set();
-    for (const scene of scenes) {
-      seen.add(scene.id);
-      let marker = markers.get(scene.id);
-      if (!marker) {
-        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        g.setAttribute("class", "gm");
-        const outline = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        outline.setAttribute("class", "marker-outline");
-        outline.setAttribute("d", HUE_DOT_OUTLINE_PATH);
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("class", "marker");
-        const hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        hit.setAttribute("cx", "6");
-        hit.setAttribute("cy", "6");
-        hit.setAttribute("r", "12");
-        hit.setAttribute("fill", "transparent");
-        const icon = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        icon.setAttribute("class", "icon text");
-        icon.setAttribute("x", "24");
-        icon.setAttribute("y", "24");
-        icon.setAttribute("text-anchor", "middle");
-        icon.setAttribute("dominant-baseline", "middle");
-        g.append(outline, path, hit, icon);
-        marker = { g, path, outline, hit, icon, sceneId: scene.id };
-        markers.set(scene.id, marker);
-        g.addEventListener("pointerdown", (ev) => {
-          ev.stopPropagation();
-          ev.preventDefault();
-          const { scenes: now, activeId: current } = getState();
-          const item = now.find((row) => row.id === scene.id);
-          if (!item) {
-            return;
-          }
-          if (scene.id !== current) {
-            onSelect(scene.id);
-          }
-          const markerMode = draftWheelMode(item.draft, hasColor, hasTemp);
-          if (markerMode !== mode) {
-            setMode(markerMode, { convertDraft: false });
-          }
-          const pt = pointFromEvent(ev);
-          startDrag(
-            ev,
-            scene.id,
-            pt.x - (marker.x ?? radiusPx()),
-            pt.y - (marker.y ?? radiusPx())
-          );
-          g.classList.add("drag");
-        });
-        svg.appendChild(g);
-      }
-      const active = scene.id === activeId;
-      const markerMode = draftWheelMode(scene.draft, hasColor, hasTemp);
-      marker.path.setAttribute("d", active ? HUE_PIN_PATH : HUE_DOT_PATH);
-      marker.g.classList.toggle("active", active);
-      marker.g.classList.toggle("off-mode", markerMode !== mode);
-      marker.icon.textContent = String(scene.index);
-      marker.hit.style.display = active ? "none" : "";
-      if (!radius) {
-        continue;
-      }
-      const pos = positionForDraft(scene.draft, markerMode, radius);
-      marker.g.style.color = rgbCss(pos.rgb);
-      marker.icon.style.fill = pinForeground(pos.rgb);
-      placeMarker(marker, pos.x, pos.y, active);
-      if (active) {
-        svg.appendChild(marker.g);
-      }
-    }
-    for (const [id, marker] of markers) {
-      if (!seen.has(id)) {
-        marker.g.remove();
-        markers.delete(id);
-      }
-    }
-    syncPath();
-    syncPresets();
-  };
-
-  const syncPath = () => {
-    pathLayer.replaceChildren();
-    const radius = radiusPx();
-    if (!radius) {
-      return;
-    }
-    const { scenes, sequence } = getState();
-    const byId = new Map(scenes.map((item) => [item.id, item]));
-    const cycle = collapseSceneCycle(sequence || scenes.map((item) => item.id));
-    if (cycle.length < 2) {
-      return;
-    }
-    const edgeCount = cycle.length === 2 ? 1 : cycle.length;
-    const edges = [];
-    for (let index = 0; index < edgeCount; index += 1) {
-      const from = byId.get(cycle[index]);
-      const to = byId.get(cycle[(index + 1) % cycle.length]);
-      if (!from || !to) {
-        continue;
-      }
-      const pts = [];
-      for (let step = 0; step <= HUE_PATH_STEPS; step += 1) {
-        const sample = interpolateDraftSample(
-          from.draft,
-          to.draft,
-          step / HUE_PATH_STEPS
-        );
-        const point = wheelPointForSample(
-          sample,
-          mode,
-          radius,
-          tempMin,
-          tempMax
-        );
-        if (point) {
-          pts.push(point);
-        }
-      }
-      if (pts.length >= 2) {
-        edges.push(pts);
-      }
-    }
-    const ns = "http://www.w3.org/2000/svg";
-    for (const pts of edges) {
-      const under = document.createElementNS(ns, "path");
-      under.setAttribute("class", "hue-path-under");
-      under.setAttribute(
-        "d",
-        pts
-          .map(
-            (pt, index) =>
-              `${index ? "L" : "M"}${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`
-          )
-          .join(" ")
-      );
-      pathLayer.appendChild(under);
-    }
-    for (const pts of edges) {
-      const mid = document.createElementNS(ns, "path");
-      mid.setAttribute("class", "hue-path-mid");
-      mid.setAttribute(
-        "d",
-        pts
-          .map(
-            (pt, index) =>
-              `${index ? "L" : "M"}${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`
-          )
-          .join(" ")
-      );
-      pathLayer.appendChild(mid);
-    }
-    for (const pts of edges) {
-      for (let index = 1; index < pts.length; index += 1) {
-        const start = pts[index - 1];
-        const end = pts[index];
-        const seg = document.createElementNS(ns, "path");
-        seg.setAttribute("class", "hue-path-seg");
-        seg.setAttribute(
-          "d",
-          `M${start.x.toFixed(2)} ${start.y.toFixed(2)} L${end.x.toFixed(2)} ${end.y.toFixed(2)}`
-        );
-        seg.setAttribute(
-          "stroke",
-          rgbCss([
-            Math.round((start.rgb[0] + end.rgb[0]) / 2),
-            Math.round((start.rgb[1] + end.rgb[1]) / 2),
-            Math.round((start.rgb[2] + end.rgb[2]) / 2),
-          ])
-        );
-        pathLayer.appendChild(seg);
-      }
-    }
-  };
-
-  const pointFromEvent = (ev) => {
-    const rect = canvasWrap.getBoundingClientRect();
-    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
-  };
-
-  const onPointerMove = (ev) => {
-    if (!drag || ev.pointerId !== drag.pointerId) {
-      return;
-    }
-    const radius = radiusPx();
-    if (!radius) {
-      return;
-    }
-    const { scenes, activeId } = getState();
-    const item = scenes.find((row) => row.id === (drag.sceneId || activeId));
-    if (!item) {
-      return;
-    }
-    const pt = pointFromEvent(ev);
-    const limited = applyAtPoint(
-      item.draft,
-      pt.x - drag.grabX,
-      pt.y - drag.grabY,
-      radius
-    );
-    const marker = markers.get(item.id);
-    if (marker) {
-      marker.g.style.color = rgbCss(draftRgb(item.draft));
-      marker.icon.style.fill = pinForeground(draftRgb(item.draft));
-      placeMarker(marker, limited.x, limited.y, true);
-    }
-    syncPath();
-    onChange();
-  };
-
-  const onPointerUp = (ev) => {
-    if (!drag || ev.pointerId !== drag.pointerId) {
-      return;
-    }
-    const marker = markers.get(drag.sceneId);
-    marker?.g.classList.remove("drag");
-    marker?.g.classList.add("boing");
-    setTimeout(() => marker?.g.classList.remove("boing"), 200);
-    drag = null;
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", onPointerUp);
-    window.removeEventListener("pointercancel", onPointerUp);
-    sync();
-  };
-
-  const startDrag = (ev, sceneId, grabX = 0, grabY = 0) => {
-    drag = { sceneId, pointerId: ev.pointerId, grabX, grabY };
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerUp);
-  };
-
-  svg.addEventListener("pointerdown", (ev) => {
-    const radius = radiusPx();
-    if (!radius) {
-      return;
-    }
-    const pt = pointFromEvent(ev);
-    const dist = Math.hypot(pt.x - radius, pt.y - radius);
-    if (dist > radius) {
-      return;
-    }
-    const { scenes, activeId } = getState();
-    const item = scenes.find((row) => row.id === activeId);
-    if (!item) {
-      return;
-    }
-    ev.preventDefault();
-    startDrag(ev, item.id);
-    const limited = applyAtPoint(item.draft, pt.x, pt.y, radius);
-    const marker = markers.get(item.id);
-    marker?.g.classList.add("drag", "active");
-    if (marker) {
-      placeMarker(marker, limited.x, limited.y, true);
-    }
-    syncPath();
-    onChange();
-  });
-
-  const setMode = (next, { convertDraft = false } = {}) => {
-    if (next === "color" && !hasColor) {
-      return;
-    }
-    if (next === "temp" && !hasTemp) {
-      return;
-    }
-    const { scenes, activeId } = getState();
-    const active = scenes.find((item) => item.id === activeId);
-    if (convertDraft && active && draftWheelMode(active.draft, hasColor, hasTemp) !== next) {
-      if (next === "color") {
-        const rgb = draftRgb(active.draft);
-        const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
-        applyColorToDraft(active.draft, rgb, hsv);
-      } else {
-        applyTempToDraft(
-          active.draft,
-          active.draft.color_temp_kelvin ?? Math.round((tempMin + tempMax) / 2)
-        );
-      }
-      onChange();
-    }
-    if (mode !== next) {
-      mode = next;
-      paintWheel();
-    }
-    paintPill();
-    sync();
-  };
-
-  const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
-    sync();
-    updatePresetOverflow();
-  });
-  ro?.observe(canvasWrap);
-  ro?.observe(presets);
-  presetTrack.addEventListener("scroll", updatePresetOverflow, { passive: true });
-  paintWheel();
-  paintPill();
-
-  const disconnect = () => {
-    ro?.disconnect();
-    clearTimeout(glideTimer);
-    if (drag) {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerUp);
-      drag = null;
-    }
-  };
-
-  return { el: stage, setMode, sync, syncPresets, disconnect };
-}
-
-function medianNumber(values) {
-  const sorted = values
-    .filter((value) => value != null && Number.isFinite(Number(value)))
-    .map(Number)
-    .sort((left, right) => left - right);
-  if (!sorted.length) {
-    return null;
-  }
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2) {
-    return sorted[mid];
-  }
-  return (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-function circularMeanHue(hues) {
-  let x = 0;
-  let y = 0;
-  for (const hue of hues) {
-    const rad = (Number(hue) * Math.PI) / 180;
-    x += Math.cos(rad);
-    y += Math.sin(rad);
-  }
-  const deg = (Math.atan2(y / hues.length, x / hues.length) * 180) / Math.PI;
-  return (deg + 360) % 360;
-}
-
-function lightDraftFingerprint(draft) {
-  return JSON.stringify({
-    state: draft?.state || "off",
-    brightness: draft?.brightness ?? null,
-    color_temp_kelvin: draft?.color_temp_kelvin ?? null,
-    rgb_color: draft?.rgb_color ?? null,
-    hs_color: draft?.hs_color ?? null,
-    rgbw_color: draft?.rgbw_color ?? null,
-    rgbww_color: draft?.rgbww_color ?? null,
-  });
-}
-
-function todayIso() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function formatPreviewDayMonth(iso) {
-  const [year, month, day] = iso.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-}
-
-function shiftIsoDate(iso, days) {
-  const [year, month, day] = iso.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  date.setDate(date.getDate() + days);
-  const nextYear = date.getFullYear();
-  const nextMonth = String(date.getMonth() + 1).padStart(2, "0");
-  const nextDay = String(date.getDate()).padStart(2, "0");
-  return `${nextYear}-${nextMonth}-${nextDay}`;
-}
-
-function emptyFormData() {
-  return {
-    scene_name: "Automatic Lighting",
-    description: "",
-    labels: [],
-    category: null,
-    area: null,
-    display_scenes_combined: true,
-    scene_dawn_sunrise_sunset: null,
-    scene_dawn: null,
-    scene_sunrise: null,
-    scene_noon: null,
-    scene_sunset: null,
-    scene_dusk: null,
-    scene_dusk_minimum_time_of_day: "22:00:00",
-    nightlights_boolean: null,
-    nightlights_scene: null,
-  };
-}
-
 function entitySelector(hass, domain, areaId, nativeScenesOnly, extraIds) {
   const config = { domain, multiple: false };
   const include = [];
@@ -12558,28 +12652,6 @@ function entitySelector(hass, domain, areaId, nativeScenesOnly, extraIds) {
   return { entity: config };
 }
 
-function timeToSeconds(value) {
-  if (value == null || value === "") {
-    return undefined;
-  }
-  if (typeof value === "number") {
-    return value;
-  }
-  const parts = String(value).split(":").map(Number);
-  return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
-}
-
-function nowSecondsSinceMidnight() {
-  const now = new Date();
-  return now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-}
-
-function formatClock(seconds) {
-  const hours = Math.floor(seconds / 3600) % 24;
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-}
-
 function formatLatLng(lat, lng) {
   const ns = lat >= 0 ? "N" : "S";
   const ew = lng >= 0 ? "E" : "W";
@@ -12597,379 +12669,6 @@ function sameLocation(a, b) {
     Math.abs(a.latitude - b.latitude) < 1e-6 &&
     Math.abs(a.longitude - b.longitude) < 1e-6
   );
-}
-
-function sunStrokePaths(curve, xOf, yOf, { point: pointFn } = {}) {
-  const paths = [];
-  if (curve.length < 2) {
-    return paths;
-  }
-  const point =
-    pointFn ||
-    ((seconds, elevation) =>
-      `${xOf(seconds).toFixed(1)},${yOf(elevation).toFixed(1)}`);
-  let night = curve[0][1] < 0;
-  let current = [point(curve[0][0], curve[0][1])];
-  const flush = () => {
-    if (current.length >= 2) {
-      paths.push({
-        night,
-        d: current.map((xy, index) => `${index === 0 ? "M" : "L"}${xy}`).join(" "),
-      });
-    }
-    current = [];
-  };
-  for (let index = 1; index < curve.length; index += 1) {
-    const [leftSeconds, leftElev] = curve[index - 1];
-    const [rightSeconds, rightElev] = curve[index];
-    const rightNight = rightElev < 0;
-    if (rightNight === night) {
-      current.push(point(rightSeconds, rightElev));
-      continue;
-    }
-    const span = rightElev - leftElev;
-    const ratio = (0 - leftElev) / span;
-    const crossSeconds = leftSeconds + (rightSeconds - leftSeconds) * ratio;
-    current.push(point(crossSeconds, 0));
-    flush();
-    night = rightNight;
-    current.push(point(crossSeconds, 0), point(rightSeconds, rightElev));
-  }
-  flush();
-  return paths;
-}
-
-/** Line segments along the sun curve, split at horizon crossings. */
-function sunStrokeSegments(curve) {
-  const segments = [];
-  if (curve.length < 2) {
-    return segments;
-  }
-  let night = curve[0][1] < 0;
-  for (let index = 1; index < curve.length; index += 1) {
-    const [leftSeconds, leftElev] = curve[index - 1];
-    const [rightSeconds, rightElev] = curve[index];
-    const rightNight = rightElev < 0;
-    if (rightNight === night) {
-      segments.push({
-        s0: leftSeconds,
-        e0: leftElev,
-        s1: rightSeconds,
-        e1: rightElev,
-        night,
-      });
-      continue;
-    }
-    const span = rightElev - leftElev;
-    const ratio = (0 - leftElev) / span;
-    const crossSeconds = leftSeconds + (rightSeconds - leftSeconds) * ratio;
-    segments.push({
-      s0: leftSeconds,
-      e0: leftElev,
-      s1: crossSeconds,
-      e1: 0,
-      night,
-    });
-    night = rightNight;
-    segments.push({
-      s0: crossSeconds,
-      e0: 0,
-      s1: rightSeconds,
-      e1: rightElev,
-      night,
-    });
-  }
-  return segments;
-}
-
-/**
- * Coalesce horizon-split segments into continuous path runs so round dashed
- * strokes do not stack overlapping caps (the “double path” look).
- * Splits when night/day flips or stroke width drifts by more than ~1.25px.
- */
-function sunStrokePathRuns(curve, strokeOf) {
-  const runs = [];
-  for (const segment of sunStrokeSegments(curve)) {
-    const midElev = (segment.e0 + segment.e1) / 2;
-    const width = strokeOf(midElev);
-    const last = runs[runs.length - 1];
-    if (
-      last &&
-      last.night === segment.night &&
-      Math.abs(last.width - width) < 1.25
-    ) {
-      last.points.push([segment.s1, segment.e1]);
-      last.widthSum += width;
-      last.elevSum += midElev;
-      last.count += 1;
-      last.width = last.widthSum / last.count;
-      last.midElev = last.elevSum / last.count;
-      continue;
-    }
-    runs.push({
-      night: segment.night,
-      width,
-      widthSum: width,
-      elevSum: midElev,
-      midElev,
-      count: 1,
-      points: [
-        [segment.s0, segment.e0],
-        [segment.s1, segment.e1],
-      ],
-    });
-  }
-  return runs;
-}
-
-function interpolateElevation(curve, seconds) {
-  if (!curve.length) {
-    return 0;
-  }
-  if (seconds <= curve[0][0]) {
-    return curve[0][1];
-  }
-  for (let index = 1; index < curve.length; index += 1) {
-    const [rightSeconds, rightElev] = curve[index];
-    if (seconds <= rightSeconds) {
-      const [leftSeconds, leftElev] = curve[index - 1];
-      const span = rightSeconds - leftSeconds || 1;
-      const ratio = (seconds - leftSeconds) / span;
-      return leftElev + (rightElev - leftElev) * ratio;
-    }
-  }
-  return curve[curve.length - 1][1];
-}
-
-/** Sky glow + sun flare palette from solar elevation (degrees).
- *  Aligned with Apple Solar-style faces: day = sky blue / periwinkle;
- *  horizon = narrow muted peach (never hot pink); night = deep navy. */
-function skyLookFromElevation(elev) {
-  const keys = [
-    {
-      e: -90,
-      outer: [4, 6, 14],
-      mid: [8, 10, 22],
-      glowOpacity: 0.16,
-      sunCore: "#c5d0e8",
-      sunCorona: "#6a7a9a",
-      sunStreak: "#9aa8c4",
-      streakOpacity: 0.12,
-      rayOpacity: 0.08,
-      ghostOpacity: 0.1,
-    },
-    {
-      e: -18,
-      outer: [12, 18, 42],
-      mid: [18, 26, 58],
-      glowOpacity: 0.22,
-      sunCore: "#d0daf0",
-      sunCorona: "#7a8ab0",
-      sunStreak: "#a8b6d4",
-      streakOpacity: 0.18,
-      rayOpacity: 0.12,
-      ghostOpacity: 0.14,
-    },
-    {
-      e: -12,
-      outer: [28, 48, 108],
-      mid: [48, 72, 140],
-      glowOpacity: 0.42,
-      sunCore: "#e4ecff",
-      sunCorona: "#7a94c8",
-      sunStreak: "#b0c4ff",
-      streakOpacity: 0.3,
-      rayOpacity: 0.18,
-      ghostOpacity: 0.2,
-    },
-    {
-      // Civil twilight — cool periwinkle, only a hint of warmth.
-      e: -4,
-      outer: [88, 108, 168],
-      mid: [140, 148, 188],
-      glowOpacity: 0.55,
-      sunCore: "#f0eef8",
-      sunCorona: "#c8b8d8",
-      sunStreak: "#ddd0e8",
-      streakOpacity: 0.45,
-      rayOpacity: 0.28,
-      ghostOpacity: 0.28,
-    },
-    {
-      // Horizon — muted peach / apricot band, not saturated pink-red.
-      e: 0,
-      outer: [150, 138, 178],
-      mid: [220, 186, 168],
-      glowOpacity: 0.62,
-      sunCore: "#fff4ea",
-      sunCorona: "#e8c4a8",
-      sunStreak: "#f0d8c4",
-      streakOpacity: 0.55,
-      rayOpacity: 0.35,
-      ghostOpacity: 0.32,
-    },
-    {
-      // Just above — soft peach into clear day sky.
-      e: 4,
-      outer: [100, 165, 230],
-      mid: [210, 200, 205],
-      glowOpacity: 0.58,
-      sunCore: "#fff8f2",
-      sunCorona: "#e8d0b8",
-      sunStreak: "#f2e4d4",
-      streakOpacity: 0.5,
-      rayOpacity: 0.32,
-      ghostOpacity: 0.28,
-    },
-    {
-      e: 8,
-      // Climb into clear Apple Solar–style day sky (#4FB3FF family).
-      outer: [79, 179, 255],
-      mid: [168, 214, 250],
-      glowOpacity: 0.55,
-      sunCore: "#f7fbff",
-      sunCorona: "#d8e6f8",
-      sunStreak: "#e8f0fa",
-      streakOpacity: 0.55,
-      rayOpacity: 0.35,
-      ghostOpacity: 0.26,
-    },
-    {
-      e: 25,
-      outer: [70, 172, 252],
-      mid: [175, 220, 252],
-      glowOpacity: 0.5,
-      sunCore: "#ffffff",
-      sunCorona: "#e8f2ff",
-      sunStreak: "#f0f6ff",
-      streakOpacity: 0.6,
-      rayOpacity: 0.4,
-      ghostOpacity: 0.24,
-    },
-    {
-      e: 90,
-      outer: [64, 165, 250],
-      mid: [185, 225, 255],
-      glowOpacity: 0.48,
-      sunCore: "#ffffff",
-      sunCorona: "#e4efff",
-      sunStreak: "#f2f7ff",
-      streakOpacity: 0.62,
-      rayOpacity: 0.42,
-      ghostOpacity: 0.26,
-    },
-  ];
-  let lo = keys[0];
-  let hi = keys[keys.length - 1];
-  for (let i = 0; i < keys.length - 1; i += 1) {
-    if (elev >= keys[i].e && elev <= keys[i + 1].e) {
-      lo = keys[i];
-      hi = keys[i + 1];
-      break;
-    }
-    if (elev < keys[0].e) {
-      lo = keys[0];
-      hi = keys[0];
-      break;
-    }
-  }
-  if (elev > keys[keys.length - 1].e) {
-    lo = hi = keys[keys.length - 1];
-  }
-  const span = hi.e - lo.e || 1;
-  const t = lo === hi ? 0 : (elev - lo.e) / span;
-  const mixRgb = (a, b) => [
-    Math.round(a[0] + (b[0] - a[0]) * t),
-    Math.round(a[1] + (b[1] - a[1]) * t),
-    Math.round(a[2] + (b[2] - a[2]) * t),
-  ];
-  const lerp = (a, b) => a + (b - a) * t;
-  const outer = mixRgb(lo.outer, hi.outer);
-  const mid = mixRgb(lo.mid, hi.mid);
-  const rgb = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-  const mixHex = (a, b) => {
-    const parse = (h) => [
-      parseInt(h.slice(1, 3), 16),
-      parseInt(h.slice(3, 5), 16),
-      parseInt(h.slice(5, 7), 16),
-    ];
-    const m = mixRgb(parse(a), parse(b));
-    return `#${m.map((n) => n.toString(16).padStart(2, "0")).join("")}`;
-  };
-  return {
-    glowBackground: `radial-gradient(closest-side circle at center, ${rgb(mid, 1)} 0%, ${rgb(mid, 0.85)} 28%, ${rgb(outer, 0.55)} 58%, ${rgb(outer, 0)} 100%)`,
-    /* Annular halo: center stays clear (under opaque rings); bright rim peeks
-       past the planet when the glow element is scaled up (no blur needed). */
-    glowHaloBackground: `radial-gradient(closest-side circle at center, transparent 0%, transparent 52%, ${rgb(mid, 0.55)} 64%, ${rgb(mid, 0.95)} 74%, ${rgb(outer, 0.75)} 86%, transparent 100%)`,
-    glowOpacity: lerp(lo.glowOpacity, hi.glowOpacity),
-    sunCore: mixHex(lo.sunCore, hi.sunCore),
-    sunCorona: mixHex(lo.sunCorona, hi.sunCorona),
-    sunStreak: mixHex(lo.sunStreak, hi.sunStreak),
-    pathColor: `rgb(${mid[0]},${mid[1]},${mid[2]})`,
-    horizonFill: `rgb(${mid[0]},${mid[1]},${mid[2]})`,
-    /* Outer keyframe is the sky tone (blue by day); mid is for sun flare / horizon. */
-    skyColor: `rgb(${outer[0]},${outer[1]},${outer[2]})`,
-    skyLight: rgb(
-      [
-        Math.round(outer[0] + (220 - outer[0]) * 0.35),
-        Math.round(outer[1] + (235 - outer[1]) * 0.4),
-        Math.round(outer[2] + (255 - outer[2]) * 0.25),
-      ],
-      1
-    ),
-    streakOpacity: lerp(lo.streakOpacity, hi.streakOpacity),
-    rayOpacity: lerp(lo.rayOpacity, hi.rayOpacity),
-    ghostOpacity: lerp(lo.ghostOpacity, hi.ghostOpacity),
-  };
-}
-
-function darkenedRgb(sample) {
-  const t = sample[1] / 100;
-  return `rgb(${Math.round(sample[2] * t)},${Math.round(sample[3] * t)},${Math.round(sample[4] * t)})`;
-}
-
-function conicGradientFromSamples(samples) {
-  if (!samples.length) {
-    return "var(--divider-color)";
-  }
-  const stops = samples.map((sample) => {
-    const offset = (sample[0] / SECONDS_PER_DAY) * 100;
-    return `${darkenedRgb(sample)} ${offset.toFixed(2)}%`;
-  });
-  // Close dusk→dawn at midnight so the ring has no seam gap.
-  stops.push(`${darkenedRgb(samples[0])} 100%`);
-  // from 180deg: midnight (0%) at bottom, noon at top — matches _clockAngleDeg.
-  return `conic-gradient(from 180deg, ${stops.join(", ")})`;
-}
-
-function interpolateLightSample(samples, seconds) {
-  if (!samples.length) {
-    return { brightness: 0, rgb: [0, 0, 0] };
-  }
-  const at = (row) => ({
-    brightness: row[1],
-    rgb: [row[2], row[3], row[4]],
-  });
-  if (seconds <= samples[0][0]) {
-    return at(samples[0]);
-  }
-  for (let index = 1; index < samples.length; index += 1) {
-    const right = samples[index];
-    if (seconds <= right[0]) {
-      const left = samples[index - 1];
-      const span = right[0] - left[0] || 1;
-      const ratio = (seconds - left[0]) / span;
-      return {
-        brightness: left[1] + (right[1] - left[1]) * ratio,
-        rgb: [
-          Math.round(left[2] + (right[2] - left[2]) * ratio),
-          Math.round(left[3] + (right[3] - left[3]) * ratio),
-          Math.round(left[4] + (right[4] - left[4]) * ratio),
-        ],
-      };
-    }
-  }
-  return at(samples[samples.length - 1]);
 }
 
 if (!customElements.get("scene-extrapolation-panel")) {
