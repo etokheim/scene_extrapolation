@@ -1,4 +1,4 @@
-"""Persistent store for extrapolation scene configurations."""
+"""Persistent store for circadian scene configurations."""
 
 from __future__ import annotations
 
@@ -13,10 +13,11 @@ from homeassistant.helpers.storage import Store
 from .const import (
     AREA,
     CATEGORY,
-    CONTINUOUS,
+    DEFAULT_SCENE_NAME,
     DESCRIPTION,
     DISPLAY_SCENES_COMBINED,
     DOMAIN,
+    FOLLOW_UP,
     LABELS,
     NIGHTLIGHTS_BOOLEAN,
     NIGHTLIGHTS_SCENE,
@@ -34,13 +35,44 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-STORAGE_VERSION = 1  # Additive settings/managed ids; do not bump without migrate_func.
+# v2: follow_up rename, follow_up_interval, hide_managed_native_scenes default on.
+STORAGE_VERSION = 2
 DEFAULT_DUSK_MINIMUM_SECONDS = 22 * 3600
 DEFAULT_SETTINGS = {
-    "hide_managed_native_scenes": False,
+    "hide_managed_native_scenes": True,
     # Seconds; 0 disables. Same value is the light transition on follow-up ticks.
-    "continuous_interval": 300,
+    "follow_up_interval": 300,
 }
+
+
+def _migrate_store(old_version: int, data: dict[str, Any]) -> dict[str, Any]:
+    """Migrate persisted store payloads between STORAGE_VERSION values."""
+    if data is None:
+        return {"scenes": [], "settings": dict(DEFAULT_SETTINGS), "managed_native_scene_ids": []}
+    if old_version < 2:
+        scenes = list(data.get("scenes") or [])
+        for item in scenes:
+            if not isinstance(item, dict):
+                continue
+            if FOLLOW_UP not in item and "continuous" in item:
+                item[FOLLOW_UP] = bool(item.pop("continuous"))
+            elif FOLLOW_UP not in item:
+                item[FOLLOW_UP] = True
+            else:
+                item.pop("continuous", None)
+        settings = dict(data.get("settings") or {})
+        if "follow_up_interval" not in settings and "continuous_interval" in settings:
+            settings["follow_up_interval"] = settings.pop("continuous_interval")
+        else:
+            settings.pop("continuous_interval", None)
+        # Product default flipped to on in 3.0; migrate everyone to the new default.
+        settings["hide_managed_native_scenes"] = True
+        data = {
+            **data,
+            "scenes": scenes,
+            "settings": settings,
+        }
+    return data
 
 
 def time_to_seconds(value: Any) -> int:
@@ -77,7 +109,7 @@ def normalize_scene_config(
 ) -> dict[str, Any]:
     """Normalize UI/legacy input into a stored scene config."""
     combined = bool(raw.get(DISPLAY_SCENES_COMBINED, False))
-    name = (raw.get(SCENE_NAME) or "Automatic Lighting").strip()
+    name = (raw.get(SCENE_NAME) or DEFAULT_SCENE_NAME).strip()
     if not name:
         raise ValueError("Scene name is required")
 
@@ -85,9 +117,9 @@ def normalize_scene_config(
     if isinstance(labels, str):
         labels = [labels] if labels else []
     # Missing key → True so existing rooms follow without a storage migration.
-    continuous = raw.get(CONTINUOUS, True)
-    if not isinstance(continuous, bool):
-        continuous = bool(continuous)
+    follow_up = raw.get(FOLLOW_UP, True)
+    if not isinstance(follow_up, bool):
+        follow_up = bool(follow_up)
 
     item: dict[str, Any] = {
         "id": scene_id or raw.get("id") or str(uuid.uuid4()),
@@ -97,7 +129,7 @@ def normalize_scene_config(
         CATEGORY: raw.get(CATEGORY) or None,
         AREA: raw.get(AREA) or None,
         DISPLAY_SCENES_COMBINED: combined,
-        CONTINUOUS: continuous,
+        FOLLOW_UP: follow_up,
         NIGHTLIGHTS_BOOLEAN: raw.get(NIGHTLIGHTS_BOOLEAN) or None,
         NIGHTLIGHTS_SCENE: raw.get(NIGHTLIGHTS_SCENE) or None,
         SCENE_DUSK_MINIMUM_TIME_OF_DAY: time_to_seconds(
@@ -163,7 +195,7 @@ def to_form_data(item: dict[str, Any]) -> dict[str, Any]:
         ),
         NIGHTLIGHTS_BOOLEAN: item.get(NIGHTLIGHTS_BOOLEAN),
         NIGHTLIGHTS_SCENE: item.get(NIGHTLIGHTS_SCENE),
-        CONTINUOUS: bool(item.get(CONTINUOUS, True)),
+        FOLLOW_UP: bool(item.get(FOLLOW_UP, True)),
     }
     if combined:
         data[SCENE_DAWN_SUNRISE_SUNSET] = item.get(SCENE_DAWN)
@@ -175,16 +207,20 @@ def to_form_data(item: dict[str, Any]) -> dict[str, Any]:
 
 
 class SceneExtrapolationStore:
-    """Load and persist extrapolation scene configs."""
+    """Load and persist circadian scene configs."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the store."""
         self.hass = hass
-        self._store = Store(hass, STORAGE_VERSION, STORE_KEY)
+        self._store = Store(
+            hass, STORAGE_VERSION, STORE_KEY, migrate_func=_migrate_store
+        )
         self.scenes: dict[str, dict[str, Any]] = {}
         self.settings: dict[str, Any] = dict(DEFAULT_SETTINGS)
         # YAML scene CONF_ID values created by this integration.
         self.managed_native_scene_ids: list[str] = []
+        # Set when v2 migration forced hide-on; setup applies registry sync once.
+        self.pending_hide_sync = False
 
     async def async_load(self) -> None:
         """Load scenes from disk."""
@@ -195,16 +231,29 @@ class SceneExtrapolationStore:
         for item in items:
             if "id" not in item:
                 continue
-            # Additive key: rooms saved before continuous was added stay enabled.
-            if CONTINUOUS not in item:
-                item[CONTINUOUS] = True
+            # Additive key: rooms saved before follow_up was added stay enabled.
+            if FOLLOW_UP not in item:
+                item[FOLLOW_UP] = True
+            item.pop("continuous", None)
             self.scenes[item["id"]] = item
-        self.settings = {
+        settings = {
             **DEFAULT_SETTINGS,
             **(raw.get("settings") or {}),
         }
+        # Drop legacy key if somehow still present after migrate.
+        settings.pop("continuous_interval", None)
+        if "follow_up_interval" not in settings and "continuous_interval" in (
+            raw.get("settings") or {}
+        ):
+            settings["follow_up_interval"] = (raw.get("settings") or {}).get(
+                "continuous_interval", DEFAULT_SETTINGS["follow_up_interval"]
+            )
+        self.settings = settings
         ids = raw.get("managed_native_scene_ids") or []
         self.managed_native_scene_ids = [str(item) for item in ids if item]
+        # After migrate_func forces hide on, sync registry once at setup.
+        if bool(self.settings.get("hide_managed_native_scenes")):
+            self.pending_hide_sync = True
 
     async def async_save(self) -> None:
         """Write scenes to disk."""
@@ -227,25 +276,25 @@ class SceneExtrapolationStore:
     async def async_upsert(self, raw: dict[str, Any]) -> dict[str, Any]:
         """Create or update a scene config."""
         scene_id = raw.get("id")
-        # Editor saves may omit continuous; keep the play/pause preference.
-        if scene_id and scene_id in self.scenes and CONTINUOUS not in raw:
+        # Editor saves may omit follow_up; keep the play/pause preference.
+        if scene_id and scene_id in self.scenes and FOLLOW_UP not in raw:
             raw = {
                 **raw,
-                CONTINUOUS: self.scenes[scene_id].get(CONTINUOUS, True),
+                FOLLOW_UP: self.scenes[scene_id].get(FOLLOW_UP, True),
             }
         item = normalize_scene_config(raw, scene_id=scene_id)
         self.scenes[item["id"]] = item
         await self.async_save()
         return item
 
-    async def async_set_continuous(
-        self, scene_id: str, continuous: bool
+    async def async_set_follow_up(
+        self, scene_id: str, follow_up: bool
     ) -> dict[str, Any] | None:
         """Toggle per-scene follow-up preference without a full form save."""
         item = self.scenes.get(scene_id)
         if item is None:
             return None
-        item[CONTINUOUS] = bool(continuous)
+        item[FOLLOW_UP] = bool(follow_up)
         await self.async_save()
         return item
 
@@ -262,18 +311,18 @@ class SceneExtrapolationStore:
         for key, value in patch.items():
             if key not in DEFAULT_SETTINGS:
                 continue
-            if key == "continuous_interval":
+            if key == "follow_up_interval":
                 try:
                     value = int(value)
                 except (TypeError, ValueError) as err:
                     raise HomeAssistantError(
-                        "continuous_interval must be an integer number of seconds"
+                        "follow_up_interval must be an integer number of seconds"
                     ) from err
                 # Panel offers 0–30 minutes; reject larger values so storage
                 # cannot exceed what light.turn_on transitions support well.
                 if value < 0 or value > 30 * 60:
                     raise HomeAssistantError(
-                        "continuous_interval must be between 0 and 1800 seconds"
+                        "follow_up_interval must be between 0 and 1800 seconds"
                     )
             self.settings[key] = value
         await self.async_save()

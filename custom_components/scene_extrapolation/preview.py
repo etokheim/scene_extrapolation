@@ -34,7 +34,7 @@ from .const import (
     SCENE_SUNSET,
 )
 from .native_scene import lights_in_area, scene_entity_payload
-from .scene import (
+from .extrapolation_math import (
     current_sun_event_index,
     extrapolate_brightness,
     extrapolate_hs,

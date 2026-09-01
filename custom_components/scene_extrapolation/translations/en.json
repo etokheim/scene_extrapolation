@@ -1,39 +1,39 @@
 {
   "config": {
     "abort": {
-      "already_configured": "Scene Extrapolation is already configured",
-      "single_instance_allowed": "Scene Extrapolation is already configured. Open it from the sidebar to add scenes."
+      "already_configured": "Circadian Scenes is already configured",
+      "single_instance_allowed": "Circadian Scenes is already configured. Open it from the sidebar to add scenes."
     },
     "error": {
       "unknown": "Unexpected error"
     },
     "step": {
       "user": {
-        "title": "Scene Extrapolation",
-        "description": "Adds Scene Extrapolation to the sidebar. Create and edit extrapolation scenes from there — one integration, as many rooms as you need."
+        "title": "Circadian Scenes",
+        "description": "Adds Circadian Scenes to the sidebar. Create and edit rooms from there — one integration, as many areas as you need. Daylight that follows the sun between your scenes."
       }
     }
   },
   "frontend": {
-    "title": "Scene Extrapolation",
+    "title": "Circadian Scenes",
     "tabs": {
-      "extrapolation": "Extrapolation scenes",
+      "extrapolation": "Circadian scenes",
       "created": "Created scenes"
     },
     "empty": {
-      "extrapolation": "No extrapolation scenes yet. Create one to start lighting a room from the sun.",
-      "created": "No native scenes created by Scene Extrapolation yet. They appear here when you use Automatic setup or Create new scene."
+      "extrapolation": "No circadian scenes yet. Create one to start lighting a room from the sun.",
+      "created": "No native scenes created by Circadian Scenes yet. They appear here when you use Automatic setup or Create new scene."
     },
     "settings": {
       "title": "Settings",
       "intro": "These settings apply to every room. Changes take effect immediately.",
       "hide_created": "Hide created scenes in Home Assistant",
       "hide_created_helper": "Marks native scenes created by this integration as hidden in the HA UI (entity registry). You can still manage them here.",
-      "continuous_interval": "Automatic follow-up interval",
-      "continuous_interval_helper": "After a scene is activated, re-apply it this often with the same transition length (target = how the room should look at the end of the transition). 0 turns follow-up off for every room. Pause individual rooms from the list.",
-      "continuous_interval_minutes": "Minutes",
-      "pause_continuous": "Pause automatic follow-up",
-      "resume_continuous": "Resume automatic follow-up",
+      "follow_up_interval": "Follow-up interval",
+      "follow_up_interval_helper": "After a scene is activated, re-apply it this often with the same transition length (target = how the room should look at the end of the transition). 0 turns follow-up off for every room. Pause individual rooms from the list.",
+      "follow_up_interval_minutes": "Minutes",
+      "pause_follow_up": "Pause follow-up",
+      "resume_follow_up": "Resume follow-up",
       "scene_settings": "Scene settings",
       "hidden_in_ha": "Hidden in Home Assistant"
     },
@@ -83,7 +83,7 @@
       "delete_scene_title": "Delete scene?",
       "delete_scene_text": "Are you sure you want to delete {name}? This removes the native Home Assistant scene.",
       "linked_scenes": "Same scene for dawn, sunrise, and sunset",
-      "new_scene_step": "{step}/2 New extrapolation scene",
+      "new_scene_step": "{step}/2 New circadian scene",
       "unsaved_title": "Unsaved changes",
       "unsaved_text": "You have unsaved changes. Discard them?"
     },
@@ -99,7 +99,7 @@
     "fields": {
       "scene_name": {
         "label": "Scene name",
-        "helper": "Name for the extrapolation scene entity"
+        "helper": "Name for the circadian scene entity"
       },
       "area": {
         "label": "Area",
@@ -157,7 +157,7 @@
       "graph_sub": "0–100% by solar event"
     },
     "defaults": {
-      "automatic_lighting": "Automatic Lighting"
+      "circadian_scene": "Circadian"
     }
   }
 }

@@ -1,4 +1,4 @@
-"""Constants for the Scene Extrapolation integration."""
+"""Constants for the Circadian Scenes integration (domain: scene_extrapolation)."""
 
 DOMAIN = "scene_extrapolation"
 AREA = "area"
@@ -20,7 +20,9 @@ NIGHTLIGHTS_SCENE = "nightlights_scene"
 
 DISPLAY_SCENES_COMBINED = "display_scenes_combined"
 # Per-scene preference: keep applying on an interval after activation (default on).
-CONTINUOUS = "continuous"
+FOLLOW_UP = "follow_up"
+# Default friendly name when area is unknown; prefer "{area} Circadian" in the panel.
+DEFAULT_SCENE_NAME = "Circadian"
 
 PANEL_URL_PATH = "scene_extrapolation"
 

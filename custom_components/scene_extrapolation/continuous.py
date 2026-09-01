@@ -40,18 +40,18 @@ _COLOR_ATTRS = (
 ReportKind = Literal["sync", "drift", "override", "ignore", "interrupt", "recover"]
 
 
-def continuous_interval_seconds(hass: HomeAssistant) -> int:
+def follow_up_interval_seconds(hass: HomeAssistant) -> int:
     """Follow-up delay and transition length (seconds). 0 disables follow-up."""
     domain_data = hass.data.get(DOMAIN) or {}
     store = domain_data.get(DATA_STORE)
-    default = DEFAULT_SETTINGS["continuous_interval"]
+    default = DEFAULT_SETTINGS["follow_up_interval"]
     if store is None:
         return int(default)
-    value = store.settings.get("continuous_interval", default)
+    value = store.settings.get("follow_up_interval", default)
     return int(value)
 
 
-def should_arm_continuous(
+def should_arm_follow_up(
     interval: int,
     *,
     enabled: bool,

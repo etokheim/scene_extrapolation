@@ -1,4 +1,4 @@
-"""Config flow for Scene Extrapolation integration."""
+"""Config flow for Circadian Scenes (domain: scene_extrapolation)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .const import DOMAIN
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Scene Extrapolation."""
+    """Handle a config flow for Circadian Scenes."""
 
     VERSION = 2
 
@@ -29,4 +29,4 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is None:
             return self.async_show_form(step_id="user", data_schema=vol.Schema({}))
 
-        return self.async_create_entry(title="Scene Extrapolation", data={})
+        return self.async_create_entry(title="Circadian Scenes", data={})

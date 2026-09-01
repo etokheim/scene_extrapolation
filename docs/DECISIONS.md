@@ -24,6 +24,13 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Why:** HA caches custom panel modules by URL. Python restarts do not pick up JS if the path is unchanged. Custom elements do not re-define when only the hash route changes, so agents can chase “fixed” layout bugs against a stale class. A hard-reload (or a new tab used as one) can reload the whole Cursor window.
 - **Do not reverse without user ask.**
 
+## Panel frontend as ES modules without a bundler
+
+- **Date:** 2026-09-01
+- **Decision:** Keep `SceneExtrapolationPanel` in `frontend/panel.js` and split free helpers into sibling ES modules loaded with relative imports (`./color_ui.js`, `./dial_clock.js`, `./editor_session.js`, `./client_solar.js`). The static path registers the whole `frontend/` directory, so imports resolve next to `panel.js`. No bundler/build step.
+- **Why:** `panel.js` was too large to navigate. HA already loads the panel as a module (`client_solar.js` proved relative imports work). Splitting by concern keeps behavior identical while making further extraction safer.
+- **Do not reverse without user ask.**
+
 ## Sticky panel header with bottom border
 
 - **Date:** 2026-08-26
