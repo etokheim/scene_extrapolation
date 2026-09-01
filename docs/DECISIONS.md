@@ -396,8 +396,8 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Global setting: hide created scenes in HA UI
 
 - **Date:** 2026-08-30
-- **Decision:** Panel list settings sidebar exposes `hide_managed_native_scenes`. When on, managed native scenes get `hidden_by=INTEGRATION` in the entity registry (and new creates honor it). Toggle off clears integration hides. Never override `hidden_by=USER`. Store stays at storage version 1 with additive keys — do not bump version without a Store migrate_func.
-- **Why:** HA has no per-integration “hide my entities” config entry option that covers dynamically created YAML scenes; registry `hidden_by` is the supported UI hide.
+- **Decision:** Panel list settings sidebar exposes `hide_managed_native_scenes` (default **on** since 3.0 / Store v2+). When on, managed native scenes get `hidden_by=INTEGRATION` in the entity registry (and new creates honor it). Toggle off clears integration hides. Never override `hidden_by=USER`. Storage version bumps use a Store `migrate_func` (v3 maps preference/interval renames).
+- **Why:** HA has no per-integration “hide my entities” config entry option that covers dynamically created YAML scenes; registry `hidden_by` is the supported UI hide. Default on keeps knot scenes out of the main HA scene list.
 - **Do not reverse without user ask.**
 
 ## Panel copy uses HA backend translations (en/nb/nn/de/es)
@@ -476,7 +476,15 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 
 - **Date:** 2026-09-01
 - **Superseded in part:** 2026-09-01 — non-user `off` / `unavailable` during continuous is an *interrupt* (leave dark); when the lamp comes back, re-apply that light’s circadian target once. Available off-path jumps and HA-UI (`user_id`) changes stay overrides.
-- **Decision:** After activation, extrapolation scenes re-apply on a global interval (`continuous_interval`, default 300s; 0 = master off). The same value is the follow-up light transition; targets use `now + transition` (existing offset math). First activation keeps the caller’s transition (usually 0); wait one interval, then follow-up ticks. Per-scene `continuous` defaults to on; list play/pause is preference-only (pause stops a running loop; play does not turn lights on). Stop when another scene in the area is last-activated or when modifiers are set. Skip manually overridden lights; treat drift/unresponsive within tolerance (or still moving toward the command) as retryable. Do not stop merely because all lights are off (dawn). Do not ship this as a blueprint — blueprints cannot skip lamps inside apply or keep commanded vs reported state.
-- **Why:** The user’s continuously-activate blueprint was a roundabout loop and blocked override/drift features. Built-in follow-up matches the product and keeps override state on the scene entity. Power-cut restore must reclaim the lamp; a reading-light dim must not.
+- **Superseded in part:** 2026-09-01 — public contract renamed from `continuous` / brief `follow_up` to `automatically_update_lights`, `automatically_update_lights_active`, and `automatically_update_lights_interval` (Store migrate v3). UI copy says “automatic light updates.”
+- **Decision:** After activation, circadian scenes re-apply on a global interval (`automatically_update_lights_interval`, default 300s; 0 = master off). The same value is the light transition on those ticks; targets use `now + transition` (existing offset math). First activation keeps the caller’s transition (usually 0); wait one interval, then auto-update ticks. Per-scene `automatically_update_lights` defaults to on; list play/pause is preference-only (pause stops a running loop; play does not turn lights on). Stop when another scene in the area is last-activated or when modifiers are set. Skip manually overridden lights; treat drift/unresponsive within tolerance (or still moving toward the command) as retryable. Do not stop merely because all lights are off (dawn). Do not ship this as a blueprint — blueprints cannot skip lamps inside apply or keep commanded vs reported state.
+- **Why:** The user’s continuously-activate blueprint was a roundabout loop and blocked override/drift features. Built-in automatic updates match the product and keep override state on the scene entity. Power-cut restore must reclaim the lamp; a reading-light dim must not. “Update lights” names what changes; “update scene” would sound like editing the scene definition.
+- **Do not reverse without user ask.**
+
+## Prefer readable public keys for automatic light updates
+
+- **Date:** 2026-09-01
+- **Decision:** Use long store/entity/WS names `automatically_update_lights` (+ `_active`, `_interval`) rather than short jargon (`continuous`, `follow_up`). Length is acceptable when it removes ambiguity.
+- **Why:** Users inspect attributes and settings; clarity beats HA-style brevity here.
 - **Do not reverse without user ask.**
 

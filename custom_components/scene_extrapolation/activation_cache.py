@@ -1,4 +1,4 @@
-"""In-process caches for follow-up activation (invalidated on scene.reload)."""
+"""In-process caches for automatic light-update activation (invalidated on scene.reload)."""
 
 from __future__ import annotations
 

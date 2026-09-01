@@ -20,7 +20,7 @@ NIGHTLIGHTS_SCENE = "nightlights_scene"
 
 DISPLAY_SCENES_COMBINED = "display_scenes_combined"
 # Per-scene preference: keep applying on an interval after activation (default on).
-FOLLOW_UP = "follow_up"
+AUTOMATICALLY_UPDATE_LIGHTS = "automatically_update_lights"
 # Default friendly name when area is unknown; prefer "{area} Circadian" in the panel.
 DEFAULT_SCENE_NAME = "Circadian"
 

@@ -17,7 +17,7 @@ from .const import (
     DESCRIPTION,
     DISPLAY_SCENES_COMBINED,
     DOMAIN,
-    FOLLOW_UP,
+    AUTOMATICALLY_UPDATE_LIGHTS,
     LABELS,
     NIGHTLIGHTS_BOOLEAN,
     NIGHTLIGHTS_SCENE,
@@ -35,38 +35,66 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# v2: follow_up rename, follow_up_interval, hide_managed_native_scenes default on.
-STORAGE_VERSION = 2
+# v2 (dev-only): continuous → follow_up. v3: → automatically_update_lights; hide default on.
+STORAGE_VERSION = 3
 DEFAULT_DUSK_MINIMUM_SECONDS = 22 * 3600
 DEFAULT_SETTINGS = {
     "hide_managed_native_scenes": True,
-    # Seconds; 0 disables. Same value is the light transition on follow-up ticks.
-    "follow_up_interval": 300,
+    # Seconds; 0 disables. Same value is the light transition on auto-update ticks.
+    "automatically_update_lights_interval": 300,
 }
+
+_PREF_ALIASES = ("continuous", "follow_up")
+_INTERVAL_ALIASES = ("continuous_interval", "follow_up_interval")
+
+
+def _migrate_preference_keys(item: dict[str, Any]) -> None:
+    """Map legacy per-scene preference keys onto automatically_update_lights."""
+    if AUTOMATICALLY_UPDATE_LIGHTS in item:
+        for alias in _PREF_ALIASES:
+            item.pop(alias, None)
+        return
+    for alias in _PREF_ALIASES:
+        if alias in item:
+            item[AUTOMATICALLY_UPDATE_LIGHTS] = bool(item.pop(alias))
+            for leftover in _PREF_ALIASES:
+                item.pop(leftover, None)
+            return
+    item[AUTOMATICALLY_UPDATE_LIGHTS] = True
+
+
+def _migrate_interval_settings(settings: dict[str, Any]) -> None:
+    """Map legacy interval keys onto automatically_update_lights_interval."""
+    if "automatically_update_lights_interval" in settings:
+        for alias in _INTERVAL_ALIASES:
+            settings.pop(alias, None)
+        return
+    for alias in _INTERVAL_ALIASES:
+        if alias in settings:
+            settings["automatically_update_lights_interval"] = settings.pop(alias)
+            for leftover in _INTERVAL_ALIASES:
+                settings.pop(leftover, None)
+            return
 
 
 def _migrate_store(old_version: int, data: dict[str, Any]) -> dict[str, Any]:
     """Migrate persisted store payloads between STORAGE_VERSION values."""
     if data is None:
-        return {"scenes": [], "settings": dict(DEFAULT_SETTINGS), "managed_native_scene_ids": []}
-    if old_version < 2:
+        return {
+            "scenes": [],
+            "settings": dict(DEFAULT_SETTINGS),
+            "managed_native_scene_ids": [],
+        }
+    if old_version < 3:
         scenes = list(data.get("scenes") or [])
         for item in scenes:
-            if not isinstance(item, dict):
-                continue
-            if FOLLOW_UP not in item and "continuous" in item:
-                item[FOLLOW_UP] = bool(item.pop("continuous"))
-            elif FOLLOW_UP not in item:
-                item[FOLLOW_UP] = True
-            else:
-                item.pop("continuous", None)
+            if isinstance(item, dict):
+                _migrate_preference_keys(item)
         settings = dict(data.get("settings") or {})
-        if "follow_up_interval" not in settings and "continuous_interval" in settings:
-            settings["follow_up_interval"] = settings.pop("continuous_interval")
-        else:
-            settings.pop("continuous_interval", None)
+        _migrate_interval_settings(settings)
         # Product default flipped to on in 3.0; migrate everyone to the new default.
-        settings["hide_managed_native_scenes"] = True
+        if old_version < 2:
+            settings["hide_managed_native_scenes"] = True
         data = {
             **data,
             "scenes": scenes,
@@ -117,9 +145,9 @@ def normalize_scene_config(
     if isinstance(labels, str):
         labels = [labels] if labels else []
     # Missing key → True so existing rooms follow without a storage migration.
-    follow_up = raw.get(FOLLOW_UP, True)
-    if not isinstance(follow_up, bool):
-        follow_up = bool(follow_up)
+    automatically_update_lights = raw.get(AUTOMATICALLY_UPDATE_LIGHTS, True)
+    if not isinstance(automatically_update_lights, bool):
+        automatically_update_lights = bool(automatically_update_lights)
 
     item: dict[str, Any] = {
         "id": scene_id or raw.get("id") or str(uuid.uuid4()),
@@ -129,7 +157,7 @@ def normalize_scene_config(
         CATEGORY: raw.get(CATEGORY) or None,
         AREA: raw.get(AREA) or None,
         DISPLAY_SCENES_COMBINED: combined,
-        FOLLOW_UP: follow_up,
+        AUTOMATICALLY_UPDATE_LIGHTS: automatically_update_lights,
         NIGHTLIGHTS_BOOLEAN: raw.get(NIGHTLIGHTS_BOOLEAN) or None,
         NIGHTLIGHTS_SCENE: raw.get(NIGHTLIGHTS_SCENE) or None,
         SCENE_DUSK_MINIMUM_TIME_OF_DAY: time_to_seconds(
@@ -195,7 +223,7 @@ def to_form_data(item: dict[str, Any]) -> dict[str, Any]:
         ),
         NIGHTLIGHTS_BOOLEAN: item.get(NIGHTLIGHTS_BOOLEAN),
         NIGHTLIGHTS_SCENE: item.get(NIGHTLIGHTS_SCENE),
-        FOLLOW_UP: bool(item.get(FOLLOW_UP, True)),
+        AUTOMATICALLY_UPDATE_LIGHTS: bool(item.get(AUTOMATICALLY_UPDATE_LIGHTS, True)),
     }
     if combined:
         data[SCENE_DAWN_SUNRISE_SUNSET] = item.get(SCENE_DAWN)
@@ -231,23 +259,18 @@ class SceneExtrapolationStore:
         for item in items:
             if "id" not in item:
                 continue
-            # Additive key: rooms saved before follow_up was added stay enabled.
-            if FOLLOW_UP not in item:
-                item[FOLLOW_UP] = True
-            item.pop("continuous", None)
+            # Additive key: rooms saved before automatically_update_lights was added stay enabled.
+            if AUTOMATICALLY_UPDATE_LIGHTS not in item:
+                item[AUTOMATICALLY_UPDATE_LIGHTS] = True
+            for alias in ("continuous", "follow_up"):
+                item.pop(alias, None)
             self.scenes[item["id"]] = item
         settings = {
             **DEFAULT_SETTINGS,
             **(raw.get("settings") or {}),
         }
-        # Drop legacy key if somehow still present after migrate.
-        settings.pop("continuous_interval", None)
-        if "follow_up_interval" not in settings and "continuous_interval" in (
-            raw.get("settings") or {}
-        ):
-            settings["follow_up_interval"] = (raw.get("settings") or {}).get(
-                "continuous_interval", DEFAULT_SETTINGS["follow_up_interval"]
-            )
+        for alias in ("continuous_interval", "follow_up_interval"):
+            settings.pop(alias, None)
         self.settings = settings
         ids = raw.get("managed_native_scene_ids") or []
         self.managed_native_scene_ids = [str(item) for item in ids if item]
@@ -276,25 +299,25 @@ class SceneExtrapolationStore:
     async def async_upsert(self, raw: dict[str, Any]) -> dict[str, Any]:
         """Create or update a scene config."""
         scene_id = raw.get("id")
-        # Editor saves may omit follow_up; keep the play/pause preference.
-        if scene_id and scene_id in self.scenes and FOLLOW_UP not in raw:
+        # Editor saves may omit automatically_update_lights; keep the play/pause preference.
+        if scene_id and scene_id in self.scenes and AUTOMATICALLY_UPDATE_LIGHTS not in raw:
             raw = {
                 **raw,
-                FOLLOW_UP: self.scenes[scene_id].get(FOLLOW_UP, True),
+                AUTOMATICALLY_UPDATE_LIGHTS: self.scenes[scene_id].get(AUTOMATICALLY_UPDATE_LIGHTS, True),
             }
         item = normalize_scene_config(raw, scene_id=scene_id)
         self.scenes[item["id"]] = item
         await self.async_save()
         return item
 
-    async def async_set_follow_up(
-        self, scene_id: str, follow_up: bool
+    async def async_set_automatically_update_lights(
+        self, scene_id: str, automatically_update_lights: bool
     ) -> dict[str, Any] | None:
-        """Toggle per-scene follow-up preference without a full form save."""
+        """Toggle per-scene automatic light-update preference without a full form save."""
         item = self.scenes.get(scene_id)
         if item is None:
             return None
-        item[FOLLOW_UP] = bool(follow_up)
+        item[AUTOMATICALLY_UPDATE_LIGHTS] = bool(automatically_update_lights)
         await self.async_save()
         return item
 
@@ -311,18 +334,18 @@ class SceneExtrapolationStore:
         for key, value in patch.items():
             if key not in DEFAULT_SETTINGS:
                 continue
-            if key == "follow_up_interval":
+            if key == "automatically_update_lights_interval":
                 try:
                     value = int(value)
                 except (TypeError, ValueError) as err:
                     raise HomeAssistantError(
-                        "follow_up_interval must be an integer number of seconds"
+                        "automatically_update_lights_interval must be an integer number of seconds"
                     ) from err
                 # Panel offers 0–30 minutes; reject larger values so storage
                 # cannot exceed what light.turn_on transitions support well.
                 if value < 0 or value > 30 * 60:
                     raise HomeAssistantError(
-                        "follow_up_interval must be between 0 and 1800 seconds"
+                        "automatically_update_lights_interval must be between 0 and 1800 seconds"
                     )
             self.settings[key] = value
         await self.async_save()

@@ -1,4 +1,4 @@
-"""Continuous follow-up activation: last-scene checks and override vs drift."""
+"""Automatic light-update activation: last-scene checks and override vs drift."""
 
 from __future__ import annotations
 
@@ -40,25 +40,25 @@ _COLOR_ATTRS = (
 ReportKind = Literal["sync", "drift", "override", "ignore", "interrupt", "recover"]
 
 
-def follow_up_interval_seconds(hass: HomeAssistant) -> int:
-    """Follow-up delay and transition length (seconds). 0 disables follow-up."""
+def automatically_update_lights_interval_seconds(hass: HomeAssistant) -> int:
+    """Auto-update delay and transition length (seconds). 0 disables updates."""
     domain_data = hass.data.get(DOMAIN) or {}
     store = domain_data.get(DATA_STORE)
-    default = DEFAULT_SETTINGS["follow_up_interval"]
+    default = DEFAULT_SETTINGS["automatically_update_lights_interval"]
     if store is None:
         return int(default)
-    value = store.settings.get("follow_up_interval", default)
+    value = store.settings.get("automatically_update_lights_interval", default)
     return int(value)
 
 
-def should_arm_follow_up(
+def should_arm_automatically_update_lights(
     interval: int,
     *,
     enabled: bool,
     brightness_modifier: float,
     transition_percent_manual: bool,
 ) -> bool:
-    """Follow-up only while preferred, clock-driven, and with no brightness offset."""
+    """Auto-update only while preferred, clock-driven, and with no brightness offset."""
     return (
         enabled
         and interval > 0

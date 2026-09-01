@@ -8,7 +8,7 @@
 
 Daylight that follows the sun between your scenes. The integration builds a Home Assistant scene that blends your day and evening looks from the sun’s cycle — cool by day, warm toward dusk — so activating it lights the room the way you want for *now*.
 
-**Built-in follow-up** (on by default) re-applies each circadian scene on an interval with a matching transition, so the room fades through the day without a separate automation. Pause per room from the sidebar list, or set the global interval to 0 to turn follow-up off.
+**Built-in automatic light updates** (on by default) re-apply each circadian scene on an interval with a matching transition, so the room fades through the day without a separate automation. Pause per room from the sidebar list, or set the global interval to 0 to turn updates off.
 
 **Support the project:** [buymeacoffee.com/etokheim](https://buymeacoffee.com/etokheim)
 
@@ -47,7 +47,7 @@ A typical result:
 4. **Turn lights off or on** by time of day (bright undimmable lamp off in the evening; cozy lamp on only then).
 5. **Not only lights** — a scene can drive shades, locks, and other entities if you want.
 6. **Nightlights mode** — optionally use a dedicated scene when an `input_boolean` is on.
-7. **Follow-up** — keep the room tracking the sun after activation without fighting a “force lights on” loop.
+7. **Automatic light updates** — keep the room tracking the sun after activation without fighting a “force lights on” loop.
 
 ## Limitations
 
@@ -77,13 +77,13 @@ Time total applying scene:              866.3ms
 | [Circadian Lighting](https://github.com/claytonjn/hass-circadian_lighting) | Drives lights/groups directly; richer options; large community. |
 | [Adaptive Lighting](https://github.com/basnijholt/adaptive-lighting) | Continuous CT/brightness without scene knots. |
 
-Circadian Scenes stays scene-based on purpose: predictable, easy to combine with motion and schedules, and follow-up that can skip overridden lamps.
+Circadian Scenes stays scene-based on purpose: predictable, easy to combine with motion and schedules, and automatic light updates that can skip overridden lamps.
 
 ## Extend it
 
 Keep the core simple, then add behavior with the rest of Home Assistant:
 
-1. **All-day fade** — use built-in follow-up (default). Older blueprints that re-activate every few minutes are legacy and not required.
+1. **All-day fade** — use built-in automatic light updates (default). Older blueprints that re-activate every few minutes are legacy and not required.
 2. **Motion lighting** — automation that activates the circadian scene on motion (a blueprint is still useful for this).
 
 ## Support

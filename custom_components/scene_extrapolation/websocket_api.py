@@ -58,7 +58,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_list_managed_native_scenes)
     websocket_api.async_register_command(hass, ws_get_settings)
     websocket_api.async_register_command(hass, ws_update_settings)
-    websocket_api.async_register_command(hass, ws_set_follow_up)
+    websocket_api.async_register_command(hass, ws_set_automatically_update_lights)
 
 
 def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
@@ -581,16 +581,16 @@ async def ws_update_settings(
     """Update integration-wide settings and apply visibility side effects."""
     store = _store(hass)
     before_hide = bool(store.settings.get("hide_managed_native_scenes"))
-    before_interval = int(store.settings.get("follow_up_interval") or 0)
+    before_interval = int(store.settings.get("automatically_update_lights_interval") or 0)
     settings = await store.async_update_settings(dict(msg.get("settings") or {}))
     after_hide = bool(settings.get("hide_managed_native_scenes"))
-    after_interval = int(settings.get("follow_up_interval") or 0)
+    after_interval = int(settings.get("automatically_update_lights_interval") or 0)
     updated = 0
     if before_hide != after_hide:
         updated = apply_managed_native_scene_visibility(hass, hidden=after_hide)
     if before_interval != after_interval:
         for entity in hass.data[DOMAIN][DATA_ENTITIES].values():
-            entity.async_on_follow_up_settings_changed()
+            entity.async_on_automatically_update_lights_settings_changed()
     connection.send_result(
         msg["id"],
         {"settings": settings, "visibility_updated": updated},
@@ -599,21 +599,21 @@ async def ws_update_settings(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): f"{DOMAIN}/set_follow_up",
+        vol.Required("type"): f"{DOMAIN}/set_automatically_update_lights",
         vol.Required("scene_id"): str,
-        vol.Required("follow_up"): bool,
+        vol.Required("automatically_update_lights"): bool,
     }
 )
 @websocket_api.require_admin
 @websocket_api.async_response
-async def ws_set_follow_up(
+async def ws_set_automatically_update_lights(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Toggle per-scene follow-up preference (list play/pause). Does not activate."""
-    item = await _store(hass).async_set_follow_up(
-        msg["scene_id"], bool(msg["follow_up"])
+    """Toggle per-scene automatic light-update preference (list play/pause). Does not activate."""
+    item = await _store(hass).async_set_automatically_update_lights(
+        msg["scene_id"], bool(msg["automatically_update_lights"])
     )
     if item is None:
         connection.send_error(msg["id"], websocket_api.ERR_NOT_FOUND, "Scene not found")

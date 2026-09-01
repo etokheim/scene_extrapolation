@@ -224,7 +224,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._managedScenes = [];
     this._settings = {
       hide_managed_native_scenes: true,
-      follow_up_interval: 300,
+      automatically_update_lights_interval: 300,
     };
     this._listTab = "extrapolation";
     this._translationsReady = false;
@@ -3086,11 +3086,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-shrink: 0;
           margin-top: 2px;
         }
-        .list-settings-dialog .follow-up-interval-row {
+        .list-settings-dialog .automatically-update-lights-interval-row {
           flex-direction: column;
           align-items: stretch;
         }
-        .list-settings-dialog .follow-up-interval-row ha-selector {
+        .list-settings-dialog .automatically-update-lights-interval-row ha-selector {
           width: 100%;
           margin-top: 8px;
         }
@@ -3104,12 +3104,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           --mdc-icon-button-size: 40px;
           color: var(--secondary-text-color);
         }
-        .row .row-actions ha-button.follow-up-btn {
+        .row .row-actions ha-button.automatically-update-lights-btn {
           --ha-button-height: 36px;
           min-width: 36px;
           margin-inline: 2px;
         }
-        .row .row-actions ha-button.follow-up-pause {
+        .row .row-actions ha-button.automatically-update-lights-pause {
           --ha-button-tonal-container-color: color-mix(
             in srgb,
             var(--error-color, #f44336) 22%,
@@ -3118,7 +3118,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           --ha-button-tonal-text-color: var(--error-color, #f44336);
           color: var(--error-color, #f44336);
         }
-        .row .row-actions ha-button.follow-up-play {
+        .row .row-actions ha-button.automatically-update-lights-play {
           --ha-button-tonal-container-color: color-mix(
             in srgb,
             var(--success-color, #4caf50) 22%,
@@ -3127,7 +3127,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           --ha-button-tonal-text-color: var(--success-color, #4caf50);
           color: var(--success-color, #4caf50);
         }
-        .row .row-actions ha-button.follow-up-btn ha-icon {
+        .row .row-actions ha-button.automatically-update-lights-btn ha-icon {
           --mdc-icon-size: 20px;
         }
         .row {
@@ -3461,7 +3461,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._managedScenes = managed || [];
       this._settings = {
         hide_managed_native_scenes: true,
-        follow_up_interval: 300,
+        automatically_update_lights_interval: 300,
         ...(settings || {}),
       };
       this._error = null;
@@ -3698,44 +3698,44 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const actions = document.createElement("div");
     actions.className = "row-actions";
-    const followUpOn = item.follow_up !== false;
-    const followUpBtn = document.createElement("ha-button");
-    followUpBtn.appearance = "tonal";
-    followUpBtn.size = "small";
-    followUpBtn.className = followUpOn
-      ? "follow-up-btn follow-up-pause"
-      : "follow-up-btn follow-up-play";
-    followUpBtn.title = followUpOn
+    const automaticallyUpdateLightsOn = item.automatically_update_lights !== false;
+    const automaticallyUpdateLightsBtn = document.createElement("ha-button");
+    automaticallyUpdateLightsBtn.appearance = "tonal";
+    automaticallyUpdateLightsBtn.size = "small";
+    automaticallyUpdateLightsBtn.className = automaticallyUpdateLightsOn
+      ? "automatically-update-lights-btn automatically-update-lights-pause"
+      : "automatically-update-lights-btn automatically-update-lights-play";
+    automaticallyUpdateLightsBtn.title = automaticallyUpdateLightsOn
       ? this._t(
-          "frontend.settings.pause_follow_up",
-          "Pause automatic follow-up"
+          "frontend.settings.pause_automatically_update_lights",
+          "Pause automatic light updates"
         )
       : this._t(
-          "frontend.settings.resume_follow_up",
-          "Resume automatic follow-up"
+          "frontend.settings.resume_automatically_update_lights",
+          "Resume automatic light updates"
         );
-    followUpBtn.setAttribute("aria-label", followUpBtn.title);
-    const followUpIcon = document.createElement("ha-icon");
-    followUpIcon.setAttribute(
+    automaticallyUpdateLightsBtn.setAttribute("aria-label", automaticallyUpdateLightsBtn.title);
+    const automaticallyUpdateLightsIcon = document.createElement("ha-icon");
+    automaticallyUpdateLightsIcon.setAttribute(
       "icon",
-      followUpOn ? "mdi:pause" : "mdi:play"
+      automaticallyUpdateLightsOn ? "mdi:pause" : "mdi:play"
     );
-    followUpBtn.appendChild(followUpIcon);
-    followUpBtn.addEventListener("click", async (ev) => {
+    automaticallyUpdateLightsBtn.appendChild(automaticallyUpdateLightsIcon);
+    automaticallyUpdateLightsBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
-      const next = !followUpOn;
-      followUpBtn.disabled = true;
+      const next = !automaticallyUpdateLightsOn;
+      automaticallyUpdateLightsBtn.disabled = true;
       try {
         const result = await this._hass.callWS({
-          type: `${DOMAIN}/set_follow_up`,
+          type: `${DOMAIN}/set_automatically_update_lights`,
           scene_id: item.id,
-          follow_up: next,
+          automatically_update_lights: next,
         });
         const idx = this._items.findIndex((row) => row.id === item.id);
         if (idx >= 0) {
           this._items[idx] = {
             ...this._items[idx],
-            follow_up: result?.follow_up !== false,
+            automatically_update_lights: result?.automatically_update_lights !== false,
             ...(result || {}),
           };
         }
@@ -3746,7 +3746,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       } catch (err) {
         window.alert(err.message || String(err));
       } finally {
-        followUpBtn.disabled = false;
+        automaticallyUpdateLightsBtn.disabled = false;
       }
     });
     const settingsBtn = document.createElement("ha-icon-button");
@@ -3792,7 +3792,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._renderList();
       }
     });
-    actions.append(followUpBtn, settingsBtn, deleteBtn);
+    actions.append(automaticallyUpdateLightsBtn, settingsBtn, deleteBtn);
     row.appendChild(actions);
     return row;
   }
@@ -3930,7 +3930,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         });
         this._settings = {
           hide_managed_native_scenes: true,
-          follow_up_interval: 300,
+          automatically_update_lights_interval: 300,
           ...(result?.settings || {}),
         };
         this._managedScenes = await this._hass.callWS({
@@ -3951,29 +3951,29 @@ class SceneExtrapolationPanel extends HTMLElement {
     body.appendChild(row);
 
     const intervalRow = document.createElement("div");
-    intervalRow.className = "setup-link-row follow-up-interval-row";
+    intervalRow.className = "setup-link-row automatically-update-lights-interval-row";
     const intervalLabelWrap = document.createElement("div");
     const intervalLabel = document.createElement("div");
     intervalLabel.className = "name";
     intervalLabel.textContent = this._t(
-      "frontend.settings.follow_up_interval",
-      "Automatic follow-up interval"
+      "frontend.settings.automatically_update_lights_interval",
+      "Automatically update lights interval"
     );
     const intervalHelper = document.createElement("div");
     intervalHelper.className = "sidebar-note";
     intervalHelper.style.margin = "4px 0 0";
     intervalHelper.textContent = this._t(
-      "frontend.settings.follow_up_interval_helper",
-      "After a scene is activated, re-apply it this often with the same transition length (target = how the room should look at the end of the transition). 0 turns follow-up off for every room. Pause individual rooms from the list."
+      "frontend.settings.automatically_update_lights_interval_helper",
+      "After a scene is activated, keep updating the lights this often with the same transition length (target = how the room should look at the end of the transition). 0 turns automatic updates off for every room. Pause individual rooms from the list."
     );
     intervalLabelWrap.append(intervalLabel, intervalHelper);
     const intervalField = document.createElement("ha-selector");
     intervalField.hass = this._hass;
     intervalField.label = this._t(
-      "frontend.settings.follow_up_interval_minutes",
+      "frontend.settings.automatically_update_lights_interval_minutes",
       "Minutes"
     );
-    const currentSeconds = Number(this._settings?.follow_up_interval ?? 300);
+    const currentSeconds = Number(this._settings?.automatically_update_lights_interval ?? 300);
     intervalField.value = Math.round(currentSeconds / 60);
     intervalField.selector = {
       number: { min: 0, max: 30, step: 1, mode: "box", unit_of_measurement: "min" },
@@ -3987,15 +3987,15 @@ class SceneExtrapolationPanel extends HTMLElement {
       try {
         const result = await this._hass.callWS({
           type: `${DOMAIN}/update_settings`,
-          settings: { follow_up_interval: seconds },
+          settings: { automatically_update_lights_interval: seconds },
         });
         this._settings = {
           hide_managed_native_scenes: true,
-          follow_up_interval: 300,
+          automatically_update_lights_interval: 300,
           ...(result?.settings || {}),
         };
         intervalField.value = Math.round(
-          Number(this._settings.follow_up_interval || 0) / 60
+          Number(this._settings.automatically_update_lights_interval || 0) / 60
         );
       } catch (err) {
         intervalField.value = Math.round(currentSeconds / 60);
@@ -7324,7 +7324,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const step1Intro = document.createElement("p");
     step1Intro.className = "setup-intro";
     step1Intro.innerHTML =
-      "Creates a scene which, when activated, lights your room based on the sun. Follow-up is built in: it keeps adjusting lights on an interval (pause per room from the list).<br><br>" +
+      "Creates a scene which, when activated, lights your room based on the sun. Automatic light updates are built in: it keeps adjusting lights on an interval (pause per room from the list).<br><br>" +
       "<span class=\"muted\">Only <strong>native Home Assistant scenes</strong> are supported (not Hue/integration scenes). All settings can be changed later.</span>";
     step1.appendChild(step1Intro);
 

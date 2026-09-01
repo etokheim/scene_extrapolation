@@ -37,7 +37,7 @@ turn_on:
           mode: slider
     transition_percent:
       name: Transition percent
-      description: "Absolute position along the day, equally spaced between the five scenes: 0% dawn, 25% sunrise, 50% noon, 75% sunset, 100% dusk. Omit to follow the clock. When set, follow-up is disarmed until the next activate without this field (transition_percent_manual stays true)."
+      description: "Absolute position along the day, equally spaced between the five scenes: 0% dawn, 25% sunrise, 50% noon, 75% sunset, 100% dusk. Omit to follow the clock. When set, automatic light updates are disarmed until the next activate without this field (transition_percent_manual stays true)."
       required: false
       selector:
         number:

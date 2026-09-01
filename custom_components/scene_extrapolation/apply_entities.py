@@ -44,7 +44,7 @@ async def apply_entities_parallel(
 ):
     """Apply multiple entity states in parallel for better performance.
 
-    When skip_noop is True (follow-up ticks only), lights whose current state
+    When skip_noop is True (automatic light-update ticks only), lights whose current state
     already matches the commanded target are not sent another service call.
     """
     _LOGGER.debug("Starting parallel processing of %d entities", len(entities))
@@ -102,7 +102,7 @@ async def apply_single_entity(
         return None
 
     if skip_noop and domain == LIGHT_DOMAIN and light_command_is_noop(hass, entity):
-        _LOGGER.debug("Skipping no-op follow-up for %s", entity[ATTR_ENTITY_ID])
+        _LOGGER.debug("Skipping no-op automatic light update for %s", entity[ATTR_ENTITY_ID])
         return False
 
     if domain == LIGHT_DOMAIN:

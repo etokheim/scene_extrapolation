@@ -67,7 +67,7 @@ from .const import (
     AREA,
     CATEGORY,
     DEFAULT_SCENE_NAME,
-    FOLLOW_UP,
+    AUTOMATICALLY_UPDATE_LIGHTS,
     DATA_ADD_ENTITIES,
     DATA_ENTITIES,
     DATA_STORE,
@@ -87,10 +87,10 @@ from .continuous import (
     classify_light_report,
     competing_scene_activated,
     context_is_ours,
-    follow_up_interval_seconds,
+    automatically_update_lights_interval_seconds,
     entity_ids_from_service_event,
     last_activated_scene_id,
-    should_arm_follow_up,
+    should_arm_automatically_update_lights,
     snapshot_from_command,
     snapshot_from_state,
 )
@@ -203,12 +203,12 @@ class ExtrapolationScene(Scene):
         self._pre_apply: dict[str, dict[str, Any] | None] = {}
         self._apply_context: Context | None = None
         self._apply_until = 0.0
-        self._follow_up_armed = False
-        self._activating_follow_up = False
+        self._automatically_update_lights_armed = False
+        self._activating_automatically_update_lights = False
         self._only_entity_ids: set[str] | None = None
-        self._follow_up_generation = 0
+        self._automatically_update_lights_generation = 0
         self._internal_scene_call = False
-        self._unsub_follow_up = None
+        self._unsub_automatically_update_lights = None
         self._unsub_call_service = None
         self._unsub_light_listener = None
         self._last_attr_state_key = None
@@ -228,9 +228,9 @@ class ExtrapolationScene(Scene):
             return default
         return value
 
-    def _follow_up_enabled(self) -> bool:
+    def _automatically_update_lights_enabled(self) -> bool:
         """Per-scene play/pause preference (default on)."""
-        return bool(self._cfg(FOLLOW_UP, True))
+        return bool(self._cfg(AUTOMATICALLY_UPDATE_LIGHTS, True))
 
     async def async_added_to_hass(self) -> None:
         """Assign the configured area once the entity is registered."""
@@ -251,7 +251,7 @@ class ExtrapolationScene(Scene):
         if self._unsub_call_service:
             self._unsub_call_service()
             self._unsub_call_service = None
-        self._stop_follow_up(write_state=False)
+        self._stop_automatically_update_lights(write_state=False)
         await super().async_will_remove_from_hass()
 
     async def _async_refresh_transition_percent(self, _now) -> None:
@@ -266,8 +266,8 @@ class ExtrapolationScene(Scene):
             round(self._current_day_transition_percent(), 1),
             self._transition_percent_manual,
             self._brightness_modifier,
-            self._follow_up_enabled(),
-            self._follow_up_armed,
+            self._automatically_update_lights_enabled(),
+            self._automatically_update_lights_armed,
             tuple(sorted(self._overridden)),
             tuple(sorted(self._interrupted)),
         )
@@ -287,8 +287,8 @@ class ExtrapolationScene(Scene):
         self._area_id = scene_config.get(AREA)
         await self._async_sync_registry()
         # Pause preference stops a running loop; play does not activate lights.
-        if not self._follow_up_enabled() and self._follow_up_armed:
-            self._stop_follow_up()
+        if not self._automatically_update_lights_enabled() and self._automatically_update_lights_armed:
+            self._stop_automatically_update_lights()
         else:
             self._write_ha_state_if_attrs_changed()
 
@@ -341,8 +341,8 @@ class ExtrapolationScene(Scene):
             "transition_percent": round(self._current_day_transition_percent(), 1),
             "transition_percent_manual": self._transition_percent_manual,
             "integration": self._attr_integration,
-            "follow_up": self._follow_up_enabled(),
-            "follow_up_active": self._follow_up_armed,
+            "automatically_update_lights": self._automatically_update_lights_enabled(),
+            "automatically_update_lights_active": self._automatically_update_lights_armed,
             "overridden_lights": sorted(self._overridden),
             "interrupted_lights": sorted(self._interrupted),
         }
@@ -363,23 +363,23 @@ class ExtrapolationScene(Scene):
 
         return attrs
 
-    def _cancel_follow_up(self) -> None:
-        """Drop the pending follow-up timer and invalidate in-flight ticks."""
-        self._follow_up_generation += 1
-        if self._unsub_follow_up:
-            self._unsub_follow_up()
-            self._unsub_follow_up = None
+    def _cancel_automatically_update_lights(self) -> None:
+        """Drop the pending automatic light update timer and invalidate in-flight ticks."""
+        self._automatically_update_lights_generation += 1
+        if self._unsub_automatically_update_lights:
+            self._unsub_automatically_update_lights()
+            self._unsub_automatically_update_lights = None
 
     def _unsub_light_tracking(self) -> None:
         if self._unsub_light_listener:
             self._unsub_light_listener()
             self._unsub_light_listener = None
 
-    def _stop_follow_up(self, *, write_state: bool = True) -> None:
-        """Stop follow-up ticks and forget override/command snapshots."""
-        self._cancel_follow_up()
+    def _stop_automatically_update_lights(self, *, write_state: bool = True) -> None:
+        """Stop automatic light update ticks and forget override/command snapshots."""
+        self._cancel_automatically_update_lights()
         self._unsub_light_tracking()
-        self._follow_up_armed = False
+        self._automatically_update_lights_armed = False
         self._overridden.clear()
         self._interrupted.clear()
         self._commanded = {}
@@ -389,59 +389,59 @@ class ExtrapolationScene(Scene):
         if write_state and self.hass and self.entity_id:
             self._write_ha_state_if_attrs_changed()
 
-    def async_on_follow_up_settings_changed(self) -> None:
-        """Re-arm or stop follow-up when the global interval setting changes."""
-        if not self._follow_up_armed:
+    def async_on_automatically_update_lights_settings_changed(self) -> None:
+        """Re-arm or stop automatic light update when the global interval setting changes."""
+        if not self._automatically_update_lights_armed:
             return
-        interval = follow_up_interval_seconds(self.hass)
-        if not should_arm_follow_up(
+        interval = automatically_update_lights_interval_seconds(self.hass)
+        if not should_arm_automatically_update_lights(
             interval,
-            enabled=self._follow_up_enabled(),
+            enabled=self._automatically_update_lights_enabled(),
             brightness_modifier=self._brightness_modifier,
             transition_percent_manual=self._transition_percent_manual,
         ):
-            self._stop_follow_up()
+            self._stop_automatically_update_lights()
             return
-        self._schedule_follow_up(interval)
+        self._schedule_automatically_update_lights(interval)
 
-    def _schedule_follow_up(self, interval: int) -> None:
-        """Arm a follow-up tick `interval` seconds from now."""
-        if self._unsub_follow_up:
-            self._unsub_follow_up()
-            self._unsub_follow_up = None
-        self._follow_up_armed = True
-        generation = self._follow_up_generation
+    def _schedule_automatically_update_lights(self, interval: int) -> None:
+        """Arm a automatic light update tick `interval` seconds from now."""
+        if self._unsub_automatically_update_lights:
+            self._unsub_automatically_update_lights()
+            self._unsub_automatically_update_lights = None
+        self._automatically_update_lights_armed = True
+        generation = self._automatically_update_lights_generation
 
         async def _fire(_now) -> None:
-            self._unsub_follow_up = None
-            if generation != self._follow_up_generation:
+            self._unsub_automatically_update_lights = None
+            if generation != self._automatically_update_lights_generation:
                 return
-            await self._async_follow_up()
+            await self._async_automatically_update_lights()
 
-        self._unsub_follow_up = async_call_later(self.hass, interval, _fire)
+        self._unsub_automatically_update_lights = async_call_later(self.hass, interval, _fire)
         self._sync_light_listener()
         self._write_ha_state_if_attrs_changed()
 
-    async def _async_follow_up(self) -> None:
+    async def _async_automatically_update_lights(self) -> None:
         """Re-apply the scene if it is still the last one activated in the area."""
-        interval = follow_up_interval_seconds(self.hass)
-        if not should_arm_follow_up(
+        interval = automatically_update_lights_interval_seconds(self.hass)
+        if not should_arm_automatically_update_lights(
             interval,
-            enabled=self._follow_up_enabled(),
+            enabled=self._automatically_update_lights_enabled(),
             brightness_modifier=self._brightness_modifier,
             transition_percent_manual=self._transition_percent_manual,
         ):
-            self._stop_follow_up()
+            self._stop_automatically_update_lights()
             return
         if not self._is_last_activated_in_area():
             _LOGGER.debug(
                 "%s is no longer the last activated scene in its area; stopping continuous",
                 self.entity_id,
             )
-            self._stop_follow_up()
+            self._stop_automatically_update_lights()
             return
         self._collect_new_overrides()
-        self._activating_follow_up = True
+        self._activating_automatically_update_lights = True
         await self.async_activate(transition=interval)
 
     def _is_last_activated_in_area(self) -> bool:
@@ -483,7 +483,7 @@ class ExtrapolationScene(Scene):
                 self._interrupted.add(entity_id)
             elif kind == "override":
                 _LOGGER.info(
-                    "%s: %s looks manually overridden; skipping on follow-up",
+                    "%s: %s looks manually overridden; skipping on automatic light update",
                     self.entity_id,
                     entity_id,
                 )
@@ -495,7 +495,7 @@ class ExtrapolationScene(Scene):
     def _sync_light_listener(self) -> None:
         self._unsub_light_tracking()
         watch = set(self._commanded) | self._interrupted
-        if not self._follow_up_armed or not watch:
+        if not self._automatically_update_lights_armed or not watch:
             return
         self._unsub_light_listener = async_track_state_change_event(
             self.hass, list(watch), self._on_light_state_changed
@@ -504,7 +504,7 @@ class ExtrapolationScene(Scene):
     @callback
     def _on_light_state_changed(self, event: Event) -> None:
         """Track overrides, power interrupts, and restore reclaim."""
-        if not self._follow_up_armed:
+        if not self._automatically_update_lights_armed:
             return
         entity_id = event.data.get("entity_id")
         if not entity_id or entity_id in self._overridden:
@@ -564,12 +564,12 @@ class ExtrapolationScene(Scene):
 
     async def _async_reapply_one_light(self, entity_id: str) -> None:
         """Re-apply the current circadian target to one restored light."""
-        if not self._follow_up_armed or entity_id in self._overridden:
+        if not self._automatically_update_lights_armed or entity_id in self._overridden:
             return
         if not self._is_last_activated_in_area():
             return
         self._only_entity_ids = {entity_id}
-        self._activating_follow_up = True
+        self._activating_automatically_update_lights = True
         try:
             # Short transition — reclaim without a full-interval fade.
             await self.async_activate(transition=1)
@@ -578,8 +578,8 @@ class ExtrapolationScene(Scene):
 
     @callback
     def _on_call_service(self, event: Event) -> None:
-        """Stop follow-up as soon as another scene in the area is turned on."""
-        if not self._follow_up_armed or self._internal_scene_call:
+        """Stop automatic light update as soon as another scene in the area is turned on."""
+        if not self._automatically_update_lights_armed or self._internal_scene_call:
             return
         data = event.data or {}
         domain = data.get("domain")
@@ -598,7 +598,7 @@ class ExtrapolationScene(Scene):
             self.entity_id,
             activated,
         )
-        self._stop_follow_up()
+        self._stop_automatically_update_lights()
 
     async def async_activate(
         self,
@@ -619,21 +619,21 @@ class ExtrapolationScene(Scene):
             location: Optional dict with 'latitude' and 'longitude' keys to override location
                      (defaults to Home Assistant's configured location)
         """
-        follow_up = self._activating_follow_up
-        self._activating_follow_up = False
+        is_auto_update_tick = self._activating_automatically_update_lights
+        self._activating_automatically_update_lights = False
         only_ids = self._only_entity_ids
-        if not follow_up:
+        if not is_auto_update_tick:
             self._overridden.clear()
             self._interrupted.clear()
-            self._cancel_follow_up()
+            self._cancel_automatically_update_lights()
             self._unsub_light_tracking()
-            self._follow_up_armed = False
+            self._automatically_update_lights_armed = False
             # scene.turn_on already records via Scene._async_activate; this
-            # covers scene_extrapolation.turn_on. Follow-up must not record or
-            # we would steal "last activated" from another scene in the area.
+            # covers scene_extrapolation.turn_on. Auto-update ticks must not
+            # record or we would steal "last activated" from another scene.
             if hasattr(self, "_async_record_activation"):
                 self._async_record_activation()
-        generation = self._follow_up_generation
+        generation = self._automatically_update_lights_generation
 
         # Store the brightness modifier and optional manual day percent
         self._brightness_modifier = brightness_modifier
@@ -644,15 +644,15 @@ class ExtrapolationScene(Scene):
             self._transition_percent_manual = True
             self._manual_transition_percent = transition_percent
 
-        interval = follow_up_interval_seconds(self.hass)
-        will_follow = should_arm_follow_up(
+        interval = automatically_update_lights_interval_seconds(self.hass)
+        will_follow = should_arm_automatically_update_lights(
             interval,
-            enabled=self._follow_up_enabled(),
+            enabled=self._automatically_update_lights_enabled(),
             brightness_modifier=brightness_modifier,
             transition_percent_manual=self._transition_percent_manual,
         )
         # Blueprint-style: first activation keeps the caller's transition
-        # (usually 0). Follow-up ticks pass transition=interval and target
+        # (usually 0). Auto-update ticks pass transition=interval and target
         # how the room should look at now+interval.
         apply_transition = transition
 
@@ -736,10 +736,10 @@ class ExtrapolationScene(Scene):
             self._apply_context = None
 
             # Keep the timer so circadian resumes when nightlights turn off.
-            if generation != self._follow_up_generation:
+            if generation != self._automatically_update_lights_generation:
                 return
             if will_follow:
-                self._schedule_follow_up(interval)
+                self._schedule_automatically_update_lights(interval)
             return
 
         ##############################################
@@ -964,7 +964,7 @@ class ExtrapolationScene(Scene):
             for item in entity_changes
             if str(item.get(ATTR_ENTITY_ID, "")).startswith("light.")
         ]
-        if follow_up:
+        if is_auto_update_tick:
             # Keep snapshots for interrupted/overridden lamps we are not touching.
             for item in light_changes:
                 eid = item[ATTR_ENTITY_ID]
@@ -989,21 +989,21 @@ class ExtrapolationScene(Scene):
                 self.hass,
                 apply_transition,
                 context=self._apply_context,
-                skip_noop=follow_up,
+                skip_noop=is_auto_update_tick,
             )
         if will_follow:
             self._sync_light_listener()
 
-        if generation != self._follow_up_generation:
+        if generation != self._automatically_update_lights_generation:
             return
         # Single-light recover must not reset the interval timer.
         if will_follow and only_ids is None:
-            self._schedule_follow_up(interval)
+            self._schedule_automatically_update_lights(interval)
         elif will_follow:
-            self._follow_up_armed = True
+            self._automatically_update_lights_armed = True
             self._write_ha_state_if_attrs_changed()
         else:
-            self._follow_up_armed = False
+            self._automatically_update_lights_armed = False
             self._write_ha_state_if_attrs_changed()
 
         _LOGGER.debug(

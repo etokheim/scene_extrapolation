@@ -13,7 +13,7 @@ from custom_components.scene_extrapolation.continuous import (
     last_activated_scene_id,
     moved_toward,
     parse_scene_activated,
-    should_arm_continuous,
+    should_arm_automatically_update_lights,
     snapshot_from_command,
     snapshot_from_state,
     states_match,
@@ -28,20 +28,20 @@ def _off(**attrs):
     return {"state": "off", **attrs}
 
 
-def test_should_arm_continuous():
-    assert should_arm_continuous(
+def test_should_arm_automatically_update_lights():
+    assert should_arm_automatically_update_lights(
         300, enabled=True, brightness_modifier=0, transition_percent_manual=False
     )
-    assert not should_arm_continuous(
+    assert not should_arm_automatically_update_lights(
         300, enabled=False, brightness_modifier=0, transition_percent_manual=False
     )
-    assert not should_arm_continuous(
+    assert not should_arm_automatically_update_lights(
         0, enabled=True, brightness_modifier=0, transition_percent_manual=False
     )
-    assert not should_arm_continuous(
+    assert not should_arm_automatically_update_lights(
         300, enabled=True, brightness_modifier=10, transition_percent_manual=False
     )
-    assert not should_arm_continuous(
+    assert not should_arm_automatically_update_lights(
         300, enabled=True, brightness_modifier=0, transition_percent_manual=True
     )
 
