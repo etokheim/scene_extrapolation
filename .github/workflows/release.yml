@@ -1,156 +1,141 @@
-name: Version and Release
+name: Release
 
+# Merging a PR into master publishes a GitHub (and HACS) release from
+# CHANGELOG Unreleased. Do not also bump version / move Unreleased in the PR.
 on:
-  push:
-    tags:
-      - "v*"
+  pull_request:
+    branches: [master]
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump (auto = infer from CHANGELOG Unreleased)"
+        required: true
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+        default: auto
+
+concurrency:
+  group: release-master
+  cancel-in-progress: false
 
 jobs:
-  version-and-release:
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
+    outputs:
+      skipped: ${{ steps.plan.outputs.skipped }}
+      version: ${{ steps.plan.outputs.version }}
     steps:
-      - name: Checkout code
+      - name: Checkout master
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: master # Check out the main branch instead of the tag
+          ref: master
 
-      - name: Extract version from tag
-        id: version
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.14"
+
+      - name: Resolve bump type
+        id: bump
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_BUMP: ${{ github.event.inputs.bump }}
+          PR_LABELS: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Check tag message for release trigger
-        id: check_release
-        run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          # Get the tag message using git show
-          TAG_MESSAGE=$(git show --format='%B' -s "$TAG_NAME" 2>/dev/null || echo "")
-          echo "Tag message: $TAG_MESSAGE"
-
-          if echo "$TAG_MESSAGE" | grep -q "release=true"; then
-            echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "✅ Release triggered by tag message"
-          else
-            echo "should_release=false" >> $GITHUB_OUTPUT
-            echo "ℹ️  No release triggered (tag message doesn't contain 'release=true')"
+          SKIP=false
+          BUMP="${DISPATCH_BUMP:-auto}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if echo "$PR_LABELS" | grep -q 'release:skip'; then
+              SKIP=true
+            elif echo "$PR_LABELS" | grep -q 'release:major'; then
+              BUMP=major
+            elif echo "$PR_LABELS" | grep -q 'release:minor'; then
+              BUMP=minor
+            elif echo "$PR_LABELS" | grep -q 'release:patch'; then
+              BUMP=patch
+            else
+              BUMP=auto
+            fi
           fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
 
-      - name: Update manifest version
+      - name: Plan release
+        id: plan
+        if: steps.bump.outputs.skip != 'true'
+        run: python .github/scripts/cut_release.py --bump "${{ steps.bump.outputs.bump }}"
+
+      - name: Skip
+        if: steps.bump.outputs.skip == 'true' || steps.plan.outputs.skipped == 'true'
         run: |
-          VERSION=${{ steps.version.outputs.version }}
-          # Update manifest.json with the new version
-          jq --arg version "$VERSION" '.version = $version' custom_components/scene_extrapolation/manifest.json > temp.json
-          mv temp.json custom_components/scene_extrapolation/manifest.json
-          echo "Updated manifest.json to version $VERSION"
+          echo "No GitHub release for this merge."
+          echo "skip=${{ steps.bump.outputs.skip }}"
+          echo "plan_skipped=${{ steps.plan.outputs.skipped }}"
+          echo "reason=${{ steps.plan.outputs.reason }}"
 
-      - name: Update CHANGELOG.md for release
-        if: steps.check_release.outputs.should_release == 'true'
-        id: update_changelog
-        run: |
-          VERSION=${{ steps.version.outputs.version }}
-          DATE=$(date +%Y-%m-%d)
+      - name: Apply version and changelog
+        if: steps.bump.outputs.skip != 'true' && steps.plan.outputs.skipped == 'false'
+        run: python .github/scripts/cut_release.py --bump "${{ steps.bump.outputs.bump }}" --apply
 
-          # Create a temporary file for the updated changelog
-          TEMP_CHANGELOG=$(mktemp)
-
-          # Add header
-          echo "# Changelog" > "$TEMP_CHANGELOG"
-          echo "" >> "$TEMP_CHANGELOG"
-          echo "All notable changes to this project will be documented in this file." >> "$TEMP_CHANGELOG"
-          echo "" >> "$TEMP_CHANGELOG"
-          echo "The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)," >> "$TEMP_CHANGELOG"
-          echo "and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)." >> "$TEMP_CHANGELOG"
-          echo "" >> "$TEMP_CHANGELOG"
-
-          # Add new Unreleased section
-          echo "## [Unreleased]" >> "$TEMP_CHANGELOG"
-          echo "" >> "$TEMP_CHANGELOG"
-          echo "### Added" >> "$TEMP_CHANGELOG"
-          echo "- " >> "$TEMP_CHANGELOG"
-          echo "" >> "$TEMP_CHANGELOG"
-          echo "### Changed" >> "$TEMP_CHANGELOG"
-          echo "- " >> "$TEMP_CHANGELOG"
-          echo "" >> "$TEMP_CHANGELOG"
-          echo "### Fixed" >> "$TEMP_CHANGELOG"
-          echo "- " >> "$TEMP_CHANGELOG"
-          echo "" >> "$TEMP_CHANGELOG"
-
-          # Add the released version (convert Unreleased to the new version)
-          echo "## [$VERSION] - $DATE" >> "$TEMP_CHANGELOG"
-          echo "" >> "$TEMP_CHANGELOG"
-
-          # Extract the Unreleased section content and add it to the new version
-          # Use sed to extract content between Unreleased and next version (more reliable)
-          sed -n '/^## \[Unreleased\]/,/^## \[/p' CHANGELOG.md | sed '1d;$d' >> "$TEMP_CHANGELOG"
-          echo "" >> "$TEMP_CHANGELOG"
-
-          # Add all other existing versions
-          awk "/^## \[[0-9]/,/^## \[Unreleased\]/ {if (/^## \[Unreleased\]/) exit; print}" CHANGELOG.md >> "$TEMP_CHANGELOG"
-
-          # Extract the Unreleased content for the release notes (BEFORE updating the changelog)
-          # Create release notes file with proper content
-          echo "# Scene Extrapolation $VERSION" > release_notes.md
-          echo "" >> release_notes.md
-
-          # Extract the Unreleased section content (this is what will become the version content)
-          sed -n "/^## \[Unreleased\]/,/^## \[/p" CHANGELOG.md | sed '1d;$d' >> release_notes.md
-
-          # If no content was extracted, add a default message
-          if [ ! -s release_notes.md ] || [ $(wc -l < release_notes.md) -le 2 ]; then
-            echo "## Changes" >> release_notes.md
-            echo "" >> release_notes.md
-            echo "This release includes various improvements and bug fixes." >> release_notes.md
-            echo "" >> release_notes.md
-            echo "For detailed changes, see the [changelog](https://github.com/${{ github.repository }}/blob/master/CHANGELOG.md)." >> release_notes.md
-          fi
-
-          # Replace the original changelog
-          mv "$TEMP_CHANGELOG" CHANGELOG.md
-
-          echo "Updated CHANGELOG.md: moved Unreleased to $VERSION and added new Unreleased section"
-
-      - name: Commit all changes
+      - name: Commit release files
+        if: steps.bump.outputs.skip != 'true' && steps.plan.outputs.skipped == 'false'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add custom_components/scene_extrapolation/manifest.json
-          if [ -f "CHANGELOG.md" ]; then
-            git add CHANGELOG.md
-          fi
-          if [ -f "release_notes.md" ]; then
-            git add release_notes.md
-          fi
-
-          # Create appropriate commit message based on whether this is a release or just version bump
-          if [ "${{ steps.check_release.outputs.should_release }}" == "true" ]; then
-            git commit -m "Release ${{ steps.version.outputs.version }}: update version and changelog"
-          else
-            git commit -m "Bump version to ${{ steps.version.outputs.version }}"
-          fi
+          git add custom_components/scene_extrapolation/manifest.json \
+            custom_components/scene_extrapolation/panel.py \
+            CHANGELOG.md
+          git commit -m "Release ${{ steps.plan.outputs.version }}: update version and changelog"
           git push origin master
+          git tag -a "${{ steps.plan.outputs.tag }}" -m "Scene Extrapolation ${{ steps.plan.outputs.version }}"
+          git push origin "${{ steps.plan.outputs.tag }}"
 
-      - name: Create Release
-        if: steps.check_release.outputs.should_release == 'true'
-        id: create_release
-        uses: ncipollo/release-action@v1
-        with:
-          bodyFile: "release_notes.md"
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ steps.version.outputs.tag }}
-          name: "Scene Extrapolation ${{ steps.version.outputs.version }}"
-          draft: false
-          prerelease: false
-
-      - name: Version Bump Complete
-        if: steps.check_release.outputs.should_release == 'false'
+      - name: Create GitHub release
+        if: steps.bump.outputs.skip != 'true' && steps.plan.outputs.skipped == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "✅ Version bump completed successfully!"
-          echo "📝 Updated manifest.json to version ${{ steps.version.outputs.version }}"
-          echo "ℹ️  No release created (tag message doesn't contain 'release=true')"
-          echo "💡 To create a release, include 'release=true' in your tag message:"
-          echo "   git tag -a v${{ steps.version.outputs.version }} -m 'Version ${{ steps.version.outputs.version }} release=true'"
+          gh release create "${{ steps.plan.outputs.tag }}" \
+            --title "Scene Extrapolation ${{ steps.plan.outputs.version }}" \
+            --notes-file "${{ steps.plan.outputs.notes_file }}"
+
+      - name: Comment on the merged PR
+        if: github.event_name == 'pull_request' && steps.bump.outputs.skip != 'true' && steps.plan.outputs.skipped == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" --body "$(cat <<EOF
+          Published **Scene Extrapolation ${{ steps.plan.outputs.version }}**.
+          ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ steps.plan.outputs.tag }}
+          EOF
+          )"
+
+      - name: Sync dev with master
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch origin master
+          if git ls-remote --exit-code --heads origin dev >/dev/null 2>&1; then
+            git fetch origin dev
+            git checkout -B dev origin/dev
+            if git merge origin/master -m "Merge master back into dev after ${{ steps.plan.outputs.version || 'master' }} update"; then
+              git push origin dev
+            else
+              echo "::warning::Could not merge master into dev (likely conflicts). Merge origin/master into dev manually."
+              git merge --abort || true
+            fi
+          else
+            git checkout -B dev origin/master
+            git push -u origin dev
+            echo "Created origin/dev from master"
+          fi

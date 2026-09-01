@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, dev]
   pull_request:
-    branches: [master]
+    branches: [master, dev]
 
 jobs:
   lint:
@@ -74,3 +74,16 @@ jobs:
           # Check if hacs.json is valid JSON
           python -c "import json; json.load(open('hacs.json'))"
           echo "HACS configuration validation passed"
+
+  # Full language trees are a release-time pass (PRs to master), not required on dev.
+  validate-translations:
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+      (github.event_name == 'pull_request' && github.base_ref == 'master')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check translation key trees
+        run: python .github/scripts/check_translations.py

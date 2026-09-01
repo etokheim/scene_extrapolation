@@ -1,6 +1,6 @@
 # Local development
 
-This repo is a Home Assistant custom integration. Python changes only take effect after HA restarts.
+This repo is a Home Assistant custom integration. Python changes only take effect after HA restarts. Day-to-day git is the **`dev`** branch; a PR to `master` is a release ([`docs/GIT.md`](docs/GIT.md), [`RELEASE.md`](RELEASE.md)).
 
 The sandbox is configured in YAML under `dev/config/`:
 
