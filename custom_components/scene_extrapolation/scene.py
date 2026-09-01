@@ -241,7 +241,10 @@ class ExtrapolationScene(Scene):
         self._area_id = scene_config.get(AREA)
         await self._async_sync_registry()
         # Global interval 0 (or disabled) stops a running loop.
-        if not self._automatically_update_lights_enabled() and self._automatically_update_lights_armed:
+        if (
+            not self._automatically_update_lights_enabled()
+            and self._automatically_update_lights_armed
+        ):
             self._stop_automatically_update_lights()
         else:
             self._write_ha_state_if_attrs_changed()
@@ -372,7 +375,9 @@ class ExtrapolationScene(Scene):
                 return
             await self._async_automatically_update_lights()
 
-        self._unsub_automatically_update_lights = async_call_later(self.hass, interval, _fire)
+        self._unsub_automatically_update_lights = async_call_later(
+            self.hass, interval, _fire
+        )
         self._sync_light_listener()
         self._write_ha_state_if_attrs_changed()
 

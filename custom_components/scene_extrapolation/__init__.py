@@ -176,9 +176,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     if not domain_data["store_loaded"]:
         await store.async_load()
         domain_data["store_loaded"] = True
-        if store.pending_hide_sync and store.settings.get(
-            "hide_managed_native_scenes"
-        ):
+        if store.pending_hide_sync and store.settings.get("hide_managed_native_scenes"):
             apply_managed_native_scene_visibility(hass, hidden=True)
             store.pending_hide_sync = False
 

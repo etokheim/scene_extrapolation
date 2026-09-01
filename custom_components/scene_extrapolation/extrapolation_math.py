@@ -42,6 +42,7 @@ DAY_PERCENT_STEP = 100.0 / (len(EVENT_ORDER) - 1)
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class SunEvent:
     """Creates a sun event."""
 
@@ -153,7 +154,6 @@ def scene_keys_from_day_percent(percent: float) -> tuple[str, str, float]:
     index = int(t)
     frac = t - index
     return EVENT_ORDER[index], EVENT_ORDER[index + 1], frac * 100.0
-
 
 
 async def extrapolate_entities(

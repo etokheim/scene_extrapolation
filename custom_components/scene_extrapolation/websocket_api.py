@@ -581,7 +581,9 @@ async def ws_update_settings(
     """Update integration-wide settings and apply visibility side effects."""
     store = _store(hass)
     before_hide = bool(store.settings.get("hide_managed_native_scenes"))
-    before_interval = int(store.settings.get("automatically_update_lights_interval") or 0)
+    before_interval = int(
+        store.settings.get("automatically_update_lights_interval") or 0
+    )
     settings = await store.async_update_settings(dict(msg.get("settings") or {}))
     after_hide = bool(settings.get("hide_managed_native_scenes"))
     after_interval = int(settings.get("automatically_update_lights_interval") or 0)

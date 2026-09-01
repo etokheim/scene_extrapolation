@@ -302,10 +302,16 @@ class SceneExtrapolationStore:
         """Create or update a scene config."""
         scene_id = raw.get("id")
         # Editor saves may omit automatically_update_lights; keep the play/pause preference.
-        if scene_id and scene_id in self.scenes and AUTOMATICALLY_UPDATE_LIGHTS not in raw:
+        if (
+            scene_id
+            and scene_id in self.scenes
+            and AUTOMATICALLY_UPDATE_LIGHTS not in raw
+        ):
             raw = {
                 **raw,
-                AUTOMATICALLY_UPDATE_LIGHTS: self.scenes[scene_id].get(AUTOMATICALLY_UPDATE_LIGHTS, True),
+                AUTOMATICALLY_UPDATE_LIGHTS: self.scenes[scene_id].get(
+                    AUTOMATICALLY_UPDATE_LIGHTS, True
+                ),
             }
         item = normalize_scene_config(raw, scene_id=scene_id)
         self.scenes[item["id"]] = item

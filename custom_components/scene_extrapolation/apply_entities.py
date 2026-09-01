@@ -100,7 +100,9 @@ async def apply_single_entity(
         return None
 
     if skip_noop and domain == LIGHT_DOMAIN and light_command_is_noop(hass, entity):
-        _LOGGER.debug("Skipping no-op automatic light update for %s", entity[ATTR_ENTITY_ID])
+        _LOGGER.debug(
+            "Skipping no-op automatic light update for %s", entity[ATTR_ENTITY_ID]
+        )
         return False
 
     if domain == LIGHT_DOMAIN:
