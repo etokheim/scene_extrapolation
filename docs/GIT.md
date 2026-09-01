@@ -1,5 +1,23 @@
 # Git workflow for Scene Extrapolation
 
+## Branches
+
+| Branch | Role |
+|--------|------|
+| **`dev`** | Default place for work. Feature branches merge here. |
+| **`master`** | Released code. A merged PR into `master` publishes a GitHub / HACS release. |
+
+Do not open feature PRs against `master`. To ship: [`.cursor/skills/prepare-release-pr/SKILL.md`](../.cursor/skills/prepare-release-pr/SKILL.md) (translations + changelog, then `dev` → `master`). The merge runs [`.github/workflows/release.yml`](../.github/workflows/release.yml), which assigns the version. Details: [`RELEASE.md`](../RELEASE.md).
+
+If `origin/dev` does not exist yet:
+
+```bash
+git checkout -b dev origin/master
+git push -u origin dev
+```
+
+After clone, check out `dev` before starting work (`git checkout dev`). GitHub’s default branch stays `master` so visitors see released code.
+
 ## What is versioned
 
 - Integration: `custom_components/scene_extrapolation/`
@@ -20,6 +38,7 @@ Public origin: [`etokheim/scene_extrapolation`](https://github.com/etokheim/scen
 ```bash
 git clone git@github.com:etokheim/scene_extrapolation.git
 cd scene_extrapolation
+git checkout dev
 ```
 
 Sandbox setup: [`DEVELOPMENT.md`](../DEVELOPMENT.md).

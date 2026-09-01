@@ -1,16 +1,18 @@
 ---
 name: panel-translations
 description: >-
-  Keep Scene Extrapolation panel and config translations (en/nb/nn/de/es) in
-  sync when adding or changing user-visible UI strings. Use whenever editing
-  panel.js copy, translation JSON, config flow text, or shipping i18n changes.
+  Scene Extrapolation panel and config i18n (en/nb/nn/de/es): file layout,
+  keys, and checks. During development, update en.json only. Sync the other
+  languages in the prepare-release-pr pass, not in each feature change set.
+  Use when adding UI copy, editing translation JSON, or running the release
+  translation pass.
 ---
 
 # Panel / integration translations
 
 ## Languages
 
-Maintain these files under `custom_components/scene_extrapolation/translations/`:
+Files under `custom_components/scene_extrapolation/translations/`:
 
 | Code | Language |
 |------|----------|
@@ -31,13 +33,30 @@ Keys are nested JSON; the panel resolves them as:
 
 `component.scene_extrapolation.<path>` via `_t("frontend.tabs.extrapolation", "…")`.
 
-## When you change UI copy
+## During development
 
-1. Add or update the key in **`en.json` first**.
-2. Update **nb, nn, de, es** in the same change set (no English-only leftovers).
-3. Wire the panel with `_t("frontend.…", "English fallback")` — never hardcode a new user-facing string without a key.
-4. Prefer `ui.common.*` / other HA core keys via `_loc` when the meaning matches (Cancel, Delete, …).
-5. Record non-obvious i18n choices in `docs/DECISIONS.md` if needed.
+Keep the product working in English. Do **not** translate nb/nn/de/es in the
+same change set (that is one pass before a PR to `master` —
+[prepare-release-pr](../prepare-release-pr/SKILL.md)).
+
+1. Add or update the key in **`en.json`**.
+2. Wire the panel with `_t("frontend.…", "English fallback")` — never hardcode a
+   new user-facing string without a key. The fallback covers other languages
+   until the release pass.
+3. Prefer `ui.common.*` / other HA core keys via `_loc` when the meaning matches
+   (Cancel, Delete, …).
+4. Record non-obvious i18n choices in `docs/DECISIONS.md` if needed.
+
+## Release pass
+
+Before a PR to `master`, bring **nb, nn, de, es** in line with `en.json` (same
+tree, translated values, identical `{placeholders}`). Run:
+
+```bash
+python .github/scripts/check_translations.py
+```
+
+CI runs that script on PRs targeting `master` only.
 
 ## Loading
 
@@ -45,6 +64,6 @@ The panel calls `_ensureTranslations()` before first paint (`loadBackendTranslat
 
 ## Checks
 
-- Every key present in `en.json` exists in nb/nn/de/es (same tree).
+- Every key present in `en.json` exists in nb/nn/de/es (same tree) **on `master` / release PRs**.
 - ICU-style `{name}` / `{step}` placeholders stay identical across languages.
 - Config abort/step strings stay translated when the flow text changes.

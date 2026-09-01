@@ -1,157 +1,49 @@
 # Release Process
 
-This document describes the automated release process for Scene Extrapolation.
+Development lives on **`dev`**. Merging a pull request into **`master`** publishes the GitHub (and HACS) release.
 
-## Automated Release Workflow
+Do not bump the version or rewrite Unreleased in the PR. The merge workflow does that.
 
-This project uses GitHub Actions to automate the release process. There are two main workflows:
+## Ship a version
 
-### 1. Version Bump Workflow (`version-bump.yml`)
+1. Finish work on `dev` (feature branches merge to `dev` first).
+2. An agent (or you) follows [`.cursor/skills/prepare-release-pr/SKILL.md`](.cursor/skills/prepare-release-pr/SKILL.md):
+   - One pass for **nb / nn / de / es** (English is already kept current).
+   - Rewrite `CHANGELOG.md` **Unreleased** from the diff since the last version.
+   - Open a PR **`dev` → `master`** with a `release:patch` / `release:minor` / `release:major` label.
+3. Merge the PR when CI is green. [`.github/workflows/release.yml`](.github/workflows/release.yml) then:
+   - Infers the bump from that label, or from Unreleased (`🚨` → major, `### Added` → minor, otherwise patch)
+   - Sets `manifest.json` `version`, moves Unreleased to `## [X.Y.Z] - date`, resets `PANEL_ASSET_REV` to `"1"`
+   - Commits, tags `vX.Y.Z`, creates the GitHub release (HACS picks this up)
+   - Merges `master` back into `dev` (or creates `dev` if it is missing)
 
-**Trigger**: Manual workflow dispatch from GitHub Actions tab
+Empty Unreleased, or the `release:skip` label, updates `master` without publishing. Use skip for workflow/docs-only PRs that must land on `master`.
 
-**Features**:
+Manual fallback: Actions → **Release** → Run workflow, with bump `auto` or an explicit type. `master` still needs Unreleased entries.
 
-- Automatically increments version in `manifest.json`
-- Updates `CHANGELOG.md` with new version entry
-- Commits and pushes changes
-- Optionally creates and pushes a Git tag **with `release=true` trigger**
-- **Version and Release workflow automatically handles the rest**
+## Version numbering
 
-**Usage**:
+[Semantic Versioning](https://semver.org/):
 
-1. Go to GitHub Actions tab in your repository
-2. Select "Version Bump" workflow
-3. Click "Run workflow"
-4. Choose version bump type:
-   - **patch**: 0.1.0 → 0.1.1 (bug fixes)
-   - **minor**: 0.1.0 → 0.2.0 (new features)
-   - **major**: 0.1.0 → 1.0.0 (breaking changes)
-5. Choose whether to create a release immediately
-6. Click "Run workflow"
+- **MAJOR** (`X.0.0`): stored keys, entity unique ids, or service fields that cannot be migrated (mark 🚨 in the changelog)
+- **MINOR** (`x.Y.0`): features; configuration-home moves with an automatic migrator
+- **PATCH** (`x.y.Z`): fixes only
 
-### 2. Version and Release Workflow (`release.yml`)
+The sidebar/store move (single config entry, panel editor) is a **minor**. Users do not reconfigure rooms.
 
-**Trigger**: Automatically when a tag matching `v*` is pushed
+## Changelog
 
-**Features**:
+`CHANGELOG.md` Unreleased is filled in the release PR, not during everyday `dev` work. Keep a Changelog format: Added / Changed / Fixed.
 
-- **Always runs version bump**: Updates `manifest.json` with the tag version
-- **Checks tag message for `release=true` to determine if release should be created**
-- **If `release=true`**: Moves "Unreleased" content to new version, adds fresh "Unreleased" section, creates GitHub release
-- **If no `release=true`**: Just version bump, no release creation
+## HACS
 
-## Tag-Based Release Process
+`hacs.json` has no version. HACS uses GitHub releases.
 
-### Creating Tags with Release Trigger
+## Workflow files
 
-**To create a tag WITHOUT release:**
-
-```bash
-git tag -a v1.0.1 -m "Version 1.0.1"
-git push origin v1.0.1
-```
-
-**To create a tag WITH release:**
-
-```bash
-git tag -a v1.0.1 -m "Version 1.0.1 release=true"
-git push origin v1.0.1
-```
-
-### Using the Helper Script
-
-```bash
-# Create tag without release
-./scripts/create-tag.sh 1.0.1 false
-
-# Create tag with release
-./scripts/create-tag.sh 1.0.1 true
-
-# Use current manifest version
-./scripts/create-tag.sh
-```
-
-### Manual Release Process
-
-If you prefer to create releases manually:
-
-### 1. Update Version
-
-```bash
-# Update version in manifest.json manually
-# Then commit the change
-git add custom_components/scene_extrapolation/manifest.json
-git commit -m "Bump version to X.Y.Z"
-```
-
-### 2. Create and Push Tag
-
-```bash
-# Without release
-git tag -a vX.Y.Z -m "Version X.Y.Z"
-git push origin vX.Y.Z
-
-# With release
-git tag -a vX.Y.Z -m "Version X.Y.Z release=true"
-git push origin vX.Y.Z
-```
-
-### 3. GitHub Release
-
-The release workflow will automatically create a GitHub release with the changelog **only if the tag message contains `release=true`**.
-
-## Tag Message System
-
-The release workflow checks tag messages for the `release=true` trigger:
-
-### Tag Message Examples
-
-```bash
-# No release (just versioning)
-git tag -a v1.0.1 -m "Version 1.0.1"
-
-# With release
-git tag -a v1.0.1 -m "Version 1.0.1 release=true"
-
-# With release and additional notes
-git tag -a v1.0.1 -m "Version 1.0.1 release=true - Fixed critical bug"
-
-# Multiple triggers
-git tag -a v1.0.1 -m "Version 1.0.1 release=true deploy=true"
-```
-
-### Workflow Behavior
-
-- **Tag without `release=true`**: Only logs tag creation, no release
-- **Tag with `release=true`**: Full release process (changelog update, GitHub release)
-- **Case insensitive**: `RELEASE=true`, `Release=true`, etc. all work
-
-## Version Numbering
-
-This project follows [Semantic Versioning](https://semver.org/):
-
-- **MAJOR** (1.0.0): Breaking changes
-- **MINOR** (0.1.0): New features, backward compatible
-- **PATCH** (0.0.1): Bug fixes, backward compatible
-
-## Changelog Management
-
-The `CHANGELOG.md` file is automatically updated during the version bump process. You should manually edit the changelog entries to provide meaningful descriptions of changes.
-
-## HACS Integration
-
-This component is designed for HACS (Home Assistant Community Store). The release process ensures:
-
-- Proper versioning in `manifest.json`
-- Updated changelog for users
-- GitHub releases for distribution
-- HACS compatibility
-
-## Workflow Files
-
-- `.github/workflows/release.yml` - Automated release creation
-- `.github/workflows/version-bump.yml` - Version bumping and changelog updates
-- `CHANGELOG.md` - Release notes and change history
-- `hacs.json` - HACS configuration
-- `custom_components/scene_extrapolation/manifest.json` - Component manifest with version
+- `.github/workflows/release.yml` — publish on merged PR to `master`
+- `.github/workflows/ci.yml` — lint/tests on `dev` and `master`; translation key-tree check on PRs to `master`
+- `.github/scripts/cut_release.py` — version + changelog rewrite
+- `.github/scripts/check_translations.py` — en/nb/nn/de/es key parity
+- `CHANGELOG.md` — history
+- `custom_components/scene_extrapolation/manifest.json` — component version

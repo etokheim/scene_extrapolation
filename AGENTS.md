@@ -10,8 +10,10 @@ Custom Home Assistant integration in `custom_components/scene_extrapolation/`. T
 - **Record non-obvious decisions** inline or in [`docs/DECISIONS.md`](docs/DECISIONS.md). See [`.cursor/rules/document-decisions.mdc`](.cursor/rules/document-decisions.mdc).
 - **HA Jinja templates** — follow [`.cursor/skills/home-assistant-templates/SKILL.md`](.cursor/skills/home-assistant-templates/SKILL.md); update that skill when you find new quirks.
 - **HA REST API** — local sandbox at `http://127.0.0.1:8123`; auth via `cursor_ha_token` in `dev/config/secrets.yaml`. See [`.cursor/skills/home-assistant-api/SKILL.md`](.cursor/skills/home-assistant-api/SKILL.md).
-- **Releases** — [`.cursor/skills/create-release/SKILL.md`](.cursor/skills/create-release/SKILL.md). Sidebar/store is a minor with automatic migration, not a breaking reconfigure.
-- **Translations** — panel/config copy in `translations/{en,nb,nn,de,es}.json`; keep languages in sync — [`.cursor/skills/panel-translations/SKILL.md`](.cursor/skills/panel-translations/SKILL.md).
+- **Git** — day-to-day work is on `dev`. A PR to `master` is a release. See [`docs/GIT.md`](docs/GIT.md).
+- **Releases** — [`.cursor/skills/prepare-release-pr/SKILL.md`](.cursor/skills/prepare-release-pr/SKILL.md) (translations + changelog, then PR). Merging to `master` runs [`.github/workflows/release.yml`](.github/workflows/release.yml). Sidebar/store is a minor with automatic migration, not a breaking reconfigure.
+- **Translations** — during development, add keys to `en.json` only. nb/nn/de/es are one pass in the release PR — [`.cursor/skills/panel-translations/SKILL.md`](.cursor/skills/panel-translations/SKILL.md).
+- **Changelog** — do not maintain `CHANGELOG.md` Unreleased during feature work; the release skill fills it from the diff.
 - **Secrets** — never dump tokens, `.env`, or HA `.storage` credentials; disclose any accidental secret read immediately. See [`.cursor/rules/secrets-handling.mdc`](.cursor/rules/secrets-handling.mdc).
 
 ## Local sandbox

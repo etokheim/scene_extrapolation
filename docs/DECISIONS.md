@@ -387,8 +387,9 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Panel copy uses HA backend translations (en/nb/nn/de/es)
 
 - **Date:** 2026-08-30
-- **Decision:** User-visible panel strings live under `translations/<lang>.json` → `frontend.*` (plus existing `config.*`). The panel loads them with `hass.loadBackendTranslation("frontend"|"config", DOMAIN)` and resolves via `_t("frontend…", englishFallback)`. Keep en/nb/nn/de/es key trees identical; see `.cursor/skills/panel-translations/SKILL.md`.
-- **Why:** Custom integrations cannot use Lokalise/`strings.json`; shipping full language files matches HA’s custom-integration i18n path and the user’s language set.
+- **Superseded in part:** 2026-09-01 — nb/nn/de/es are a single pass in the `dev` → `master` release PR, not kept in lockstep on every feature commit. `en.json` stays current during development. Key trees must still match on `master` (`check_translations.py` on PRs to `master`).
+- **Decision:** User-visible panel strings live under `translations/<lang>.json` → `frontend.*` (plus existing `config.*`). The panel loads them with `hass.loadBackendTranslation("frontend"|"config", DOMAIN)` and resolves via `_t("frontend…", englishFallback)`. English is the source of truth while working on `dev`; the other four languages are filled before a release PR. See `.cursor/skills/panel-translations/SKILL.md` and `.cursor/skills/prepare-release-pr/SKILL.md`.
+- **Why:** Custom integrations cannot use Lokalise/`strings.json`; shipping full language files matches HA’s custom-integration i18n path and the user’s language set. Translating on every UI tweak duplicated work; one pass against the English diff is cheaper and still ships complete trees.
 - **Do not reverse without user ask.**
 
 ## List tabs use ha-tab-group
@@ -410,4 +411,11 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Date:** 2026-08-30
 - **Decision:** GitHub Actions lint installs `homeassistant` on Python **3.14** (not 3.11). `StaticPathConfig` is imported inside `async_setup_panel`, not at panel module import, so pure unit tests can load package modules even if an older HA is present.
 - **Why:** Unpinned `pip install homeassistant` on 3.11 resolves to ~2024.3, which lacks `StaticPathConfig` / `LockState` and breaks pytest collection via `panel.py`. Current HA requires Python ≥3.14.2.
+- **Do not reverse without user ask.**
+
+## Work on `dev`; a PR to `master` is a release
+
+- **Date:** 2026-09-01
+- **Decision:** Day-to-day work (and feature-branch PRs) target `dev`. Opening a PR to `master` is how a version ships: the prepare-release-pr skill syncs translations and Unreleased, then merge runs `.github/workflows/release.yml` (version bump, changelog move, GitHub release, merge back to `dev`). Do not bump `manifest.json` or move Unreleased in that PR. Do not maintain nb/nn/de/es or Unreleased during feature work on `dev`. `release:skip` (or empty Unreleased) lands on `master` without publishing.
+- **Why:** Cutting the release in the agent duplicated (and fought) the GitHub workflows. Translating and changelog-editing on every change set was slower than one pass against the `master` diff. `master` stays the HACS/GitHub default so visitors see released code.
 - **Do not reverse without user ask.**
