@@ -62,14 +62,35 @@ Sync nb/nn/de/es translations for the release PR.
 Fill `## [Unreleased]` from **`git log` / `git diff origin/master`**, not from
 memory. Do not keep Unreleased updated during day-to-day work on `dev`.
 
-- Every **user-visible** change since the last `## [X.Y.Z]` heading.
-- `### Added` / `Changed` / `Fixed` as appropriate. Drop empty subsections, or
-  leave the three headers with no bullets (the release workflow treats empty
-  Unreleased as “do not publish”).
-- Breaking stored keys / unique ids / un-migratable service fields: 🚨 on that
-  line (workflow → **major**).
+Match the voice of **2.0.0 / 2.1.0** in `CHANGELOG.md` (user-facing, a little
+fun). Do not write a 2.2.0-style feature inventory.
+
+- Every **user-visible** change since the last `## [X.Y.Z]` heading. Skip
+  internals a user would not care about (CI Python version, widget names, API
+  paths) unless the user would notice the behavior.
+- `### Added` / `Changed` / `Fixed`. Drop empty subsections, or leave the three
+  headers with no bullets (empty Unreleased → the workflow does not publish).
+- Write what you *get*, then why it matters. Nested bullets are fine when a
+  feature has parts. Occasional `!` is fine; not every line.
+- Emojis: **a few, on purpose.** 🚨 on each breaking line (and a `### 🚨 Breaking
+  changes` blurb on majors). ⭐ on at most one standout Added item. Do not
+  decorate every bullet.
+- Big releases only: a short `### Summary:` paragraph (see 2.0.0). Patches skip
+  it.
 - No secrets, tokens, or sandbox entity dumps.
 - Do **not** insert `## [X.Y.Z] - date` and do **not** bump the version.
+
+**Like this**
+
+- ⭐ Modify transition progress - ie. move the transition towards or further away from the noon scene (to increase/decrease the brightness)
+- Add support for extrapolating effects!
+- Translations! Proper Norwegian (nynorsk) and Danish-Norwegian translations has been added alongside German
+- Combine Dawn/sunrise/sunset instead of dawn/dusk and sunrise/sunset (makes more sense in real-life)
+- 🚨 Renamed all entity variables, meaning the only user (me), has to reconfigure all the integration entries - wohoo!
+
+**Not like this** (implementation inventory, no voice):
+
+- List page: Extrapolation / Created scenes tabs (`ha-tab-group`), global settings sidebar (hide created scenes in the HA UI), row settings/delete on both lists, New FAB on both tabs
 
 Classify (for the PR label; workflow uses the label if present, else infers):
 

@@ -33,7 +33,7 @@ The sidebar/store move (single config entry, panel editor) is a **minor**. Users
 
 ## Changelog
 
-`CHANGELOG.md` Unreleased is filled in the release PR, not during everyday `dev` work. Keep a Changelog format: Added / Changed / Fixed.
+`CHANGELOG.md` Unreleased is filled in the release PR, not during everyday `dev` work. Keep a Changelog format: Added / Changed / Fixed. Voice and emoji use: [`.cursor/skills/prepare-release-pr/SKILL.md`](.cursor/skills/prepare-release-pr/SKILL.md) (match 2.0.0 / 2.1.0).
 
 ## HACS
 
