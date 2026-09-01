@@ -684,6 +684,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           outline: none;
           cursor: pointer;
         }
+        /* Keyboard only — pointerdown must not paint a focus ring (do not
+           call .focus() from the scrub pointer handler). */
+        .sun-year-scrub:focus {
+          outline: none;
+          box-shadow: none;
+        }
         .sun-year-scrub:focus-visible {
           box-shadow: 0 0 0 2px var(--primary-color);
           border-radius: 8px;
@@ -5367,7 +5373,35 @@ class SceneExtrapolationPanel extends HTMLElement {
     this.style.setProperty("--scene-sidebar-gutter", gutter);
     this.toggleAttribute("data-sidebar-docked", on);
     this._syncYearScrubLayout();
-    this._layoutClockHorizonBack();
+    // Face translates with the gutter padding transition; ResizeObserver only
+    // sees size changes, so remeasure horizon reach through the slide.
+    this._scheduleClockHorizonRelayout();
+  }
+
+  _scheduleClockHorizonRelayout() {
+    if (this._horizonRelayoutRaf != null) {
+      cancelAnimationFrame(this._horizonRelayoutRaf);
+      this._horizonRelayoutRaf = undefined;
+    }
+    if (this._horizonRelayoutTimer != null) {
+      clearTimeout(this._horizonRelayoutTimer);
+      this._horizonRelayoutTimer = undefined;
+    }
+    const started = performance.now();
+    const tick = (now) => {
+      this._layoutClockHorizonBack();
+      if (now - started < SIDEBAR_ANIMATION_MS + 32) {
+        this._horizonRelayoutRaf = requestAnimationFrame(tick);
+        return;
+      }
+      this._horizonRelayoutRaf = undefined;
+      // One more pass after transition settles (subpixel / late layout).
+      this._horizonRelayoutTimer = window.setTimeout(() => {
+        this._horizonRelayoutTimer = undefined;
+        this._layoutClockHorizonBack();
+      }, 48);
+    };
+    this._horizonRelayoutRaf = requestAnimationFrame(tick);
   }
 
   _fillSidebarHeader(header, { title, subtitle, actionItems, host }) {
@@ -8579,7 +8613,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         return;
       }
       ev.preventDefault();
-      scrub.focus({ preventScroll: true });
+      // Do not focus on pointer — :focus-visible still rings in some browsers
+      // after programmatic focus from click. Tab / arrows keep working via tabindex.
       scrub.setPointerCapture(ev.pointerId);
       this._yearScrubbing = true;
       applyPointer(ev);
@@ -9780,15 +9815,22 @@ class SceneExtrapolationPanel extends HTMLElement {
     const clock = face.closest(".sun-light-clock");
     const clockBottom =
       clock?.getBoundingClientRect().bottom ?? Math.max(fr.bottom, host.bottom);
+    // Cover the full panel host from the face center — including when the
+    // dial shifts left for an open sidebar (gutter). Axis + corners so a
+    // square always fills the viewport under the drawer.
     const reach = Math.max(
       cx - host.left,
       host.right - cx,
       cy - host.top,
       host.bottom - cy,
       clockBottom - cy,
+      Math.hypot(cx - host.left, cy - host.top),
+      Math.hypot(host.right - cx, cy - host.top),
+      Math.hypot(cx - host.left, host.bottom - cy),
+      Math.hypot(host.right - cx, host.bottom - cy),
       fr.width * 0.62
     );
-    const side = reach * 2;
+    const side = reach * 2 + 2;
     back.style.width = `${side}px`;
     back.style.height = `${side}px`;
   }
