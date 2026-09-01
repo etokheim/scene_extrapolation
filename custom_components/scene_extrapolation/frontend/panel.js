@@ -461,7 +461,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
         }
         /* Surface vignette on L/T/R (max 50% opacity) so date chips, Now
-           readout, and event labels read over horizon bleed in light + dark. */
+           readout, and event labels read over horizon bleed in light + dark.
+           Long multi-stops ≈ soft blur (hard 88/160 edges read as a hard cut). */
         .sun-path.dial-view::before {
           content: "";
           position: absolute;
@@ -471,18 +472,24 @@ class SceneExtrapolationPanel extends HTMLElement {
           background:
             linear-gradient(
               to right,
-              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
-              transparent 88px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 28%, transparent) 72px,
+              color-mix(in srgb, var(--primary-background-color) 10%, transparent) 160px,
+              transparent 260px
             ),
             linear-gradient(
               to left,
-              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
-              transparent 88px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 28%, transparent) 72px,
+              color-mix(in srgb, var(--primary-background-color) 10%, transparent) 160px,
+              transparent 260px
             ),
             linear-gradient(
               to bottom,
-              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
-              transparent 160px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 28%, transparent) 100px,
+              color-mix(in srgb, var(--primary-background-color) 10%, transparent) 220px,
+              transparent 360px
             );
         }
         .sun-path[hidden] {
@@ -1102,18 +1109,15 @@ class SceneExtrapolationPanel extends HTMLElement {
           content: none;
           display: none;
         }
-        /* Warmth along sunrise/sunset — not clipped to the planet rim.
-           screen suits dark themes; multiply keeps peach readable on light. */
+        /* Sunrise/sunset wash — not clipped to the planet rim. Paints a
+           multi-stop spectrum that ends at the surface color (normal blend). */
         .clock-horizon-glow {
           position: absolute;
           inset: 0;
           pointer-events: none;
-          mix-blend-mode: screen;
+          mix-blend-mode: normal;
           transform: translateZ(0);
           backface-visibility: hidden;
-        }
-        :host(:not([data-dark-mode])) .clock-horizon-glow {
-          mix-blend-mode: multiply;
         }
         .clock-horizon-sky {
           position: absolute;
@@ -2903,18 +2907,21 @@ class SceneExtrapolationPanel extends HTMLElement {
           background:
             linear-gradient(
               to right,
-              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
-              transparent 48px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 22%, transparent) 36px,
+              transparent 96px
             ),
             linear-gradient(
               to left,
-              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
-              transparent 48px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 22%, transparent) 36px,
+              transparent 96px
             ),
             linear-gradient(
               to bottom,
-              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
-              transparent 56px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent) 0%,
+              color-mix(in srgb, var(--primary-background-color) 22%, transparent) 40px,
+              transparent 110px
             );
         }
         .sun-chart svg {
@@ -10353,20 +10360,85 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   /**
+   * Multi-stop sunset spectrum (core → outer) for the horizon rim band.
+   * Light mode stays soft — no near-black dusk. Outer stop is always the
+   * surface so the wash dissolves into the panel background.
+   */
+  _horizonSpectrum(elev) {
+    const light = !this.hasAttribute("data-dark-mode");
+    const SURFACE = "var(--primary-background-color)";
+    // Day: crispy sky into surface (no dusk pinks).
+    if (elev >= 8) {
+      return light
+        ? [CLOCK_DAY_SKY_LIGHT, "#9ecfff", "#c8e6ff", SURFACE]
+        : ["rgb(79, 179, 255)", "rgb(56, 130, 220)", "rgb(28, 64, 120)", SURFACE];
+    }
+    // Climbing / near-horizon: peach → pink → mauve → sky → surface.
+    if (elev >= -2) {
+      return light
+        ? ["#f5a45c", "#f08a78", "#e878a0", "#c4a0d4", "#9ecfff", SURFACE]
+        : [
+            "rgb(245, 164, 92)",
+            "rgb(240, 130, 110)",
+            "rgb(232, 120, 160)",
+            "rgb(150, 90, 180)",
+            "rgb(70, 120, 200)",
+            SURFACE,
+          ];
+    }
+    // After sunset: pink → purple → blue → surface (soft blues in light).
+    if (elev >= -18) {
+      return light
+        ? ["#e878a0", "#d090c8", "#a8a0d8", "#9eb0d8", "#c5d0e4", SURFACE]
+        : [
+            "rgb(232, 120, 160)",
+            "rgb(160, 90, 180)",
+            "rgb(90, 70, 160)",
+            "rgb(40, 55, 130)",
+            "rgb(16, 24, 56)",
+            SURFACE,
+          ];
+    }
+    // Deep night: muted cool wash into surface — light stays pale.
+    return light
+      ? ["#b8c0d4", "#c8d0e0", "#d8dee8", SURFACE]
+      : ["rgb(26, 42, 108)", "rgb(14, 22, 48)", "rgb(8, 12, 28)", SURFACE];
+  }
+
+  /** Color along spectrum for band weight 1 (event) → 0 (far / surface). */
+  _horizonBandColor(weight, elev) {
+    const spectrum = this._horizonSpectrum(elev);
+    const u = 1 - Math.min(1, Math.max(0, weight));
+    const last = spectrum.length - 1;
+    const pos = u * last;
+    const i = Math.min(last - 1, Math.floor(pos));
+    const f = pos - i;
+    const a = spectrum[i];
+    const b = spectrum[i + 1];
+    const pct = Math.round((1 - f) * 100);
+    if (pct >= 100) {
+      return a;
+    }
+    if (pct <= 0) {
+      return b;
+    }
+    return `color-mix(in srgb, ${a} ${pct}%, ${b})`;
+  }
+
+  /**
    * Horizon rim / day-wedge palette from solar elevation.
-   * After sunset: warm peach → pink → purple → dark blue → night.
-   * Light day: crispy sky blue; light night: dark (not gray).
+   * After sunset: warm peach → pink → purple → blue (soft in light mode).
+   * Light day: crispy sky blue.
    */
   _horizonAuraAtElevation(elev) {
     const light = !this.hasAttribute("data-dark-mode");
-    // Keys are absolute colors (no peach warm-tint pass). Horizon (+0) is three
-    // steps warmer than the prior #edb070 mix.
+    // Light keys stay mid/soft — no near-black rim colors on a light surface.
     const keys = light
       ? [
-          { e: -90, rim: "#08101c" },
-          { e: -28, rim: "#0c1a38" },
-          { e: -18, rim: "#1a2a6c" },
-          { e: -12, rim: "#6b3fa0" },
+          { e: -90, rim: "#c8d0e0" },
+          { e: -28, rim: "#b0bcd4" },
+          { e: -18, rim: "#a8a0d8" },
+          { e: -12, rim: "#d090c8" },
           { e: -5, rim: "#e878a0" },
           { e: 0, rim: "#f5a45c" },
           { e: 5, rim: "#7ec8ff" },
@@ -10448,15 +10520,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Climb 0 at/below horizon → 1 at that day's peak (smooth; no hard palette cut).
     const climb = Math.min(1, Math.max(0, elev) / maxElev);
     const nearHorizon = elev < 0 ? 1 : 1 - climb;
-    const strength = 0.35 + 0.65 * nearHorizon;
-    // Narrower rim band than the prior ~4.2h window.
-    const band = 2.5 * 3600;
-    // Cosine ramp is smooth enough at 36 stops; half the scrub-time string work.
-    const steps = 36;
+    // Keep some wash at noon so sky blue still peeks; stronger near horizon.
+    const strength = 0.42 + 0.58 * nearHorizon;
+    // Wider than the prior 2.5h so peach→pink→purple→blue can stretch into surface.
+    const band = 5 * 3600;
+    const steps = 48;
     const stops = [];
-    const { rim: rimFill, daySky, light } = this._horizonAuraAtElevation(elev);
-    // Multiply is darker than screen — lift strength a bit in light mode.
-    const strengthScale = light ? 1.15 : 1;
+    const { daySky } = this._horizonAuraAtElevation(elev);
     for (let i = 0; i <= steps; i += 1) {
       const seconds = (i / steps) * SECONDS_PER_DAY;
       let weight = 0;
@@ -10466,9 +10536,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (sunset != null) {
         weight = Math.max(weight, this._horizonWeight(seconds, sunset, band));
       }
-      const mix = Math.min(1, weight * strength * strengthScale);
+      const mix = Math.min(1, weight * strength);
+      // Multi-color falloff → surface (not a single tint → transparent).
       stops.push(
-        `color-mix(in srgb, ${rimFill} ${Math.round(mix * 100)}%, transparent) ${((i / steps) * 100).toFixed(2)}%`
+        `${this._horizonBandColor(mix, elev)} ${((i / steps) * 100).toFixed(2)}%`
       );
     }
     el.style.background = `conic-gradient(from 180deg, ${stops.join(", ")})`;
