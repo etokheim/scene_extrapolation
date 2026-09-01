@@ -19,7 +19,7 @@ Custom Home Assistant integration in `custom_components/scene_extrapolation/`. T
 ## Local sandbox
 
 - Docker + starter YAML: [`DEVELOPMENT.md`](DEVELOPMENT.md). Python changes need `docker compose restart`.
-- Integration code: [`custom_components/scene_extrapolation/`](custom_components/scene_extrapolation/). Runtime files under `dev/config/` are gitignored except the committed starter YAML.
+- Integration code: [`custom_components/scene_extrapolation/`](custom_components/scene_extrapolation/). Runtime files under `dev/config/` are gitignored except the committed starter YAML. Do not commit or rewrite `dev/config/scenes.yaml` unless the user explicitly asks.
 
 ## Git remote
 

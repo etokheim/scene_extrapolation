@@ -406,6 +406,34 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Why:** Colored/variable dashed day strokes and tiny dots read poorly; dial buttons unify event affordances across views.
 - **Do not reverse without user ask.**
 
+## List view does not re-render on every hass assignment
+
+- **Date:** 2026-09-01
+- **Decision:** The panel `hass` setter updates child `.hass` refs and loads translations once. It does not call `_renderList` on later hass ticks. Rebuild the list from `_loadList` / tab changes / explicit actions.
+- **Why:** HA assigns `hass` on every state update. Rebuilding the list tore down the FAB (visible flicker) and closed the settings sidebar via `_closeSceneSidebar()`.
+- **Do not reverse without user ask.**
+
+## Unavailable lights stay in the list, not on the dial
+
+- **Date:** 2026-09-01
+- **Decision:** Clock rings omit unavailable (or missing) lights. The legend and table list still show them, sorted last, marked unavailable. Live `hass.states` is the source of truth.
+- **Why:** An unavailable lamp cannot preview on the wheel; hiding it from the list would make membership edits impossible.
+- **Do not reverse without user ask.**
+
+## RGBWW/RGBW wheel uses chromatic pin, mixed band
+
+- **Date:** 2026-09-01
+- **Decision:** For rgbww/rgbw drafts, the color-wheel pin sits at hue/sat of the RGB channels (normalized, like HA more-info). Marker fill and light bands use the white-mixed display RGB (`rgbww_to_rgb` / `rgbw_to_rgb`). Picking a wheel color updates RGB channels and keeps whites. Color-brightness and white-brightness graphs edit those channels (0–255) beside overall brightness.
+- **Why:** Using the raw RGB slice for the pin and band ignored white mix and color brightness, so the dial did not match HA’s entity picker.
+- **Do not reverse without user ask.**
+
+## Date and sun moves use 1.5s cubic ease-out
+
+- **Date:** 2026-09-01
+- **Decision:** Preview date changes morph sun path + light rings over 1.5s with cubic ease-out (`1-(1-u)³`). Solar-event sun moves use the same duration and curve. After year-scrub release, morph client rings to the HA preview (~0.8s) instead of swapping DOM/gradients in one frame. Quintic ease-out raced to the end then crawled; cubic decelerates across more of the span.
+- **Why:** Instant date jumps and the coarse→Astral ring swap read as flicker. A longer ease-out is the requested motion.
+- **Do not reverse without user ask.**
+
 ## Sandbox scenes.yaml is runtime, not source
 
 - **Date:** 2026-09-01

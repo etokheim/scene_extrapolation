@@ -63,6 +63,10 @@ const CLOCK_SUN_STROKE_MIN_PX = 0.2;
 const CLOCK_SUN_STROKE_MAX_PX = 10;
 const SIDEBAR_ANIMATION_MS = 200;
 const SIDEBAR_SWAP_MS = 160;
+/* Cubic ease-out: decelerates across more of the span than quintic. */
+const CLOCK_SUN_MOVE_MS = 1500;
+const DATE_MORPH_MS = 1500;
+const PREVIEW_REFINE_MS = 800;
 const LIGHT_BAR_HEIGHT = 108;
 const LIGHT_FEATHER_PX = 36;
 const LIGHT_BAR_EDGE_HEIGHT = LIGHT_BAR_HEIGHT - LIGHT_FEATHER_PX;
@@ -242,9 +246,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._datePicker) {
       this._datePicker.hass = hass;
     }
+    // HA assigns hass on every state update — do not rebuild the list (that
+    // flickers the FAB and closes the settings sidebar). Translate once.
+    const needsTranslationPaint = !this._translationsReady;
     void this._ensureTranslations().then(() => {
-      if (this._built && this._view === "list") {
-        // Pick up language resources once they arrive.
+      if (needsTranslationPaint && this._built && this._view === "list") {
         this._renderList();
       }
     });
@@ -1599,6 +1605,13 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .clock-legend-row.suggested {
           opacity: 0.92;
+        }
+        .clock-legend-row.unavailable {
+          opacity: 0.62;
+        }
+        .clock-legend-row.unavailable .clock-legend-title,
+        .light-row.unavailable .light-name {
+          color: var(--secondary-text-color);
         }
         .clock-legend-icon-wrap {
           flex-shrink: 0;
@@ -3050,8 +3063,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         .row:hover {
           background: var(--secondary-background-color);
         }
-        .row ha-icon {
+        .row ha-icon,
+        .row ha-state-icon {
           color: var(--secondary-text-color);
+          --mdc-icon-size: 24px;
         }
         .row .meta {
           flex: 1;
@@ -3466,6 +3481,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._liveEdit = false;
     this._liveEditSidebarHandler = null;
     this._cancelClockSunArc();
+    this._cancelSunPathMorph();
     this._form = undefined;
     // Drop dial preview state so the list chart uses the light sun_path API.
     if (this._sunPathKey && !String(this._sunPathKey).startsWith("list-sun:")) {
@@ -3572,21 +3588,29 @@ class SceneExtrapolationPanel extends HTMLElement {
     row.className = "row";
     row.addEventListener("click", () => this._go(`edit/${item.id}`));
 
-    const icon = document.createElement("ha-icon");
-    icon.setAttribute("icon", "mdi:auto-fix");
-    row.appendChild(icon);
+    row.appendChild(
+      this._entityStateIcon(item.entity_id, "mdi:auto-fix")
+    );
 
     const meta = document.createElement("div");
     meta.className = "meta";
     const name = document.createElement("div");
     name.className = "name";
     name.textContent =
-      item.scene_name || this._t("frontend.common.untitled", "Untitled");
+      this._entityFriendlyName(item.entity_id, item.scene_name) ||
+      this._t("frontend.common.untitled", "Untitled");
     const sub = document.createElement("div");
     sub.className = "sub";
+    const objectId = this._entityObjectId(item.entity_id);
+    const subBits = [];
+    if (item.area_name) {
+      subBits.push(item.area_name);
+    }
+    if (objectId) {
+      subBits.push(objectId);
+    }
     sub.textContent =
-      item.area_name ||
-      item.entity_id ||
+      subBits.join(" · ") ||
       this._t("frontend.common.no_area", "No area");
     meta.append(name, sub);
     row.appendChild(meta);
@@ -3617,7 +3641,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     deleteBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
       const confirmed = await this._confirmExtrapolationDelete(
-        item.scene_name || item.entity_id || item.id
+        this._entityFriendlyName(item.entity_id, item.scene_name) ||
+          item.entity_id ||
+          item.id
       );
       if (!confirmed) {
         return;
@@ -3646,17 +3672,16 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._showEntityMoreInfo(item.entity_id, "settings");
     });
 
-    const icon = document.createElement("ha-icon");
-    icon.setAttribute("icon", "mdi:palette");
-    row.appendChild(icon);
+    row.appendChild(
+      this._entityStateIcon(item.entity_id, "mdi:palette")
+    );
 
     const meta = document.createElement("div");
     meta.className = "meta";
     const name = document.createElement("div");
     name.className = "name";
     name.textContent =
-      item.name ||
-      item.entity_id ||
+      this._entityFriendlyName(item.entity_id, item.name) ||
       this._t("frontend.common.untitled", "Untitled");
     const sub = document.createElement("div");
     sub.className = "sub";
@@ -3664,12 +3689,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (item.area_name) {
       bits.push(item.area_name);
     }
+    const objectId = this._entityObjectId(item.entity_id);
+    if (objectId) {
+      bits.push(objectId);
+    }
     if (item.hidden) {
       bits.push(
         this._t("frontend.settings.hidden_in_ha", "Hidden in Home Assistant")
       );
     }
-    sub.textContent = bits.join(" · ") || item.entity_id || "";
+    sub.textContent = bits.join(" · ") || objectId || "";
     meta.append(name, sub);
     row.appendChild(meta);
 
@@ -3695,7 +3724,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     deleteBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
       const confirmed = await this._confirmNativeSceneDelete(
-        item.name || item.entity_id
+        this._entityFriendlyName(item.entity_id, item.name) || item.entity_id
       );
       if (!confirmed) {
         return;
@@ -5531,8 +5560,72 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (draft?.deleted) {
       return "";
     }
+    return this._entityFriendlyName(entityId, entityId.replace(/^scene\./, ""));
+  }
+
+  _entityObjectId(entityId) {
+    if (!entityId) {
+      return "";
+    }
+    const dot = entityId.indexOf(".");
+    return dot >= 0 ? entityId.slice(dot + 1) : entityId;
+  }
+
+  _entityFriendlyName(entityId, fallback) {
+    if (!entityId) {
+      return fallback || "";
+    }
     const state = this._hass?.states?.[entityId];
-    return state?.attributes?.friendly_name || entityId.replace(/^scene\./, "");
+    const friendly = state?.attributes?.friendly_name;
+    if (friendly) {
+      return friendly;
+    }
+    return fallback || this._entityObjectId(entityId);
+  }
+
+  _entityStateIcon(entityId, fallbackIcon) {
+    const state = this._hass?.states?.[entityId];
+    if (customElements.get("ha-state-icon") && (state || entityId)) {
+      const icon = document.createElement("ha-state-icon");
+      icon.hass = this._hass;
+      if (state) {
+        icon.stateObj = state;
+      }
+      if (entityId) {
+        icon.entityId = entityId;
+      }
+      return icon;
+    }
+    const icon = document.createElement("ha-icon");
+    const entry = this._hass?.entities?.[entityId];
+    const named =
+      entry?.icon || state?.attributes?.icon || fallbackIcon || "mdi:palette";
+    icon.setAttribute(
+      "icon",
+      typeof named === "string" && named.startsWith("mdi:")
+        ? named
+        : fallbackIcon || "mdi:palette"
+    );
+    return icon;
+  }
+
+  _lightIsUnavailable(entityId) {
+    const state = this._hass?.states?.[entityId];
+    return !state || state.state === "unavailable";
+  }
+
+  _clockRingLights(lights) {
+    return (lights || []).filter(
+      (light) => !light.suggested && !this._lightIsUnavailable(light.entity_id)
+    );
+  }
+
+  _legendLights(lights) {
+    const rows = [...(lights || [])];
+    const rank = (light) =>
+      this._lightIsUnavailable(light.entity_id) ? 2 : light.suggested ? 1 : 0;
+    rows.sort((a, b) => rank(a) - rank(b));
+    return rows;
   }
 
   _uniqueAssignedScenes(events) {
@@ -6156,6 +6249,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     let liveApplied = false;
     let wheelCtl = null;
     let brightnessGraphCtl = null;
+    let colorBriGraphCtl = null;
+    let whiteBriGraphCtl = null;
+    const whiteKind = supported.includes("rgbww")
+      ? "rgbww"
+      : supported.includes("rgbw")
+        ? "rgbw"
+        : null;
 
     const sceneEntityId = () => this._eventSceneId(currentEvent.id);
     const currentEntry = () => drafts.get(sceneEntityId());
@@ -6240,6 +6340,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._ensureSunPath();
         restoreLive();
         brightnessGraphCtl?.disconnect();
+        colorBriGraphCtl?.disconnect();
+        whiteBriGraphCtl?.disconnect();
         wheelCtl?.disconnect();
       },
     });
@@ -6254,8 +6356,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     const subtitleEl = header.querySelector("[slot='subtitle']");
     const chipsHost = document.createElement("div");
     const brightnessGraphMount = document.createElement("div");
+    const colorBriMount = document.createElement("div");
+    const whiteBriMount = document.createElement("div");
     const wheelMount = document.createElement("div");
-    body.append(chipsHost, brightnessGraphMount, wheelMount);
+    body.append(
+      chipsHost,
+      brightnessGraphMount,
+      colorBriMount,
+      whiteBriMount,
+      wheelMount
+    );
 
     const selectScene = async (next, { fromWheel = false } = {}) => {
       const nextId = this._eventSceneId(next.id);
@@ -6274,6 +6384,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       paintChips();
       brightnessGraphCtl?.sync();
+      colorBriGraphCtl?.sync();
+      whiteBriGraphCtl?.sync();
       if (!fromWheel) {
         const mode = draftWheelMode(currentDraft(), hasColor, hasTemp);
         wheelCtl?.setMode(mode, { convertDraft: false });
@@ -6326,10 +6438,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       applyToSession();
       wheelCtl?.syncPresets();
       brightnessGraphCtl?.sync();
+      colorBriGraphCtl?.sync();
+      whiteBriGraphCtl?.sync();
       await applyLive();
     };
 
     brightnessGraphCtl = createLightBrightnessGraph({
+      title: this._t("frontend.lights.brightness", "Brightness"),
+      subtitle: this._t("frontend.lights.graph_sub", "0–100% by solar event"),
       getPoints: () => {
         const activeId = sceneEntityId();
         return events
@@ -6448,6 +6564,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._schedulePreview();
         await selectScene(next);
         brightnessGraphCtl?.sync();
+        colorBriGraphCtl?.sync();
+        whiteBriGraphCtl?.sync();
         wheelCtl?.sync();
         await applyLive();
       },
@@ -6462,6 +6580,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         applyToSession();
         brightnessGraphCtl?.sync();
+        colorBriGraphCtl?.sync();
+        whiteBriGraphCtl?.sync();
         await applyLive();
       },
       onDragEnd: () => {
@@ -6469,6 +6589,102 @@ class SceneExtrapolationPanel extends HTMLElement {
       },
     });
     brightnessGraphMount.appendChild(brightnessGraphCtl.el);
+
+    if (whiteKind) {
+      const extraPoints = (valueOf) => () => {
+        const activeId = sceneEntityId();
+        return events
+          .map((item) => {
+            const sceneId = this._eventSceneId(item.id);
+            if (!sceneId) {
+              return null;
+            }
+            const entry = drafts.get(sceneId);
+            const member = Boolean(entry?.member && entry.draft);
+            const draft = entry?.draft;
+            return {
+              eventId: item.id,
+              sceneId,
+              seconds: item.seconds,
+              name: item.name,
+              icon: item.icon,
+              member,
+              brightness: member ? valueOf(draft) : 0,
+              rgb: member ? draftRgb(draft) : [128, 128, 128],
+              active: member && sceneId === activeId,
+            };
+          })
+          .filter(Boolean);
+      };
+      colorBriGraphCtl = createLightBrightnessGraph({
+        title: this._t("frontend.lights.color_brightness", "Color brightness"),
+        subtitle: this._t("frontend.lights.graph_sub", "0–100% by solar event"),
+        getPoints: extraPoints(colorBrightnessFromDraft),
+        onSelect: (eventId) => {
+          const next = events.find((item) => item.id === eventId);
+          if (next) {
+            selectScene(next);
+          }
+        },
+        onAdd: async (_sceneId, eventId) => {
+          const next = events.find((item) => item.id === eventId);
+          if (next) {
+            await selectScene(next);
+          }
+        },
+        onBrightness: async (sceneId, brightness) => {
+          const entry = drafts.get(sceneId);
+          if (!entry?.member || !entry.draft) {
+            return;
+          }
+          setColorBrightnessOnDraft(entry.draft, brightness, whiteKind);
+          applyToSession();
+          brightnessGraphCtl?.sync();
+          colorBriGraphCtl?.sync();
+          whiteBriGraphCtl?.sync();
+          wheelCtl?.sync();
+          await applyLive();
+        },
+        onDragEnd: () => {
+          wheelCtl?.sync();
+        },
+      });
+      whiteBriGraphCtl = createLightBrightnessGraph({
+        title: this._t("frontend.lights.white_brightness", "White brightness"),
+        subtitle: this._t("frontend.lights.graph_sub", "0–100% by solar event"),
+        getPoints: extraPoints(whiteBrightnessFromDraft),
+        onSelect: (eventId) => {
+          const next = events.find((item) => item.id === eventId);
+          if (next) {
+            selectScene(next);
+          }
+        },
+        onAdd: async (_sceneId, eventId) => {
+          const next = events.find((item) => item.id === eventId);
+          if (next) {
+            await selectScene(next);
+          }
+        },
+        onBrightness: async (sceneId, brightness) => {
+          const entry = drafts.get(sceneId);
+          if (!entry?.member || !entry.draft) {
+            return;
+          }
+          setWhiteBrightnessOnDraft(entry.draft, brightness, whiteKind);
+          applyToSession();
+          brightnessGraphCtl?.sync();
+          colorBriGraphCtl?.sync();
+          whiteBriGraphCtl?.sync();
+          wheelCtl?.sync();
+          await applyLive();
+        },
+        onDragEnd: () => {
+          wheelCtl?.sync();
+        },
+      });
+      colorBriMount.appendChild(colorBriGraphCtl.el);
+      whiteBriMount.appendChild(whiteBriGraphCtl.el);
+    }
 
     if (hasColor || hasTemp) {
       wheelCtl = createSceneColorWheel({
@@ -7336,6 +7552,71 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sunPathKey = undefined;
   }
 
+  _takePathMorphMs(from, to) {
+    const ms = this._pathMorphMs || 0;
+    this._pathMorphMs = 0;
+    if (
+      !ms ||
+      !from?.curve?.length ||
+      !to?.curve?.length ||
+      this._view !== "edit" ||
+      this._lightView !== "clock" ||
+      !this._clockRingsHost
+    ) {
+      return 0;
+    }
+    return ms;
+  }
+
+  _commitSunPath(payload, key) {
+    const from = this._displayedSunPath || this._sunPath;
+    const morphMs = this._takePathMorphMs(from, payload);
+    this._sunPath = payload;
+    this._sunPathKey = key;
+    if (morphMs && from && from !== payload) {
+      this._morphSunPath(from, payload, morphMs);
+      return;
+    }
+    this._drawSunPath();
+  }
+
+  _cancelSunPathMorph() {
+    if (this._sunPathMorphRaf) {
+      window.cancelAnimationFrame(this._sunPathMorphRaf);
+      this._sunPathMorphRaf = undefined;
+    }
+  }
+
+  _morphSunPath(from, to, durationMs) {
+    this._cancelSunPathMorph();
+    const started = performance.now();
+    const tick = (now) => {
+      const u = Math.min(1, (now - started) / durationMs);
+      const eased = easeOutCubic(u);
+      const frame = lerpSunPath(from, to, eased);
+      this._sunPath = frame;
+      this._displayedSunPath = frame;
+      const patched =
+        this._lightView === "clock" && this._patchLightClock(frame);
+      if (!patched) {
+        this._drawSunPath();
+        this._cancelSunPathMorph();
+        this._sunPath = to;
+        this._displayedSunPath = to;
+        return;
+      }
+      if (u < 1) {
+        this._sunPathMorphRaf = window.requestAnimationFrame(tick);
+        return;
+      }
+      this._sunPathMorphRaf = undefined;
+      this._sunPath = to;
+      this._displayedSunPath = to;
+      this._patchLightClock(to);
+    };
+    this._sunPathMorphRaf = window.requestAnimationFrame(tick);
+  }
+
   async _ensureSunPath() {
     if (!this._hass || !this._sunPathEl) {
       return;
@@ -7356,9 +7637,10 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         const cached = this._previewCache.get(key);
         if (cached) {
-          this._sunPath = cached;
-          this._sunPathKey = key;
-          this._drawSunPath();
+          if (listView || !this._previewOverlay) {
+            this._rememberPreview(key, cached);
+          }
+          this._commitSunPath(cached, key);
           continue;
         }
         try {
@@ -7395,12 +7677,10 @@ class SceneExtrapolationPanel extends HTMLElement {
             this._previewQueued = true;
             continue;
           }
-          this._sunPath = payload;
-          this._sunPathKey = key;
           if (listView || !this._previewOverlay) {
             this._rememberPreview(key, payload);
           }
-          this._drawSunPath();
+          this._commitSunPath(payload, key);
         } catch (err) {
           if (this._chartKey() !== key) {
             this._previewQueued = true;
@@ -7443,6 +7723,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!changed) {
       return;
     }
+    if (!this._yearScrubbing) {
+      this._pathMorphMs = DATE_MORPH_MS;
+    }
     // Keep sticky scrub time across date changes (curve updates underneath).
     this._sunPathKey = undefined;
     // Dial year scrub: client sun + in-place patch (no mid-drag HA preview).
@@ -7479,6 +7762,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       sunDay.events,
       draftRgb
     );
+    this._cancelSunPathMorph();
     this._sunPath = {
       ...sunDay,
       lights,
@@ -7488,6 +7772,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       // Face not built yet — thumb still moves; full draw on release.
       return;
     }
+    this._displayedSunPath = this._sunPath;
   }
 
   _buildDateToolbar() {
@@ -7948,6 +8233,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       this._syncDateToolbar();
       this._syncYearScrubLayout();
+      this._pathMorphMs = PREVIEW_REFINE_MS;
       this._ensureSunPath();
     };
     scrub.addEventListener("pointerup", endScrub);
@@ -8237,6 +8523,24 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!this._sunPathEl || !this._sunPath || !this._sunPath.curve?.length) {
       return;
     }
+    if (this._view === "edit" && !this._dateToolbar) {
+      this._lightView = this._readLightView();
+    }
+    const useClock = this._view === "edit" && this._lightView === "clock";
+    if (useClock && this._clockRingsHost && this._patchLightClock(this._sunPath)) {
+      this._displayedSunPath = this._sunPath;
+      if (this._dateToolbar) {
+        if (this._yearScrubbing) {
+          this._syncYearScrub();
+        } else {
+          this._syncDateToolbar();
+        }
+      }
+      this._syncEditorChrome();
+      this._syncYearScrubLayout();
+      this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
+      return;
+    }
     const { events, curve } = this._sunPath;
     const isToday = Boolean(this._sunPath.today);
     const nowSeconds = nowSecondsSinceMidnight();
@@ -8476,13 +8780,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     const hoverLine = document.createElement("div");
     hoverLine.className = "sun-hover-line";
     this._hoverLine = hoverLine;
-    // Read before painting lights: toolbar build (below) also syncs the
-    // toggle, but the graphs must use storage on the first paint or the
-    // highlight and the rendered view disagree after refresh.
-    if (this._view === "edit" && !this._dateToolbar) {
-      this._lightView = this._readLightView();
-    }
-    const useClock = this._view === "edit" && this._lightView === "clock";
     let clockEl = null;
     if (this._view === "edit") {
       if (useClock) {
@@ -8555,9 +8852,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._syncEditorChrome();
     }
     this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
+    this._displayedSunPath = this._sunPath;
   }
-
-  _secondsFromPlotPointer(ev, plots) {
     const rect = plots.getBoundingClientRect();
     const viewX = rect.width
       ? ((ev.clientX - rect.left) / rect.width) * CHART_WIDTH
@@ -8658,12 +8954,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._hoverSeconds = undefined;
     this._clockSunLive = false;
     const now = nowSecondsSinceMidnight();
-    this._moveClockSunTo(now, { durationMs: 840 });
+    this._moveClockSunTo(now, { durationMs: CLOCK_SUN_MOVE_MS });
     this._fillHoverReadout(now, { hovering: false });
   }
 
   /** Ease the sun along the path when it relocates (event pin, reset, etc.). */
-  _moveClockSunTo(toSeconds, { durationMs = 760 } = {}) {
+  _moveClockSunTo(toSeconds, { durationMs = CLOCK_SUN_MOVE_MS } = {}) {
     if (!this._clockSunEl || toSeconds == null) {
       return;
     }
@@ -9412,8 +9708,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._applyClockSunAppearance(from);
     const tick = (now) => {
       const u = Math.min(1, (now - started) / durationMs);
-      // Strong ease-out so the pin settles softly (quintic).
-      const eased = 1 - (1 - u) ** 5;
+      // Cubic ease-out: decelerates across more of the 1.5s than quintic.
+      const eased = easeOutCubic(u);
       let s = from + delta * eased;
       s = ((s % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
       this._applyClockSunAppearance(s);
@@ -9937,7 +10233,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           )
         ) >= 1
       ) {
-        this._moveClockSunTo(finalSeconds, { durationMs: 2000 });
+        this._moveClockSunTo(finalSeconds, { durationMs: CLOCK_SUN_MOVE_MS });
       } else {
         this._applyClockSunAppearance(finalSeconds);
       }
@@ -9982,7 +10278,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!ringsHost || !overlay || !payload?.events) {
       return false;
     }
-    const ringLights = (payload.lights || []).filter((light) => !light.suggested);
+    const ringLights = this._clockRingLights(payload.lights || []);
     const rings = [...ringsHost.querySelectorAll(":scope > .clock-ring")];
     if (rings.length !== ringLights.length) {
       return false;
@@ -10101,7 +10397,8 @@ class SceneExtrapolationPanel extends HTMLElement {
   _buildLightClock(events) {
     this._lightNameLabels = [];
     const lights = this._sunPath.lights || [];
-    const ringLights = lights.filter((light) => !light.suggested);
+    const ringLights = this._clockRingLights(lights);
+    const legendLights = this._legendLights(lights);
     const suggested = lights.filter((light) => light.suggested);
     const wrap = document.createElement("div");
     wrap.className = "sun-light-clock";
@@ -10649,7 +10946,7 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const legend = document.createElement("div");
     legend.className = "sun-light-clock-legend";
-    for (const light of [...ringLights, ...suggested]) {
+    for (const light of legendLights) {
       legend.appendChild(this._clockLegendRow(light, events));
     }
     this._clockLegendEl = legend;
@@ -10667,6 +10964,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (light.in_area === false) {
       row.classList.add("out-of-area");
+    }
+    if (this._lightIsUnavailable(light.entity_id)) {
+      row.classList.add("unavailable");
     }
     if (light.entity_id === this._sidebarLightId) {
       row.classList.add("selected");
@@ -10692,12 +10992,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const sub = document.createElement("div");
     sub.className = "clock-legend-sub";
-    if (suggested) {
+    const unavailable = this._lightIsUnavailable(light.entity_id);
+    if (unavailable) {
+      sub.textContent = this._t("frontend.lights.unavailable", "Unavailable");
+    } else if (suggested) {
       sub.textContent = "Not in an assigned scene yet";
     }
     meta.append(title, sub);
     row.appendChild(meta);
-    if (!suggested) {
+    if (!suggested && !unavailable) {
       this._lightNameLabels.push({ light, titleEl: title, subEl: sub });
     }
 
@@ -10842,7 +11145,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const wrap = document.createElement("div");
     wrap.className = "sun-lights";
-    for (const light of lights) {
+    for (const light of this._legendLights(lights)) {
       wrap.appendChild(this._lightRow(light, xOf, events));
     }
     return wrap;
@@ -10858,6 +11161,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (light.in_area === false) {
       row.classList.add("out-of-area");
+    }
+    if (this._lightIsUnavailable(light.entity_id)) {
+      row.classList.add("unavailable");
     }
     if (!suggested && light.entity_id === this._sidebarLightId) {
       row.classList.add("selected");
@@ -10889,10 +11195,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     const name = document.createElement("span");
     name.className = "light-name";
     name.textContent = light.name;
+    if (this._lightIsUnavailable(light.entity_id)) {
+      name.textContent = `${light.name} · ${this._t(
+        "frontend.lights.unavailable",
+        "Unavailable"
+      )}`;
+    }
     if (light.in_area === false) {
       name.title = "This light is not in the selected area";
     }
-    if (!suggested) {
+    if (!suggested && !this._lightIsUnavailable(light.entity_id)) {
       this._lightNameLabels.push({ light, el: name });
     }
     bar.appendChild(name);
@@ -11289,18 +11601,175 @@ function draftWheelMode(draft, hasColor, hasTemp) {
   return hasColor ? "color" : "temp";
 }
 
+function rgbwToRgb(rgbw) {
+  const r = Number(rgbw[0]) || 0;
+  const g = Number(rgbw[1]) || 0;
+  const b = Number(rgbw[2]) || 0;
+  const white = Number(rgbw[3]) || 0;
+  return [
+    Math.round(Math.max(0, Math.min(255, r + white))),
+    Math.round(Math.max(0, Math.min(255, g + white))),
+    Math.round(Math.max(0, Math.min(255, b + white))),
+  ];
+}
+
+function rgbwwToRgb(rgbww) {
+  const r = Number(rgbww[0]) || 0;
+  const g = Number(rgbww[1]) || 0;
+  const b = Number(rgbww[2]) || 0;
+  const cold = Number(rgbww[3]) || 0;
+  const warm = Number(rgbww[4]) || 0;
+  return [
+    Math.round(Math.max(0, Math.min(255, r + cold * 0.86 + warm))),
+    Math.round(Math.max(0, Math.min(255, g + cold * 0.9 + warm * 0.7))),
+    Math.round(Math.max(0, Math.min(255, b + cold + warm * 0.35))),
+  ];
+}
+
+function scaleRgbChannels(rgb, brightness) {
+  const max = Math.max(rgb[0], rgb[1], rgb[2]);
+  if (max <= 0) {
+    return [brightness, brightness, brightness];
+  }
+  const t = brightness / max;
+  return [
+    Math.round(rgb[0] * t),
+    Math.round(rgb[1] * t),
+    Math.round(rgb[2] * t),
+  ];
+}
+
+function chromaticRgbFromDraft(draft) {
+  let rgb;
+  if (draft?.rgbww_color) {
+    rgb = draft.rgbww_color.slice(0, 3);
+  } else if (draft?.rgbw_color) {
+    rgb = draft.rgbw_color.slice(0, 3);
+  } else if (draft?.rgb_color) {
+    rgb = draft.rgb_color;
+  } else if (draft?.hs_color) {
+    return hsv2rgb(draft.hs_color[0], draft.hs_color[1] / 100, 1);
+  } else {
+    return null;
+  }
+  const max = Math.max(rgb[0], rgb[1], rgb[2]);
+  if (max <= 0) {
+    return [0, 0, 0];
+  }
+  return [
+    Math.round((rgb[0] * 255) / max),
+    Math.round((rgb[1] * 255) / max),
+    Math.round((rgb[2] * 255) / max),
+  ];
+}
+
+function colorBrightnessFromDraft(draft) {
+  if (draft?.state === "off") {
+    return 0;
+  }
+  if (draft?.rgbww_color) {
+    return Math.max(draft.rgbww_color[0], draft.rgbww_color[1], draft.rgbww_color[2]);
+  }
+  if (draft?.rgbw_color) {
+    return Math.max(draft.rgbw_color[0], draft.rgbw_color[1], draft.rgbw_color[2]);
+  }
+  if (draft?.rgb_color) {
+    return Math.max(draft.rgb_color[0], draft.rgb_color[1], draft.rgb_color[2]);
+  }
+  if (draft?.hs_color) {
+    return 255;
+  }
+  return 0;
+}
+
+function whiteBrightnessFromDraft(draft) {
+  if (draft?.state === "off") {
+    return 0;
+  }
+  if (draft?.rgbww_color) {
+    return Math.max(draft.rgbww_color[3], draft.rgbww_color[4]);
+  }
+  if (draft?.rgbw_color) {
+    return draft.rgbw_color[3] || 0;
+  }
+  return 0;
+}
+
+function setColorBrightnessOnDraft(draft, brightness, whiteKind) {
+  const value = Math.round(Math.max(0, Math.min(255, brightness)));
+  if (whiteKind === "rgbww") {
+    const current = draft.rgbww_color || [
+      ...(chromaticRgbFromDraft(draft) || draftRgb(draft)),
+      0,
+      0,
+    ];
+    const rgb = scaleRgbChannels(current.slice(0, 3), value);
+    draft.rgbww_color = [rgb[0], rgb[1], rgb[2], current[3] || 0, current[4] || 0];
+    draft.rgb_color = undefined;
+    draft.rgbw_color = undefined;
+    draft.hs_color = undefined;
+    draft.color_temp_kelvin = undefined;
+  } else if (whiteKind === "rgbw") {
+    const current = draft.rgbw_color || [
+      ...(chromaticRgbFromDraft(draft) || draftRgb(draft)),
+      0,
+    ];
+    const rgb = scaleRgbChannels(current.slice(0, 3), value);
+    draft.rgbw_color = [rgb[0], rgb[1], rgb[2], current[3] || 0];
+    draft.rgb_color = undefined;
+    draft.rgbww_color = undefined;
+    draft.hs_color = undefined;
+    draft.color_temp_kelvin = undefined;
+  }
+  if (value > 0 || whiteBrightnessFromDraft(draft) > 0) {
+    draft.state = "on";
+  }
+}
+
+function setWhiteBrightnessOnDraft(draft, brightness, whiteKind) {
+  const value = Math.round(Math.max(0, Math.min(255, brightness)));
+  if (whiteKind === "rgbww") {
+    const current = draft.rgbww_color || [0, 0, 0, 0, 0];
+    const max = Math.max(current[3] || 0, current[4] || 0);
+    let cw;
+    let ww;
+    if (max <= 0) {
+      cw = value;
+      ww = value;
+    } else {
+      cw = Math.round(((current[3] || 0) * value) / max);
+      ww = Math.round(((current[4] || 0) * value) / max);
+    }
+    draft.rgbww_color = [current[0], current[1], current[2], cw, ww];
+    draft.rgb_color = undefined;
+    draft.rgbw_color = undefined;
+    draft.hs_color = undefined;
+    draft.color_temp_kelvin = undefined;
+  } else if (whiteKind === "rgbw") {
+    const current = draft.rgbw_color || [0, 0, 0, 0];
+    draft.rgbw_color = [current[0], current[1], current[2], value];
+    draft.rgb_color = undefined;
+    draft.rgbww_color = undefined;
+    draft.hs_color = undefined;
+    draft.color_temp_kelvin = undefined;
+  }
+  if (value > 0 || colorBrightnessFromDraft(draft) > 0) {
+    draft.state = "on";
+  }
+}
+
 function draftRgb(draft) {
+  if (draft?.rgbww_color) {
+    return rgbwwToRgb(draft.rgbww_color);
+  }
+  if (draft?.rgbw_color) {
+    return rgbwToRgb(draft.rgbw_color);
+  }
   if (draft?.rgb_color) {
     return draft.rgb_color;
   }
   if (draft?.hs_color) {
     return hsv2rgb(draft.hs_color[0], draft.hs_color[1] / 100, 1);
-  }
-  if (draft?.rgbww_color) {
-    return draft.rgbww_color.slice(0, 3);
-  }
-  if (draft?.rgbw_color) {
-    return draft.rgbw_color.slice(0, 3);
   }
   if (draft?.color_temp_kelvin != null) {
     return hueTempToRgb(draft.color_temp_kelvin);
@@ -11309,12 +11778,38 @@ function draftRgb(draft) {
 }
 
 function applyColorToDraft(draft, rgb, hsv) {
-  draft.rgb_color = rgb;
   draft.hs_color = [hsv[0], Math.round(hsv[1] * 100)];
   draft.color_temp_kelvin = undefined;
+  draft.state = "on";
+  if (draft.rgbww_color) {
+    const colorBri =
+      Math.max(draft.rgbww_color[0], draft.rgbww_color[1], draft.rgbww_color[2]) ||
+      255;
+    const scaled = scaleRgbChannels(rgb, colorBri);
+    draft.rgbww_color = [
+      scaled[0],
+      scaled[1],
+      scaled[2],
+      draft.rgbww_color[3],
+      draft.rgbww_color[4],
+    ];
+    draft.rgb_color = undefined;
+    draft.rgbw_color = undefined;
+    return;
+  }
+  if (draft.rgbw_color) {
+    const colorBri =
+      Math.max(draft.rgbw_color[0], draft.rgbw_color[1], draft.rgbw_color[2]) ||
+      255;
+    const scaled = scaleRgbChannels(rgb, colorBri);
+    draft.rgbw_color = [scaled[0], scaled[1], scaled[2], draft.rgbw_color[3]];
+    draft.rgb_color = undefined;
+    draft.rgbww_color = undefined;
+    return;
+  }
+  draft.rgb_color = rgb;
   draft.rgbw_color = undefined;
   draft.rgbww_color = undefined;
-  draft.state = "on";
 }
 
 function applyTempToDraft(draft, kelvin) {
@@ -11395,13 +11890,13 @@ function interpolateDraftSample(fromDraft, toDraft, t) {
       const rgbw = fromDraft.rgbw_color.map((value, index) =>
         lerpNumber(value, toDraft.rgbw_color[index], t)
       );
-      return { rgb: rgbw.slice(0, 3) };
+      return { rgb: rgbwToRgb(rgbw) };
     }
     if (fromKind === "rgbww" && fromDraft?.rgbww_color && toDraft?.rgbww_color) {
       const rgbww = fromDraft.rgbww_color.map((value, index) =>
         lerpNumber(value, toDraft.rgbww_color[index], t)
       );
-      return { rgb: rgbww.slice(0, 3) };
+      return { rgb: rgbwwToRgb(rgbww) };
     }
   }
   const start = draftRgb(fromDraft);
@@ -11538,6 +12033,8 @@ function drawHueWheelImage(mode, tempMin, tempMax) {
 }
 
 function createLightBrightnessGraph({
+  title: headingText = "Brightness",
+  subtitle = "0–100% by solar event",
   getPoints,
   onSelect,
   onAdd,
@@ -11565,10 +12062,10 @@ function createLightBrightnessGraph({
   heading.className = "light-brightness-graph-heading";
   const title = document.createElement("div");
   title.className = "light-brightness-graph-title";
-  title.textContent = "Brightness";
+  title.textContent = headingText;
   const sub = document.createElement("div");
   sub.className = "light-brightness-graph-sub";
-  sub.textContent = "0–100% by solar event";
+  sub.textContent = subtitle;
   heading.append(title, sub);
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -11995,10 +12492,11 @@ function createSceneColorWheel({
 
   const positionForDraft = (draft, markerMode, radius) => {
     if (markerMode === "color") {
-      const rgb = draftRgb(draft);
-      const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
+      const mixed = draftRgb(draft);
+      const chromatic = chromaticRgbFromDraft(draft) || mixed;
+      const hsv = rgb2hsv(chromatic[0], chromatic[1], chromatic[2]);
       const coords = coordinatesForColor(hsv[0], hsv[1], radius);
-      return { x: coords.x + radius, y: coords.y + radius, rgb };
+      return { x: coords.x + radius, y: coords.y + radius, rgb: mixed };
     }
     const kelvin = draft.color_temp_kelvin ?? 2700;
     const coords = coordinatesForTemp(kelvin, radius, tempMin, tempMax);
@@ -12970,6 +13468,74 @@ function interpolateLightSample(samples, seconds) {
     }
   }
   return at(samples[samples.length - 1]);
+}
+
+function easeOutCubic(u) {
+  return 1 - (1 - u) ** 3;
+}
+
+function lerpSampleSeries(from, to, t) {
+  if (!to?.length) {
+    return from || [];
+  }
+  if (!from?.length) {
+    return to;
+  }
+  return to.map((row) => {
+    const seconds = row[0];
+    const a = interpolateLightSample(from, seconds);
+    const b = interpolateLightSample(to, seconds);
+    return [
+      seconds,
+      a.brightness + (b.brightness - a.brightness) * t,
+      Math.round(a.rgb[0] + (b.rgb[0] - a.rgb[0]) * t),
+      Math.round(a.rgb[1] + (b.rgb[1] - a.rgb[1]) * t),
+      Math.round(a.rgb[2] + (b.rgb[2] - a.rgb[2]) * t),
+    ];
+  });
+}
+
+function lerpCurve(from, to, t) {
+  if (!to?.length) {
+    return from || [];
+  }
+  if (!from?.length) {
+    return to;
+  }
+  return to.map((row) => {
+    const seconds = row[0];
+    const a = interpolateElevation(from, seconds);
+    const b = interpolateElevation(to, seconds);
+    return [seconds, a + (b - a) * t];
+  });
+}
+
+function lerpSunPath(from, to, t) {
+  const events = (to.events || []).map((event) => {
+    const prev = (from.events || []).find((item) => item.id === event.id) || event;
+    return {
+      ...event,
+      seconds: prev.seconds + (event.seconds - prev.seconds) * t,
+      elevation:
+        (prev.elevation ?? event.elevation) +
+        ((event.elevation ?? 0) - (prev.elevation ?? 0)) * t,
+    };
+  });
+  const lights = (to.lights || []).map((light) => {
+    const prev = (from.lights || []).find(
+      (item) => item.entity_id === light.entity_id
+    );
+    if (!prev?.samples?.length || !light.samples?.length) {
+      return light;
+    }
+    return { ...light, samples: lerpSampleSeries(prev.samples, light.samples, t) };
+  });
+  return {
+    ...to,
+    curve: lerpCurve(from.curve, to.curve, t),
+    events,
+    lights,
+  };
 }
 
 if (!customElements.get("scene-extrapolation-panel")) {

@@ -144,6 +144,13 @@
         "helper": "Leave empty to create a native scene automatically for this event"
       }
     },
+    "lights": {
+      "unavailable": "Unavailable",
+      "brightness": "Brightness",
+      "color_brightness": "Color brightness",
+      "white_brightness": "White brightness",
+      "graph_sub": "0–100% by solar event"
+    },
     "defaults": {
       "automatic_lighting": "Automatic Lighting"
     }
