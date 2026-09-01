@@ -52,10 +52,11 @@ def infer_color_mode(entity: dict[str, Any]) -> str | None:
         return ColorMode.RGBWW
     if entity.get(ATTR_RGBW_COLOR):
         return ColorMode.RGBW
-    if entity.get(ATTR_RGB_COLOR):
-        return ColorMode.RGB
+    # Prefer HS over RGB when both exist (drafts often write both).
     if entity.get(ATTR_HS_COLOR):
         return ColorMode.HS
+    if entity.get(ATTR_RGB_COLOR):
+        return ColorMode.RGB
     if entity.get(ATTR_COLOR_TEMP_KELVIN):
         return ColorMode.COLOR_TEMP
     return None
@@ -122,6 +123,51 @@ def hs_to_rgb(hue: float, saturation: float) -> tuple[int, int, int]:
     return clamp_rgb((red + m) * 255, (green + m) * 255, (blue + m) * 255)
 
 
+def rgb_to_hs(red: float, green: float, blue: float) -> tuple[float, float]:
+    """Convert RGB 0–255 to Home Assistant HS (hue 0–360, sat 0–100)."""
+    r = max(0.0, min(float(red) / 255.0, 1.0))
+    g = max(0.0, min(float(green) / 255.0, 1.0))
+    b = max(0.0, min(float(blue) / 255.0, 1.0))
+    max_c = max(r, g, b)
+    min_c = min(r, g, b)
+    delta = max_c - min_c
+    if delta < 1e-9:
+        hue = 0.0
+    elif max_c == r:
+        hue = ((g - b) / delta) % 6.0
+    elif max_c == g:
+        hue = (b - r) / delta + 2.0
+    else:
+        hue = (r - g) / delta + 4.0
+    hue = (hue * 60.0) % 360.0
+    sat = 0.0 if max_c < 1e-9 else (delta / max_c) * 100.0
+    return (hue, sat)
+
+
+def entity_hs(entity: dict[str, Any]) -> tuple[float, float] | None:
+    """Chromatic HS from hs_color or rgb_color (not temp / rgbw / rgbww)."""
+    if ATTR_HS_COLOR in entity and entity[ATTR_HS_COLOR]:
+        hs = entity[ATTR_HS_COLOR]
+        return (float(hs[0]), float(hs[1]))
+    if ATTR_RGB_COLOR in entity and entity[ATTR_RGB_COLOR]:
+        rgb = entity[ATTR_RGB_COLOR]
+        return rgb_to_hs(rgb[0], rgb[1], rgb[2])
+    return None
+
+
+def lerp_hs(
+    from_hs: tuple[float, float],
+    to_hs: tuple[float, float],
+    percent: float,
+) -> tuple[float, float]:
+    """Linear HS blend without hue wrap (matches extrapolate_hs). Percent 0–100."""
+    t = max(0.0, min(1.0, float(percent) / 100.0))
+    return (
+        from_hs[0] + (to_hs[0] - from_hs[0]) * t,
+        from_hs[1] + (to_hs[1] - from_hs[1]) * t,
+    )
+
+
 def rgbw_to_rgb(rgbw: list | tuple) -> tuple[int, int, int]:
     r, g, b, white = (int(v) for v in rgbw[:4])
     return clamp_rgb(r + white, g + white, b + white)
@@ -171,11 +217,16 @@ def blend_entity_rgb(
     to_entity: dict[str, Any],
     percent: float,
 ) -> tuple[int, int, int]:
-    """Cross-mode (or fallback) blend: convert each endpoint to RGB, then lerp.
+    """Blend endpoints to RGB for preview / cross-mode apply.
 
-    Used when from/to color modes differ so dial preview and live apply do not
-    snap at the old 50% mode switch.
+    Chromatic HS/RGB pairs lerp on the hue wheel (keep saturation) so red↔blue
+    stays on the rim. Temp / rgbw / rgbww still RGB-lerp (bows toward white).
     """
+    from_hs = entity_hs(from_entity)
+    to_hs = entity_hs(to_entity)
+    if from_hs is not None and to_hs is not None:
+        hue, sat = lerp_hs(from_hs, to_hs, percent)
+        return hs_to_rgb(hue, sat)
     from_rgb = entity_rgb(from_entity) or entity_rgb(to_entity) or DEFAULT_RGB
     to_rgb = entity_rgb(to_entity) or entity_rgb(from_entity) or DEFAULT_RGB
     return lerp_rgb(from_rgb, to_rgb, percent)

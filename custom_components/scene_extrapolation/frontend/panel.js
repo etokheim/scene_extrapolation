@@ -2313,7 +2313,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         .hue-wheel-stage {
           position: relative;
           margin: 8px -8px 0;
-          padding: 28px 8px 64px;
+          padding: 28px 8px 16px;
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          /* Clear air between the disk and mode/preset chrome. */
+          gap: 16px;
         }
         .hue-wheel-canvas {
           position: relative;
@@ -2432,10 +2437,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           100% { scale: 1; }
         }
         .hue-wheel-chrome {
-          position: absolute;
-          left: 8px;
-          right: 8px;
-          bottom: 16px;
+          position: relative;
           display: flex;
           flex-wrap: nowrap;
           justify-content: space-between;

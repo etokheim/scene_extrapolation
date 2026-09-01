@@ -31,8 +31,11 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .color_math import (
     blend_entity_rgb,
+    hs_to_rgb,
     infer_color_mode,
+    lerp_hs,
     normalize_color_mode,
+    rgb_to_hs,
     same_color_mode,
 )
 from .solar import EVENT_ORDER
@@ -519,7 +522,7 @@ def extrapolate_temp_kelvin(
 def extrapolate_rgb(
     from_entity, to_entity, final_entity, scene_transition_progress_percent
 ):
-    """Extrapolate RGB."""
+    """Extrapolate RGB via HS on the wheel rim (not RGB-channel through white)."""
     from_rgb = (
         from_entity[ATTR_RGB_COLOR]
         if ATTR_RGB_COLOR in from_entity
@@ -536,11 +539,10 @@ def extrapolate_rgb(
         ]  # If there's no new color temp, we'll just keep the current one. Brightness extrapolation will likely turn it off in that case.
     )
 
-    rgb_extrapolated = [
-        extrapolate_value(from_rgb[0], to_rgb[0], scene_transition_progress_percent),
-        extrapolate_value(from_rgb[1], to_rgb[1], scene_transition_progress_percent),
-        extrapolate_value(from_rgb[2], to_rgb[2], scene_transition_progress_percent),
-    ]
+    from_hs = rgb_to_hs(from_rgb[0], from_rgb[1], from_rgb[2])
+    to_hs = rgb_to_hs(to_rgb[0], to_rgb[1], to_rgb[2])
+    hue, sat = lerp_hs(from_hs, to_hs, scene_transition_progress_percent)
+    rgb_extrapolated = list(hs_to_rgb(hue, sat))
 
     _LOGGER.debug(
         "    From RGB: %s → now: %s → to: %s (from brightness: %s → now: %s → to: %s)",

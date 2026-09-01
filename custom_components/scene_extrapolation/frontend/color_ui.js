@@ -506,14 +506,32 @@ function inferDraftColorKind(draft) {
   if (draft?.rgbw_color) {
     return "rgbw";
   }
-  if (draft?.rgb_color) {
-    return "rgb";
-  }
+  // Prefer HS over RGB: applyColorToDraft writes both, and RGB channel lerp of
+  // complements bows through white — not the rim path users expect.
   if (draft?.hs_color) {
     return "hs";
   }
+  if (draft?.rgb_color) {
+    return "rgb";
+  }
   if (draft?.color_temp_kelvin != null) {
     return "temp";
+  }
+  return null;
+}
+
+/** HS for chromatic drafts (native hs, else from rgb). Null for temp / missing. */
+function draftHs(draft) {
+  if (draft?.hs_color) {
+    return [draft.hs_color[0], draft.hs_color[1] / 100];
+  }
+  if (draft?.rgb_color) {
+    const hsv = rgb2hsv(
+      draft.rgb_color[0],
+      draft.rgb_color[1],
+      draft.rgb_color[2]
+    );
+    return [hsv[0], hsv[1]];
   }
   return null;
 }
@@ -541,8 +559,8 @@ function lerpNumber(from, to, t) {
 function interpolateDraftSample(fromDraft, toDraft, t) {
   const fromKind = inferDraftColorKind(fromDraft);
   const toKind = inferDraftColorKind(toDraft);
-  // Same kind: channel-native lerp. Different kinds: RGB-lerp endpoints so the
-  // wheel path / preview does not snap at the old 50% mode switch.
+  // Same kind: channel-native lerp. Chromatic HS/RGB (incl. mixed): hue+sat on
+  // the wheel rim. Temp / rgbw / rgbww still RGB-lerp across kinds.
   if (fromKind && toKind && fromKind === toKind) {
     if (fromKind === "temp") {
       const fromK = fromDraft?.color_temp_kelvin;
@@ -555,14 +573,17 @@ function interpolateDraftSample(fromDraft, toDraft, t) {
       const kelvin = lerpNumber(start, end, t);
       return { kelvin, rgb: hueTempToRgb(kelvin) };
     }
-    if (fromKind === "hs") {
-      const start = fromDraft?.hs_color || toDraft?.hs_color;
-      const end = toDraft?.hs_color || fromDraft?.hs_color;
+    if (fromKind === "hs" || fromKind === "rgb") {
+      const start = draftHs(fromDraft);
+      const end = draftHs(toDraft);
       if (!start || !end) {
         return { rgb: draftRgb(t < 0.5 ? fromDraft : toDraft) };
       }
-      const hs = [lerpNumber(start[0], end[0], t), lerpNumber(start[1], end[1], t)];
-      return { hs, rgb: hsv2rgb(hs[0], hs[1] / 100, 1) };
+      const hs = [
+        lerpNumber(start[0], end[0], t),
+        lerpNumber(start[1], end[1], t),
+      ];
+      return { hs: [hs[0], hs[1] * 100], rgb: hsv2rgb(hs[0], hs[1], 1) };
     }
     if (fromKind === "rgbw" && fromDraft?.rgbw_color && toDraft?.rgbw_color) {
       const rgbw = fromDraft.rgbw_color.map((value, index) =>
@@ -577,6 +598,16 @@ function interpolateDraftSample(fromDraft, toDraft, t) {
       return { rgb: rgbwwToRgb(rgbww) };
     }
   }
+  // Cross-mode chromatic (hs↔rgb): stay on the rim like same-kind HS.
+  const fromHs = draftHs(fromDraft);
+  const toHs = draftHs(toDraft);
+  if (fromHs && toHs) {
+    const hs = [
+      lerpNumber(fromHs[0], toHs[0], t),
+      lerpNumber(fromHs[1], toHs[1], t),
+    ];
+    return { hs: [hs[0], hs[1] * 100], rgb: hsv2rgb(hs[0], hs[1], 1) };
+  }
   const start = draftRgb(fromDraft);
   const end = draftRgb(toDraft);
   return {
@@ -590,47 +621,37 @@ function interpolateDraftSample(fromDraft, toDraft, t) {
 
 /** Steps for a wheel-path edge (cosmetic denser than runtime; same lerp). */
 function huePathStepCount(fromDraft, toDraft, wheelMode) {
-  const fromKind = inferDraftColorKind(fromDraft);
-  const toKind = inferDraftColorKind(toDraft);
-  if (
-    wheelMode === "color" &&
-    fromKind === "hs" &&
-    toKind === "hs" &&
-    fromDraft?.hs_color &&
-    toDraft?.hs_color
-  ) {
-    const hueDelta = Math.abs(toDraft.hs_color[0] - fromDraft.hs_color[0]);
-    const satDelta =
-      Math.abs(toDraft.hs_color[1] - fromDraft.hs_color[1]) / 100;
-    if (satDelta <= HUE_PATH_HS_SAT_EPS) {
-      // Near-constant sat: follow the rim with ~2.5° chords.
-      return Math.max(
-        HUE_PATH_STEPS,
-        Math.ceil(Math.max(hueDelta, 1) / HUE_PATH_HS_DEG_PER_STEP)
-      );
-    }
-    // Sat-varying HS: denser samples before Catmull-Rom stroke.
-    return Math.max(HUE_PATH_STEPS, 96);
+  if (wheelMode !== "color") {
+    return HUE_PATH_STEPS;
   }
-  return HUE_PATH_STEPS;
+  const fromHs = draftHs(fromDraft);
+  const toHs = draftHs(toDraft);
+  if (!fromHs || !toHs) {
+    return HUE_PATH_STEPS;
+  }
+  const hueDelta = Math.abs(toHs[0] - fromHs[0]);
+  const satDelta = Math.abs(toHs[1] - fromHs[1]);
+  if (satDelta <= HUE_PATH_HS_SAT_EPS) {
+    // Near-constant sat: follow the rim with ~2.5° chords.
+    return Math.max(
+      HUE_PATH_STEPS,
+      Math.ceil(Math.max(hueDelta, 1) / HUE_PATH_HS_DEG_PER_STEP)
+    );
+  }
+  // Sat-varying HS: denser samples before Catmull-Rom stroke.
+  return Math.max(HUE_PATH_STEPS, 96);
 }
 
 function huePathEdgeIsVaryingHs(fromDraft, toDraft, wheelMode) {
-  const fromKind = inferDraftColorKind(fromDraft);
-  const toKind = inferDraftColorKind(toDraft);
-  if (
-    wheelMode !== "color" ||
-    fromKind !== "hs" ||
-    toKind !== "hs" ||
-    !fromDraft?.hs_color ||
-    !toDraft?.hs_color
-  ) {
+  if (wheelMode !== "color") {
     return false;
   }
-  return (
-    Math.abs(toDraft.hs_color[1] - fromDraft.hs_color[1]) / 100 >
-    HUE_PATH_HS_SAT_EPS
-  );
+  const fromHs = draftHs(fromDraft);
+  const toHs = draftHs(toDraft);
+  if (!fromHs || !toHs) {
+    return false;
+  }
+  return Math.abs(toHs[1] - fromHs[1]) > HUE_PATH_HS_SAT_EPS;
 }
 
 /** Sample the same lerp as runtime onto wheel coordinates. */
@@ -1819,6 +1840,7 @@ export {
   applyColorToDraft,
   applyTempToDraft,
   inferDraftColorKind,
+  draftHs,
   collapseSceneCycle,
   lerpNumber,
   interpolateDraftSample,
