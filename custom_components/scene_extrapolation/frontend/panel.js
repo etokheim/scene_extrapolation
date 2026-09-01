@@ -181,7 +181,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._editId = null;
     this._items = [];
     this._managedScenes = [];
-    this._settings = { hide_managed_native_scenes: false };
+    this._settings = {
+      hide_managed_native_scenes: false,
+      continuous_interval: 300,
+    };
     this._listTab = "extrapolation";
     this._translationsReady = false;
     this._leaveConfirmDone = false;
@@ -3040,6 +3043,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-shrink: 0;
           margin-top: 2px;
         }
+        .list-settings-dialog .continuous-interval-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .list-settings-dialog .continuous-interval-row ha-selector {
+          width: 100%;
+          margin-top: 8px;
+        }
         .row .row-actions {
           display: flex;
           align-items: center;
@@ -3381,6 +3392,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._managedScenes = managed || [];
       this._settings = {
         hide_managed_native_scenes: false,
+        continuous_interval: 300,
         ...(settings || {}),
       };
       this._error = null;
@@ -3617,6 +3629,51 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const actions = document.createElement("div");
     actions.className = "row-actions";
+    const continuousOn = item.continuous !== false;
+    const continuousBtn = document.createElement("ha-icon-button");
+    continuousBtn.label = continuousOn
+      ? this._t(
+          "frontend.settings.pause_continuous",
+          "Pause automatic follow-up"
+        )
+      : this._t(
+          "frontend.settings.resume_continuous",
+          "Resume automatic follow-up"
+        );
+    const continuousIcon = document.createElement("ha-icon");
+    continuousIcon.setAttribute(
+      "icon",
+      continuousOn ? "mdi:pause" : "mdi:play"
+    );
+    continuousBtn.appendChild(continuousIcon);
+    continuousBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      const next = !continuousOn;
+      continuousBtn.disabled = true;
+      try {
+        const result = await this._hass.callWS({
+          type: `${DOMAIN}/set_continuous`,
+          scene_id: item.id,
+          continuous: next,
+        });
+        const idx = this._items.findIndex((row) => row.id === item.id);
+        if (idx >= 0) {
+          this._items[idx] = {
+            ...this._items[idx],
+            continuous: result?.continuous !== false,
+            ...(result || {}),
+          };
+        }
+        // Rebuild this list without closing a settings sidebar if open.
+        if (this._view === "list") {
+          this._renderList({ keepSidebar: true });
+        }
+      } catch (err) {
+        window.alert(err.message || String(err));
+      } finally {
+        continuousBtn.disabled = false;
+      }
+    });
     const settingsBtn = document.createElement("ha-icon-button");
     settingsBtn.label = this._t(
       "frontend.settings.scene_settings",
@@ -3660,7 +3717,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._renderList();
       }
     });
-    actions.append(settingsBtn, deleteBtn);
+    actions.append(continuousBtn, settingsBtn, deleteBtn);
     row.appendChild(actions);
     return row;
   }
@@ -3791,6 +3848,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         });
         this._settings = {
           hide_managed_native_scenes: false,
+          continuous_interval: 300,
           ...(result?.settings || {}),
         };
         this._managedScenes = await this._hass.callWS({
@@ -3809,6 +3867,66 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
     row.append(labelWrap, toggle);
     body.appendChild(row);
+
+    const intervalRow = document.createElement("div");
+    intervalRow.className = "setup-link-row continuous-interval-row";
+    const intervalLabelWrap = document.createElement("div");
+    const intervalLabel = document.createElement("div");
+    intervalLabel.className = "name";
+    intervalLabel.textContent = this._t(
+      "frontend.settings.continuous_interval",
+      "Automatic follow-up interval"
+    );
+    const intervalHelper = document.createElement("div");
+    intervalHelper.className = "sidebar-note";
+    intervalHelper.style.margin = "4px 0 0";
+    intervalHelper.textContent = this._t(
+      "frontend.settings.continuous_interval_helper",
+      "After a scene is activated, re-apply it this often with the same transition length (target = how the room should look at the end of the transition). 0 turns follow-up off for every room. Pause individual rooms from the list."
+    );
+    intervalLabelWrap.append(intervalLabel, intervalHelper);
+    const intervalField = document.createElement("ha-selector");
+    intervalField.hass = this._hass;
+    intervalField.label = this._t(
+      "frontend.settings.continuous_interval_minutes",
+      "Minutes"
+    );
+    const currentSeconds = Number(this._settings?.continuous_interval ?? 300);
+    intervalField.value = Math.round(currentSeconds / 60);
+    intervalField.selector = {
+      number: { min: 0, max: 30, step: 1, mode: "box", unit_of_measurement: "min" },
+    };
+    let intervalSaveTimer;
+    const saveInterval = async () => {
+      const minutes = Number(intervalField.value);
+      const seconds = Number.isFinite(minutes)
+        ? Math.max(0, Math.min(30, Math.round(minutes))) * 60
+        : 300;
+      try {
+        const result = await this._hass.callWS({
+          type: `${DOMAIN}/update_settings`,
+          settings: { continuous_interval: seconds },
+        });
+        this._settings = {
+          hide_managed_native_scenes: false,
+          continuous_interval: 300,
+          ...(result?.settings || {}),
+        };
+        intervalField.value = Math.round(
+          Number(this._settings.continuous_interval || 0) / 60
+        );
+      } catch (err) {
+        intervalField.value = Math.round(currentSeconds / 60);
+        window.alert(err.message || String(err));
+      }
+    };
+    intervalField.addEventListener("value-changed", (ev) => {
+      window.clearTimeout(intervalSaveTimer);
+      intervalSaveTimer = window.setTimeout(saveInterval, 400);
+      ev.stopPropagation();
+    });
+    intervalRow.append(intervalLabelWrap, intervalField);
+    body.appendChild(intervalRow);
   }
 
   _addButton() {
@@ -7120,7 +7238,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const step1Intro = document.createElement("p");
     step1Intro.className = "setup-intro";
     step1Intro.innerHTML =
-      "Creates a scene which, when activated, lights your room based on the sun. Best paired with an automation that triggers it every few minutes.<br><br>" +
+      "Creates a scene which, when activated, lights your room based on the sun. Follow-up is built in: it keeps adjusting lights on an interval (pause per room from the list).<br><br>" +
       "<span class=\"muted\">Only <strong>native Home Assistant scenes</strong> are supported (not Hue/integration scenes). All settings can be changed later.</span>";
     step1.appendChild(step1Intro);
 

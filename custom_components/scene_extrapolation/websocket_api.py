@@ -58,6 +58,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_list_managed_native_scenes)
     websocket_api.async_register_command(hass, ws_get_settings)
     websocket_api.async_register_command(hass, ws_update_settings)
+    websocket_api.async_register_command(hass, ws_set_continuous)
 
 
 def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
@@ -580,12 +581,52 @@ async def ws_update_settings(
     """Update integration-wide settings and apply visibility side effects."""
     store = _store(hass)
     before_hide = bool(store.settings.get("hide_managed_native_scenes"))
+    before_interval = int(store.settings.get("continuous_interval") or 0)
     settings = await store.async_update_settings(dict(msg.get("settings") or {}))
     after_hide = bool(settings.get("hide_managed_native_scenes"))
+    after_interval = int(settings.get("continuous_interval") or 0)
     updated = 0
     if before_hide != after_hide:
         updated = apply_managed_native_scene_visibility(hass, hidden=after_hide)
+    if before_interval != after_interval:
+        for entity in hass.data[DOMAIN][DATA_ENTITIES].values():
+            entity.async_on_continuous_settings_changed()
     connection.send_result(
         msg["id"],
         {"settings": settings, "visibility_updated": updated},
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/set_continuous",
+        vol.Required("scene_id"): str,
+        vol.Required("continuous"): bool,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_set_continuous(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Toggle per-scene follow-up preference (list play/pause). Does not activate."""
+    item = await _store(hass).async_set_continuous(
+        msg["scene_id"], bool(msg["continuous"])
+    )
+    if item is None:
+        connection.send_error(msg["id"], websocket_api.ERR_NOT_FOUND, "Scene not found")
+        return
+    entity = hass.data[DOMAIN][DATA_ENTITIES].get(msg["scene_id"])
+    if entity is not None:
+        await entity.async_update_config(item)
+    entry = _registry_entry(hass, item["id"])
+    connection.send_result(
+        msg["id"],
+        {
+            **item,
+            "entity_id": entry.entity_id if entry else None,
+            "form": _form_payload(item, entry),
+        },
     )

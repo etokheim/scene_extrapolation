@@ -29,6 +29,11 @@
       "intro": "These settings apply to every room. Changes take effect immediately.",
       "hide_created": "Hide created scenes in Home Assistant",
       "hide_created_helper": "Marks native scenes created by this integration as hidden in the HA UI (entity registry). You can still manage them here.",
+      "continuous_interval": "Automatic follow-up interval",
+      "continuous_interval_helper": "After a scene is activated, re-apply it this often with the same transition length (target = how the room should look at the end of the transition). 0 turns follow-up off for every room. Pause individual rooms from the list.",
+      "continuous_interval_minutes": "Minutes",
+      "pause_continuous": "Pause automatic follow-up",
+      "resume_continuous": "Resume automatic follow-up",
       "scene_settings": "Scene settings",
       "hidden_in_ha": "Hidden in Home Assistant"
     },

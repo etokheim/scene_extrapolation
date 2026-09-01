@@ -455,3 +455,10 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Decision:** Day-to-day work (and feature-branch PRs) target `dev`. Opening a PR to `master` is how a version ships: the prepare-release-pr skill syncs translations and Unreleased, then merge runs `.github/workflows/release.yml` (version bump, changelog move, GitHub release, merge back to `dev`). Do not bump `manifest.json` or move Unreleased in that PR. Do not maintain nb/nn/de/es or Unreleased during feature work on `dev`. `release:skip` (or empty Unreleased) lands on `master` without publishing.
 - **Why:** Cutting the release in the agent duplicated (and fought) the GitHub workflows. Translating and changelog-editing on every change set was slower than one pass against the `master` diff. `master` stays the HACS/GitHub default so visitors see released code.
 - **Do not reverse without user ask.**
+
+## Continuous follow-up is built into the integration
+
+- **Date:** 2026-09-01
+- **Decision:** After activation, extrapolation scenes re-apply on a global interval (`continuous_interval`, default 300s; 0 = master off). The same value is the follow-up light transition; targets use `now + transition` (existing offset math). First activation keeps the caller’s transition (usually 0); wait one interval, then follow-up ticks. Per-scene `continuous` defaults to on; list play/pause is preference-only (pause stops a running loop; play does not turn lights on). Stop when another scene in the area is last-activated or when modifiers are set. Skip manually overridden lights; treat drift/unresponsive within tolerance (or still moving toward the command) as retryable. Do not stop merely because all lights are off (dawn). Do not ship this as a blueprint — blueprints cannot skip lamps inside apply or keep commanded vs reported state.
+- **Why:** The user’s continuously-activate blueprint was a roundabout loop and blocked override/drift features. Built-in follow-up matches the product and keeps override state on the scene entity.
+- **Do not reverse without user ask.**

@@ -33,6 +33,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_STATE,
+    EVENT_CALL_SERVICE,
     SERVICE_LOCK,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
@@ -46,11 +47,15 @@ from homeassistant.const import (
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Context, Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import (
+    async_call_later,
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 from homeassistant.util import dt as dt_util
 
 from .color_math import (
@@ -62,6 +67,7 @@ from .color_math import (
 from .const import (
     AREA,
     CATEGORY,
+    CONTINUOUS,
     DATA_ADD_ENTITIES,
     DATA_ENTITIES,
     DATA_STORE,
@@ -77,6 +83,18 @@ from .const import (
     SCENE_SUNRISE,
     SCENE_SUNSET,
 )
+from .continuous import (
+    classify_light_report,
+    competing_scene_activated,
+    context_is_ours,
+    continuous_interval_seconds,
+    entity_ids_from_service_event,
+    last_activated_scene_id,
+    should_arm_continuous,
+    snapshot_from_command,
+    snapshot_from_state,
+)
+from .native_scene import scenes_in_area
 from .solar import EVENT_ORDER, dusk_start_seconds, resolve_solar_events
 
 DAY_PERCENT_STEP = 100.0 / (len(EVENT_ORDER) - 1)
@@ -268,6 +286,18 @@ class ExtrapolationScene(Scene):
         self._unsub_interval = None
         self._target_date_time = None
         self._area_id = scene_config.get(AREA)
+        self._overridden: set[str] = set()
+        self._commanded: dict[str, dict[str, Any]] = {}
+        self._pre_apply: dict[str, dict[str, Any] | None] = {}
+        self._apply_context: Context | None = None
+        self._apply_until = 0.0
+        self._continuous_armed = False
+        self._activating_follow_up = False
+        self._follow_up_generation = 0
+        self._internal_scene_call = False
+        self._unsub_follow_up = None
+        self._unsub_call_service = None
+        self._unsub_light_listener = None
 
         # Used for calculating solar events when activating the scene
         self.latitude = self.hass.config.latitude
@@ -284,6 +314,10 @@ class ExtrapolationScene(Scene):
             return default
         return value
 
+    def _continuous_enabled(self) -> bool:
+        """Per-scene play/pause preference (default on)."""
+        return bool(self._cfg(CONTINUOUS, True))
+
     async def async_added_to_hass(self) -> None:
         """Assign the configured area once the entity is registered."""
         await super().async_added_to_hass()
@@ -291,12 +325,19 @@ class ExtrapolationScene(Scene):
         self._unsub_interval = async_track_time_interval(
             self.hass, self._async_refresh_transition_percent, timedelta(minutes=1)
         )
+        self._unsub_call_service = self.hass.bus.async_listen(
+            EVENT_CALL_SERVICE, self._on_call_service
+        )
 
     async def async_will_remove_from_hass(self) -> None:
-        """Stop the transition-percent refresh when the entity is removed."""
+        """Stop timers and listeners when the entity is removed."""
         if self._unsub_interval:
             self._unsub_interval()
             self._unsub_interval = None
+        if self._unsub_call_service:
+            self._unsub_call_service()
+            self._unsub_call_service = None
+        self._stop_continuous(write_state=False)
         await super().async_will_remove_from_hass()
 
     async def _async_refresh_transition_percent(self, _now) -> None:
@@ -311,7 +352,11 @@ class ExtrapolationScene(Scene):
         self._attr_name = scene_config.get(SCENE_NAME) or self._attr_name
         self._area_id = scene_config.get(AREA)
         await self._async_sync_registry()
-        self.async_write_ha_state()
+        # Pause preference stops a running loop; play does not activate lights.
+        if not self._continuous_enabled() and self._continuous_armed:
+            self._stop_continuous()
+        else:
+            self.async_write_ha_state()
 
     async def _async_sync_registry(self) -> None:
         """Keep entity registry area, labels, and category in sync."""
@@ -392,6 +437,8 @@ class ExtrapolationScene(Scene):
             "transition_percent": round(self._current_day_transition_percent(), 1),
             "transition_percent_manual": self._transition_percent_manual,
             "integration": self._attr_integration,
+            "continuous": self._continuous_armed,
+            "overridden_lights": sorted(self._overridden),
         }
         if self._target_date_time is not None:
             attrs["target_date_time"] = self._target_date_time.isoformat()
@@ -409,6 +456,190 @@ class ExtrapolationScene(Scene):
                 attrs[attr_name] = value
 
         return attrs
+
+    def _cancel_follow_up(self) -> None:
+        """Drop the pending follow-up timer and invalidate in-flight ticks."""
+        self._follow_up_generation += 1
+        if self._unsub_follow_up:
+            self._unsub_follow_up()
+            self._unsub_follow_up = None
+
+    def _unsub_light_tracking(self) -> None:
+        if self._unsub_light_listener:
+            self._unsub_light_listener()
+            self._unsub_light_listener = None
+
+    def _stop_continuous(self, *, write_state: bool = True) -> None:
+        """Stop follow-up ticks and forget override/command snapshots."""
+        self._cancel_follow_up()
+        self._unsub_light_tracking()
+        self._continuous_armed = False
+        self._overridden.clear()
+        self._commanded = {}
+        self._pre_apply = {}
+        self._apply_context = None
+        if write_state and self.hass and self.entity_id:
+            self.async_write_ha_state()
+
+    def async_on_continuous_settings_changed(self) -> None:
+        """Re-arm or stop follow-up when the global interval setting changes."""
+        if not self._continuous_armed:
+            return
+        interval = continuous_interval_seconds(self.hass)
+        if not should_arm_continuous(
+            interval,
+            enabled=self._continuous_enabled(),
+            brightness_modifier=self._brightness_modifier,
+            transition_percent_manual=self._transition_percent_manual,
+        ):
+            self._stop_continuous()
+            return
+        self._schedule_follow_up(interval)
+
+    def _schedule_follow_up(self, interval: int) -> None:
+        """Arm a follow-up tick `interval` seconds from now."""
+        if self._unsub_follow_up:
+            self._unsub_follow_up()
+            self._unsub_follow_up = None
+        self._continuous_armed = True
+        generation = self._follow_up_generation
+
+        async def _fire(_now) -> None:
+            self._unsub_follow_up = None
+            if generation != self._follow_up_generation:
+                return
+            await self._async_follow_up()
+
+        self._unsub_follow_up = async_call_later(self.hass, interval, _fire)
+        self._sync_light_listener()
+        self.async_write_ha_state()
+
+    async def _async_follow_up(self) -> None:
+        """Re-apply the scene if it is still the last one activated in the area."""
+        interval = continuous_interval_seconds(self.hass)
+        if not should_arm_continuous(
+            interval,
+            enabled=self._continuous_enabled(),
+            brightness_modifier=self._brightness_modifier,
+            transition_percent_manual=self._transition_percent_manual,
+        ):
+            self._stop_continuous()
+            return
+        if not self._is_last_activated_in_area():
+            _LOGGER.debug(
+                "%s is no longer the last activated scene in its area; stopping continuous",
+                self.entity_id,
+            )
+            self._stop_continuous()
+            return
+        self._collect_new_overrides()
+        self._activating_follow_up = True
+        await self.async_activate(transition=interval)
+
+    def _is_last_activated_in_area(self) -> bool:
+        """True when no other scene in this area has a newer last-activated time."""
+        area_id = self._area_id
+        if not area_id:
+            return True
+        scene_ids = scenes_in_area(self.hass, area_id)
+        states = {
+            entity_id: (
+                state.state if (state := self.hass.states.get(entity_id)) else None
+            )
+            for entity_id in scene_ids
+        }
+        if self.entity_id not in states:
+            own = self.hass.states.get(self.entity_id)
+            states[self.entity_id] = own.state if own else None
+        latest = last_activated_scene_id(states)
+        return latest is None or latest == self.entity_id
+
+    def _collect_new_overrides(self) -> None:
+        """Mark lights that jumped off the commanded path after the transition."""
+        mid = time.time() < self._apply_until
+        for entity_id, commanded in self._commanded.items():
+            if entity_id in self._overridden:
+                continue
+            actual = snapshot_from_state(self.hass.states.get(entity_id))
+            kind = classify_light_report(
+                actual=actual,
+                commanded=commanded,
+                pre=self._pre_apply.get(entity_id),
+                user_id=None,
+                from_our_context=False,
+                mid_transition=mid,
+            )
+            if kind == "override":
+                _LOGGER.info(
+                    "%s: %s looks manually overridden; skipping on follow-up",
+                    self.entity_id,
+                    entity_id,
+                )
+                self._overridden.add(entity_id)
+
+    def _sync_light_listener(self) -> None:
+        self._unsub_light_tracking()
+        if not self._continuous_armed or not self._commanded:
+            return
+        self._unsub_light_listener = async_track_state_change_event(
+            self.hass, list(self._commanded), self._on_light_state_changed
+        )
+
+    @callback
+    def _on_light_state_changed(self, event: Event) -> None:
+        """Mark a lamp overridden when a user (or off-path jump) changes it."""
+        if not self._continuous_armed:
+            return
+        entity_id = event.data.get("entity_id")
+        if not entity_id or entity_id in self._overridden:
+            return
+        commanded = self._commanded.get(entity_id)
+        if commanded is None:
+            return
+        new_state = event.data.get("new_state")
+        actual = snapshot_from_state(new_state)
+        ctx = event.context
+        kind = classify_light_report(
+            actual=actual,
+            commanded=commanded,
+            pre=self._pre_apply.get(entity_id),
+            user_id=getattr(ctx, "user_id", None),
+            from_our_context=context_is_ours(ctx, self._apply_context),
+            mid_transition=time.time() < self._apply_until,
+        )
+        if kind != "override":
+            return
+        _LOGGER.info(
+            "%s: %s marked as manually overridden",
+            self.entity_id,
+            entity_id,
+        )
+        self._overridden.add(entity_id)
+        self.async_write_ha_state()
+
+    @callback
+    def _on_call_service(self, event: Event) -> None:
+        """Stop follow-up as soon as another scene in the area is turned on."""
+        if not self._continuous_armed or self._internal_scene_call:
+            return
+        data = event.data or {}
+        domain = data.get("domain")
+        if data.get("service") != SERVICE_TURN_ON:
+            return
+        if domain not in (SCENE_DOMAIN, DOMAIN):
+            return
+        activated = entity_ids_from_service_event(data)
+        area_ids = (
+            set(scenes_in_area(self.hass, self._area_id)) if self._area_id else None
+        )
+        if not competing_scene_activated(activated, self.entity_id, area_ids):
+            return
+        _LOGGER.debug(
+            "%s: another scene in the area was activated (%s); stopping continuous",
+            self.entity_id,
+            activated,
+        )
+        self._stop_continuous()
 
     async def async_activate(
         self,
@@ -429,6 +660,20 @@ class ExtrapolationScene(Scene):
             location: Optional dict with 'latitude' and 'longitude' keys to override location
                      (defaults to Home Assistant's configured location)
         """
+        follow_up = self._activating_follow_up
+        self._activating_follow_up = False
+        if not follow_up:
+            self._overridden.clear()
+            self._cancel_follow_up()
+            self._unsub_light_tracking()
+            self._continuous_armed = False
+            # scene.turn_on already records via Scene._async_activate; this
+            # covers scene_extrapolation.turn_on. Follow-up must not record or
+            # we would steal "last activated" from another scene in the area.
+            if hasattr(self, "_async_record_activation"):
+                self._async_record_activation()
+        generation = self._follow_up_generation
+
         # Store the brightness modifier and optional manual day percent
         self._brightness_modifier = brightness_modifier
         if transition_percent is None:
@@ -437,6 +682,18 @@ class ExtrapolationScene(Scene):
         else:
             self._transition_percent_manual = True
             self._manual_transition_percent = transition_percent
+
+        interval = continuous_interval_seconds(self.hass)
+        will_follow = should_arm_continuous(
+            interval,
+            enabled=self._continuous_enabled(),
+            brightness_modifier=brightness_modifier,
+            transition_percent_manual=self._transition_percent_manual,
+        )
+        # Blueprint-style: first activation keeps the caller's transition
+        # (usually 0). Follow-up ticks pass transition=interval and target
+        # how the room should look at now+interval.
+        apply_transition = transition
 
         # Use target_date_time if provided, otherwise use current time
         if target_date_time is None:
@@ -467,10 +724,10 @@ class ExtrapolationScene(Scene):
         # Trigger a state update to make the attributes visible immediately
         self.async_write_ha_state()
 
-        if transition == 6553:
+        if apply_transition == 6553:
             _LOGGER.warning(
                 "Home Assistant doesn't support transition times longer than 6553 (109 minutes). Anything above this value seems to be disregarded. The integration received a transition time of: %s",
-                transition,
+                apply_transition,
             )
 
         ##############################################
@@ -493,6 +750,7 @@ class ExtrapolationScene(Scene):
             nightlights_scene_id = self._cfg(NIGHTLIGHTS_SCENE)
 
             try:
+                self._internal_scene_call = True
                 await self.hass.services.async_call(
                     domain=SCENE_DOMAIN,
                     service=SERVICE_TURN_ON,
@@ -507,7 +765,20 @@ class ExtrapolationScene(Scene):
 
             except Exception as error:  # noqa: BLE001
                 _LOGGER.error("Service call to turn on scene failed: %s", error)
+            finally:
+                self._internal_scene_call = False
 
+            # Nightlights replace circadian targets; ignore those writes as overrides.
+            self._unsub_light_tracking()
+            self._commanded = {}
+            self._pre_apply = {}
+            self._apply_context = None
+
+            # Keep the timer so circadian resumes when nightlights turn off.
+            if generation != self._follow_up_generation:
+                return
+            if will_follow:
+                self._schedule_follow_up(interval)
             return
 
         ##############################################
@@ -610,7 +881,7 @@ class ExtrapolationScene(Scene):
         }
 
         current_seconds = self.seconds_since_midnight(0)
-        final_time = self.seconds_since_midnight(transition)
+        final_time = self.seconds_since_midnight(apply_transition)
 
         if self._transition_percent_manual:
             current_key, next_key, scene_transition_progress_percent = (
@@ -652,7 +923,7 @@ class ExtrapolationScene(Scene):
             _LOGGER.info(
                 "Brightness modifier %s, transition time %ss",
                 brightness_modifier,
-                transition,
+                apply_transition,
             )
             _LOGGER.info("")
             if (
@@ -714,14 +985,47 @@ class ExtrapolationScene(Scene):
         ##############################################
         start_time_extrapolation = time.time()
 
-        await extrapolate_entities(
+        entity_changes = await extrapolate_entities(
             current_sun_event.scene,
             next_sun_event.scene,
             scene_transition_progress_percent,
-            transition,
             self.hass,
             brightness_modifier,
+            skip_entity_ids=self._overridden,
         )
+        light_changes = [
+            item
+            for item in entity_changes
+            if str(item.get(ATTR_ENTITY_ID, "")).startswith("light.")
+        ]
+        self._pre_apply = {
+            item[ATTR_ENTITY_ID]: snapshot_from_state(
+                self.hass.states.get(item[ATTR_ENTITY_ID])
+            )
+            for item in light_changes
+        }
+        self._commanded = {
+            item[ATTR_ENTITY_ID]: snapshot_from_command(item) for item in light_changes
+        }
+        self._apply_context = Context()
+        self._apply_until = time.time() + float(apply_transition or 0)
+        if entity_changes:
+            await apply_entities_parallel(
+                entity_changes,
+                self.hass,
+                apply_transition,
+                context=self._apply_context,
+            )
+        if will_follow:
+            self._sync_light_listener()
+
+        if generation != self._follow_up_generation:
+            return
+        if will_follow:
+            self._schedule_follow_up(interval)
+        else:
+            self._continuous_armed = False
+            self.async_write_ha_state()
 
         _LOGGER.debug(
             "Time extrapolating: %.3fs",
@@ -827,14 +1131,18 @@ class ExtrapolationScene(Scene):
         return day_transition_percent(current_key, next_key, intra)
 
 
-async def apply_entities_parallel(entities, hass: HomeAssistant, transition_time=0):
+async def apply_entities_parallel(
+    entities, hass: HomeAssistant, transition_time=0, context=None
+):
     """Apply multiple entity states in parallel for better performance."""
     _LOGGER.debug("Starting parallel processing of %d entities", len(entities))
 
     # Create tasks for all entities
     tasks = []
     for entity in entities:
-        task = asyncio.create_task(apply_single_entity(entity, hass, transition_time))
+        task = asyncio.create_task(
+            apply_single_entity(entity, hass, transition_time, context=context)
+        )
         tasks.append(task)
 
     # Wait for all entities to complete
@@ -843,7 +1151,9 @@ async def apply_entities_parallel(entities, hass: HomeAssistant, transition_time
         _LOGGER.debug("Completed parallel processing of %d entities", len(entities))
 
 
-async def apply_single_entity(entity, hass: HomeAssistant, transition_time=0):
+async def apply_single_entity(
+    entity, hass: HomeAssistant, transition_time=0, context=None
+):
     """Apply a single entity state."""
     domain = entity[ATTR_ENTITY_ID].split(".")[0]
     state = entity["state"]
@@ -913,7 +1223,10 @@ async def apply_single_entity(entity, hass: HomeAssistant, transition_time=0):
 
     try:
         await hass.services.async_call(
-            domain=domain, service=service_type, service_data=entity_applied
+            domain=domain,
+            service=service_type,
+            service_data=entity_applied,
+            context=context,
         )
     except Exception as error:  # noqa: BLE001
         _LOGGER.error("Service call to turn on light failed: %s", error)
@@ -941,13 +1254,14 @@ async def extrapolate_entities(
     from_scene,
     to_scene,
     scene_transition_progress_percent,
-    transition_time,
     hass: HomeAssistant,
     brightness_modifier=0,
+    skip_entity_ids=None,
 ) -> list:
     """Takes in a from and to scene and returns a list of new entity states.
 
     The new states is the extrapolated state between the two scenes.
+    Does not apply — the caller snapshots pre-apply state then applies.
     """
 
     _LOGGER.debug(
@@ -1107,16 +1421,23 @@ async def extrapolate_entities(
 
     # Process all entities in parallel
     extrapolation_start_time = time.time()
+    skip = skip_entity_ids or set()
     tasks = []
     for from_entity_id in from_scene["entities"]:
+        if from_entity_id in skip:
+            continue
         task = asyncio.create_task(process_entity_extrapolation(from_entity_id))
         tasks.append(task)
 
+    entity_changes = []
     # Wait for all extrapolation tasks to complete
     if tasks:
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        # Filter out None results (unavailable entities)
-        entity_changes = [result for result in results if result is not None]
+        entity_changes = [
+            result
+            for result in results
+            if result is not None and not isinstance(result, BaseException)
+        ]
 
     _LOGGER.debug(
         "Time extrapolating %d entities in parallel: %.3fs",
@@ -1124,17 +1445,7 @@ async def extrapolate_entities(
         time.time() - extrapolation_start_time,
     )
 
-    # Apply all entity changes in parallel for better performance
-    if entity_changes:
-        batch_start_time = time.time()
-        await apply_entities_parallel(entity_changes, hass, transition_time)
-        _LOGGER.debug(
-            "Time applying %d entities in parallel: %.3fs",
-            len(entity_changes),
-            time.time() - batch_start_time,
-        )
-
-    return True
+    return entity_changes
 
 
 def extrapolate_value(from_value, to_value, scene_transition_progress_percent):

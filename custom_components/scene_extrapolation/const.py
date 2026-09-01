@@ -19,6 +19,8 @@ NIGHTLIGHTS_BOOLEAN = "nightlights_boolean"
 NIGHTLIGHTS_SCENE = "nightlights_scene"
 
 DISPLAY_SCENES_COMBINED = "display_scenes_combined"
+# Per-scene preference: keep applying on an interval after activation (default on).
+CONTINUOUS = "continuous"
 
 PANEL_URL_PATH = "scene_extrapolation"
 

@@ -7,11 +7,13 @@ import uuid
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 
 from .const import (
     AREA,
     CATEGORY,
+    CONTINUOUS,
     DESCRIPTION,
     DISPLAY_SCENES_COMBINED,
     DOMAIN,
@@ -36,6 +38,8 @@ STORAGE_VERSION = 1  # Additive settings/managed ids; do not bump without migrat
 DEFAULT_DUSK_MINIMUM_SECONDS = 22 * 3600
 DEFAULT_SETTINGS = {
     "hide_managed_native_scenes": False,
+    # Seconds; 0 disables. Same value is the light transition on follow-up ticks.
+    "continuous_interval": 300,
 }
 
 
@@ -80,6 +84,11 @@ def normalize_scene_config(
     labels = raw.get(LABELS) or []
     if isinstance(labels, str):
         labels = [labels] if labels else []
+    # Missing key → True so existing rooms follow without a storage migration.
+    continuous = raw.get(CONTINUOUS, True)
+    if not isinstance(continuous, bool):
+        continuous = bool(continuous)
+
     item: dict[str, Any] = {
         "id": scene_id or raw.get("id") or str(uuid.uuid4()),
         SCENE_NAME: name,
@@ -88,6 +97,7 @@ def normalize_scene_config(
         CATEGORY: raw.get(CATEGORY) or None,
         AREA: raw.get(AREA) or None,
         DISPLAY_SCENES_COMBINED: combined,
+        CONTINUOUS: continuous,
         NIGHTLIGHTS_BOOLEAN: raw.get(NIGHTLIGHTS_BOOLEAN) or None,
         NIGHTLIGHTS_SCENE: raw.get(NIGHTLIGHTS_SCENE) or None,
         SCENE_DUSK_MINIMUM_TIME_OF_DAY: time_to_seconds(
@@ -153,6 +163,7 @@ def to_form_data(item: dict[str, Any]) -> dict[str, Any]:
         ),
         NIGHTLIGHTS_BOOLEAN: item.get(NIGHTLIGHTS_BOOLEAN),
         NIGHTLIGHTS_SCENE: item.get(NIGHTLIGHTS_SCENE),
+        CONTINUOUS: bool(item.get(CONTINUOUS, True)),
     }
     if combined:
         data[SCENE_DAWN_SUNRISE_SUNSET] = item.get(SCENE_DAWN)
@@ -180,7 +191,14 @@ class SceneExtrapolationStore:
         data = await self._store.async_load()
         raw = data or {}
         items = raw.get("scenes", [])
-        self.scenes = {item["id"]: item for item in items if "id" in item}
+        self.scenes = {}
+        for item in items:
+            if "id" not in item:
+                continue
+            # Additive key: rooms saved before continuous was added stay enabled.
+            if CONTINUOUS not in item:
+                item[CONTINUOUS] = True
+            self.scenes[item["id"]] = item
         self.settings = {
             **DEFAULT_SETTINGS,
             **(raw.get("settings") or {}),
@@ -209,8 +227,25 @@ class SceneExtrapolationStore:
     async def async_upsert(self, raw: dict[str, Any]) -> dict[str, Any]:
         """Create or update a scene config."""
         scene_id = raw.get("id")
+        # Editor saves may omit continuous; keep the play/pause preference.
+        if scene_id and scene_id in self.scenes and CONTINUOUS not in raw:
+            raw = {
+                **raw,
+                CONTINUOUS: self.scenes[scene_id].get(CONTINUOUS, True),
+            }
         item = normalize_scene_config(raw, scene_id=scene_id)
         self.scenes[item["id"]] = item
+        await self.async_save()
+        return item
+
+    async def async_set_continuous(
+        self, scene_id: str, continuous: bool
+    ) -> dict[str, Any] | None:
+        """Toggle per-scene follow-up preference without a full form save."""
+        item = self.scenes.get(scene_id)
+        if item is None:
+            return None
+        item[CONTINUOUS] = bool(continuous)
         await self.async_save()
         return item
 
@@ -225,8 +260,22 @@ class SceneExtrapolationStore:
     async def async_update_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
         """Merge integration-wide settings and persist."""
         for key, value in patch.items():
-            if key in DEFAULT_SETTINGS:
-                self.settings[key] = value
+            if key not in DEFAULT_SETTINGS:
+                continue
+            if key == "continuous_interval":
+                try:
+                    value = int(value)
+                except (TypeError, ValueError) as err:
+                    raise HomeAssistantError(
+                        "continuous_interval must be an integer number of seconds"
+                    ) from err
+                # Panel offers 0–30 minutes; reject larger values so storage
+                # cannot exceed what light.turn_on transitions support well.
+                if value < 0 or value > 30 * 60:
+                    raise HomeAssistantError(
+                        "continuous_interval must be between 0 and 1800 seconds"
+                    )
+            self.settings[key] = value
         await self.async_save()
         return dict(self.settings)
 
