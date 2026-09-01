@@ -279,6 +279,7 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    this._syncDarkModeAttr();
     if (this._menuButtonEl) {
       this._menuButtonEl.hass = hass;
     }
@@ -319,6 +320,14 @@ class SceneExtrapolationPanel extends HTMLElement {
   set route(_route) {}
 
   set panel(_panel) {}
+
+  /** Drive light/dark dial CSS (`:host([data-dark-mode])`) from HA’s theme. */
+  _syncDarkModeAttr() {
+    this.toggleAttribute(
+      "data-dark-mode",
+      Boolean(this._hass?.themes?.darkMode)
+    );
+  }
 
   connectedCallback() {
     window.addEventListener("hashchange", this._onHashChange);
@@ -1061,6 +1070,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           --ring-soft-expand: ${(CLOCK_FEATHER_PCT * 1.35).toFixed(2)}%;
           backface-visibility: hidden;
         }
+        /* Light theme: half the bloom so rings do not wash the pale sky. */
+        :host(:not([data-dark-mode])) .sun-light-clock-glow {
+          opacity: 0.4075;
+        }
         .sun-light-clock-glow.glow-lg {
           transform: translateZ(0) scale(2.76);
         }
@@ -1079,7 +1092,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           content: none;
           display: none;
         }
-        /* Warmth along sunrise/sunset — not clipped to the planet rim. */
+        /* Warmth along sunrise/sunset — not clipped to the planet rim.
+           screen suits dark themes; multiply keeps peach readable on light. */
         .clock-horizon-glow {
           position: absolute;
           inset: 0;
@@ -1087,6 +1101,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           mix-blend-mode: screen;
           transform: translateZ(0);
           backface-visibility: hidden;
+        }
+        :host(:not([data-dark-mode])) .clock-horizon-glow {
+          mix-blend-mode: multiply;
         }
         .clock-horizon-sky {
           position: absolute;
@@ -1337,6 +1354,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
+          stroke: #000;
           stroke-width: 1px;
           vector-effect: non-scaling-stroke;
           stroke-linejoin: round;
@@ -1345,7 +1363,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-overlay .clock-sun-path-night {
           fill: none;
-          stroke: #d8e0ff;
+          stroke: #000;
           stroke-width: 1px;
           vector-effect: non-scaling-stroke;
           stroke-dasharray: 5 4;
@@ -1354,20 +1372,31 @@ class SceneExtrapolationPanel extends HTMLElement {
           opacity: 0.5;
         }
         .sun-light-clock-overlay .clock-event-dot {
-          fill: var(--primary-text-color);
+          fill: #000;
           stroke: none;
         }
         /* Match night sun-path dash + opacity. */
         .sun-light-clock-overlay .clock-event-ray,
         .sun-light-clock-overlay .clock-event-clamp-link {
           fill: none;
-          stroke: #d8e0ff;
+          stroke: #000;
           stroke-width: 1px;
           vector-effect: non-scaling-stroke;
           stroke-dasharray: 5 4;
           stroke-linejoin: round;
           stroke-linecap: round;
           opacity: 0.5;
+        }
+        :host([data-dark-mode]) .sun-light-clock-overlay .clock-sun-day {
+          stroke: #e8eef8;
+        }
+        :host([data-dark-mode]) .sun-light-clock-overlay .clock-sun-path-night,
+        :host([data-dark-mode]) .sun-light-clock-overlay .clock-event-ray,
+        :host([data-dark-mode]) .sun-light-clock-overlay .clock-event-clamp-link {
+          stroke: #d8e0ff;
+        }
+        :host([data-dark-mode]) .sun-light-clock-overlay .clock-event-dot {
+          fill: var(--primary-text-color);
         }
         .sun-light-clock-overlay .clock-handle,
         .sun-light-clock-handle-overlay .clock-handle {
@@ -3608,6 +3637,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._locationBanner
       ?.querySelector(".sun-location-reset")
       ?.addEventListener("click", () => this._setPreviewLocation(null));
+    this._syncDarkModeAttr();
     this._syncHash();
   }
 
@@ -10302,8 +10332,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     const stops = [];
     // Peach → sky as the sun climbs. A binary nearHorizon threshold flipped the
     // whole conic in one frame mid-morning.
-    const peach = glowLook.horizonFill || glowLook.pathColor;
+    const peachRaw = glowLook.horizonFill || glowLook.pathColor;
     const sky = glowLook.skyColor || glowLook.pathColor;
+    // Light mode + multiply: push peach warmer so the rim reads as sunset,
+    // not a muddy gray over the pale sky wash.
+    const light = !this.hasAttribute("data-dark-mode");
+    const peach = light
+      ? `color-mix(in srgb, ${peachRaw} 55%, #e8a060 45%)`
+      : peachRaw;
     const peachPct = Math.round(100 * nearHorizon);
     const rimFill =
       peachPct >= 100
@@ -10311,6 +10347,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         : peachPct <= 0
           ? sky
           : `color-mix(in srgb, ${peach} ${peachPct}%, ${sky})`;
+    // Multiply is darker than screen — lift strength a bit in light mode.
+    const strengthScale = light ? 1.15 : 1;
     for (let i = 0; i <= steps; i += 1) {
       const seconds = (i / steps) * SECONDS_PER_DAY;
       let weight = 0;
@@ -10320,7 +10358,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       if (sunset != null) {
         weight = Math.max(weight, this._horizonWeight(seconds, sunset, band));
       }
-      const mix = weight * strength;
+      const mix = Math.min(1, weight * strength * strengthScale);
       stops.push(
         `color-mix(in srgb, ${rimFill} ${Math.round(mix * 100)}%, transparent) ${((i / steps) * 100).toFixed(2)}%`
       );
@@ -10532,7 +10570,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         path.setAttribute("class", "clock-sun-path-night");
       } else {
         path.setAttribute("class", "clock-sun-day");
-        path.style.stroke = skyLookFromElevation(run.midElev).pathColor;
       }
       path.setAttribute("d", d);
       path.setAttribute("vector-effect", "non-scaling-stroke");
