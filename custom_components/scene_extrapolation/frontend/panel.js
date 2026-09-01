@@ -81,11 +81,11 @@ const CLOCK_RINGS_INSET_PCT = 50 - CLOCK_RINGS_OUTER / 2;
 /* Wedges/rays cover the square including corners; back layer is slightly
    larger than the face so they land just outside the container. */
 const CLOCK_SKY_R = (CLOCK_VIEW / 2) * Math.SQRT2;
-/* Night wedges: sunset→sunrise = warm light gray; dusk→dawn = warm mid gray. */
-const CLOCK_NIGHT_OUTER = "#c8c4c0";
-const CLOCK_NIGHT_DEEP = "#8e8884";
-/* Subtle warm bias mixed into day-sky / horizon fills (light + dark). */
-const CLOCK_WARM_TINT = "#f0d2b4";
+/* Night wedges: sunset→sunrise / dusk→dawn — warm, light-leaning grays. */
+const CLOCK_NIGHT_OUTER = "#d4cdc6";
+const CLOCK_NIGHT_DEEP = "#a39a92";
+/* Warm bias mixed into day-sky / horizon fills. */
+const CLOCK_WARM_TINT = "#f4d4b0";
 /* Outline diameter ≈ 3.47% of dial core (1/3 of the prior 10.4%). */
 const CLOCK_SUN_SIZE_PCT = 10.4 / 3;
 const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
@@ -10343,12 +10343,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     // whole conic in one frame mid-morning.
     const peachRaw = glowLook.horizonFill || glowLook.pathColor;
     const skyRaw = glowLook.skyColor || glowLook.pathColor;
-    // Slight warm bias on horizon rim + day-sky fill (not too peachy).
+    // Warmer + lighter day sky / horizon rim (still reads as sky, not peach).
     const light = !this.hasAttribute("data-dark-mode");
-    const warmAmt = light ? 18 : 10;
-    const sky = `color-mix(in srgb, ${skyRaw} ${100 - warmAmt}%, ${CLOCK_WARM_TINT} ${warmAmt}%)`;
+    const warmAmt = light ? 28 : 16;
+    const lightenAmt = light ? 14 : 8;
+    const skyWarmed = `color-mix(in srgb, ${skyRaw} ${100 - warmAmt}%, ${CLOCK_WARM_TINT} ${warmAmt}%)`;
+    const sky = `color-mix(in srgb, ${skyWarmed} ${100 - lightenAmt}%, white ${lightenAmt}%)`;
     const peach = light
-      ? `color-mix(in srgb, ${peachRaw} 58%, #e8a060 42%)`
+      ? `color-mix(in srgb, ${peachRaw} 45%, #ebb078 55%)`
       : `color-mix(in srgb, ${peachRaw} ${100 - warmAmt}%, ${CLOCK_WARM_TINT} ${warmAmt}%)`;
     const peachPct = Math.round(100 * nearHorizon);
     const rimFill =
