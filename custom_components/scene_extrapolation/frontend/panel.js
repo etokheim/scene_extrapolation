@@ -74,6 +74,9 @@ const CLOCK_SCRUB_RAIL_PX = 104;
 /* Inset the landscape timeline from the panel edge (also stops the large
    day/month label from overflowing the rail and widening the page). */
 const CLOCK_SCRUB_RAIL_PAD_PX = 16;
+/* Landscape rail needs room for empty left gutter + dial + rail; below this
+   width keep the portrait toolbar (avoids empty “black bar” side columns). */
+const CLOCK_LANDSCAPE_SCRUB_MIN_WIDTH_PX = 900;
 /** Leave this much of the first light-list row visible under the dial face. */
 const DIAL_LIST_PEEK_PX = 32;
 /* Rings host inset so CSS outer edge matches CLOCK_RINGS_OUTER in viewBox. */
@@ -429,6 +432,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         :host {
           display: block;
           position: relative;
+          width: 100%;
           /* 100vh fills when ha-panel-custom reports 0 height; max-height
              caps to the panel outlet when that height is definite — otherwise
              host > parent and HA’s shell scrolls beside ha-top-app-bar. */
@@ -686,19 +690,52 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           z-index: 3;
         }
-        /* Portrait dial: date chips / day-month / year scrub float over the
-           dial graphics (same idea as the hover readout + legend). */
+        /* Portrait dial: toolbar is in-flow so the year scrub pushes the dial
+           down (ticks stay clear). Horizon glow still bleeds behind it
+           (_layoutClockHorizonBack covers the host). */
         .sun-path.dial-view .sun-toolbar:not(.toolbar-rail-only) {
-          position: absolute;
-          left: 0;
-          right: 0;
-          top: 0;
+          position: relative;
           z-index: 6;
           box-sizing: border-box;
           pointer-events: none;
+          background: transparent;
         }
         .sun-path.dial-view .sun-toolbar:not(.toolbar-rail-only) > * {
           pointer-events: auto;
+        }
+        /* Time/sun + date chips share one full-width wrapping row. */
+        .sun-toolbar-chrome {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px 12px;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .sun-toolbar-chrome .sun-hover-readout {
+          position: static;
+          top: auto;
+          left: auto;
+          z-index: auto;
+          flex: 1 1 10rem;
+          min-width: 0;
+          min-height: 0;
+          margin: 0;
+          padding: 0;
+          pointer-events: none;
+        }
+        .sun-toolbar-chrome .sun-hover-reset {
+          pointer-events: auto;
+        }
+        .sun-toolbar-chrome .sun-chip-row {
+          flex: 1 1 12rem;
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
         }
         /* Scrub/date live in the right rail — do not leave empty toolbar padding
            above the dial (would push the face down). */
@@ -706,6 +743,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           padding: 0;
           gap: 0;
           min-height: 0;
+        }
+        .sun-toolbar.toolbar-rail-only .sun-toolbar-chrome {
+          display: none;
         }
         .sun-toolbar-row {
           display: flex;
@@ -9178,6 +9218,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       window.matchMedia("(orientation: landscape)").matches;
   }
 
+  /** Wide enough for the dual-gutter landscape scrub rail. */
+  _landscapeScrubFits() {
+    return window.matchMedia(
+      `(min-width: ${CLOCK_LANDSCAPE_SCRUB_MIN_WIDTH_PX}px)`
+    ).matches;
+  }
+
   _sceneSidebarIsOpen() {
     const el = this.shadowRoot?.querySelector(".scene-sidebar");
     if (!el || el._closing) {
@@ -9187,6 +9234,16 @@ class SceneExtrapolationPanel extends HTMLElement {
       return Boolean(el.open);
     }
     return el.classList.contains("open");
+  }
+
+  _ensureToolbarChrome() {
+    if (this._toolbarChrome?.isConnected) {
+      return this._toolbarChrome;
+    }
+    const chrome = document.createElement("div");
+    chrome.className = "sun-toolbar-chrome";
+    this._toolbarChrome = chrome;
+    return chrome;
   }
 
   _syncYearScrubLayout() {
@@ -9205,7 +9262,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       Boolean(this._clockScrubRail) &&
       Boolean(this.shadowRoot?.querySelector(".sun-light-clock-face"));
     const sidebarOpen = this._sceneSidebarIsOpen();
-    const landscapeClock = landscape && clock;
+    // Portrait chrome below this width — empty left rail reads as a black bar.
+    const landscapeClock = landscape && clock && this._landscapeScrubFits();
     // Collapse the rail (animated width) instead of yanking it out — that
     // fought the sidebar/page-gutter transition and looked jagged.
     const collapse = landscapeClock && sidebarOpen;
@@ -9222,14 +9280,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._chipRow) {
       this._chipRow.hidden = collapse || hideToolbarScrub;
     }
-    // Dial: chips left of (or above, in the rail) the date; table: date first.
-    if (this._dateTools && this._chipRow && this._scrubDateBtn) {
-      if (clock) {
-        this._dateTools.append(this._chipRow, this._scrubDateBtn);
-      } else {
-        this._dateTools.append(this._scrubDateBtn, this._chipRow);
-      }
-    }
 
     if (landscapeClock) {
       this._clockScrubRail.hidden = false;
@@ -9237,6 +9287,23 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._scrubBlock.hidden = false;
       if (this._scrubBlock.parentNode !== this._clockScrubRail) {
         this._clockScrubRail.appendChild(this._scrubBlock);
+      }
+      // Rail: chips above date; readout stays on the dial body (top-left).
+      if (this._toolbarChrome) {
+        this._toolbarChrome.remove();
+      }
+      if (
+        this._hoverReadout &&
+        this._sunPathBodyEl &&
+        this._hoverReadout.parentNode !== this._sunPathBodyEl
+      ) {
+        this._sunPathBodyEl.insertBefore(
+          this._hoverReadout,
+          this._sunPathBodyEl.firstChild
+        );
+      }
+      if (this._dateTools && this._chipRow && this._scrubDateBtn) {
+        this._dateTools.append(this._chipRow, this._scrubDateBtn);
       }
     } else {
       this._sunPathStage?.classList.remove("scrub-collapsed");
@@ -9253,16 +9320,52 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       this._scrubBlock.hidden = hideToolbarScrub;
       this._yearScrub.classList.remove("vertical");
+
+      if (clock) {
+        // Portrait dial: time/sun + chips in one wrapping chrome row; date +
+        // year scrub below (in-flow so the timeline pushes the dial down).
+        const chrome = this._ensureToolbarChrome();
+        if (this._hoverReadout && this._hoverReadout.parentNode !== chrome) {
+          chrome.appendChild(this._hoverReadout);
+        }
+        if (this._chipRow && this._chipRow.parentNode !== chrome) {
+          chrome.appendChild(this._chipRow);
+        }
+        if (chrome.parentNode !== this._dateToolbar) {
+          this._dateToolbar.insertBefore(chrome, this._scrubBlock);
+        }
+        if (this._dateTools && this._scrubDateBtn) {
+          this._dateTools.replaceChildren(this._scrubDateBtn);
+        }
+      } else {
+        // Table / list chart: chips with date; readout stays in the body.
+        if (this._toolbarChrome) {
+          this._toolbarChrome.remove();
+        }
+        if (
+          this._hoverReadout &&
+          this._sunPathBodyEl &&
+          this._hoverReadout.parentNode !== this._sunPathBodyEl
+        ) {
+          this._sunPathBodyEl.insertBefore(
+            this._hoverReadout,
+            this._sunPathBodyEl.firstChild
+          );
+        }
+        if (this._dateTools && this._chipRow && this._scrubDateBtn) {
+          this._dateTools.append(this._scrubDateBtn, this._chipRow);
+        }
+      }
     }
     this._syncYearScrub();
     if (landscapeClock) {
       requestAnimationFrame(() => this._alignYearScrubRail());
     }
-    // Portrait timeline overlays the dial; landscape rail is beside it.
+    // Portrait timeline is in-flow — remeasure face budget after chrome settles.
     requestAnimationFrame(() => this._syncDialHeightBudget(landscapeClock));
   }
 
-  _syncDialHeightBudget(_landscapeClock) {
+  _syncDialHeightBudget(landscapeClock) {
     const path = this._sunPathEl;
     if (!path) {
       return;
@@ -9272,8 +9375,18 @@ class SceneExtrapolationPanel extends HTMLElement {
       path.style.removeProperty("--dial-face-max");
       return;
     }
-    // Portrait date/scrub overlay the dial — do not shrink the face for them.
-    path.style.setProperty("--dial-timeline-h", "0px");
+    // Portrait: toolbar (chips + year scrub) is in-flow — reserve its height so
+    // the face shrinks instead of the timeline covering hour ticks. Landscape
+    // rail sits beside the face (timeline-h = 0).
+    let toolbarH = 0;
+    if (
+      !landscapeClock &&
+      this._dateToolbar &&
+      !this._dateToolbar.classList.contains("toolbar-rail-only")
+    ) {
+      toolbarH = Math.ceil(this._dateToolbar.getBoundingClientRect().height) || 0;
+    }
+    path.style.setProperty("--dial-timeline-h", `${toolbarH}px`);
 
     // Face fills available height under the app bar, minus overhead above the
     // face (event-label pad) and gap, leaving ~32px of the first light row
@@ -9296,7 +9409,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const maxPx = Math.max(
       160,
-      Math.floor(hostH - headerH - overhead - DIAL_LIST_PEEK_PX)
+      Math.floor(hostH - headerH - overhead - toolbarH - DIAL_LIST_PEEK_PX)
     );
     path.style.setProperty("--dial-face-max", `${maxPx}px`);
     // Face size may have changed — re-align landscape rail / chrome next frame.
