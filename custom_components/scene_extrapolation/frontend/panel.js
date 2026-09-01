@@ -416,7 +416,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         :host {
           display: block;
           position: relative;
+          /* 100vh fills when ha-panel-custom reports 0 height; max-height
+             caps to the panel outlet when that height is definite — otherwise
+             host > parent and HA’s shell scrolls beside ha-top-app-bar. */
           height: 100vh;
+          max-height: 100%;
           overflow: hidden;
           background: var(--primary-background-color);
           color: var(--primary-text-color);
@@ -3167,7 +3171,25 @@ class SceneExtrapolationPanel extends HTMLElement {
           --mdc-icon-button-size: 40px;
           color: var(--secondary-text-color);
         }
-        .list-aul-card {
+        /* Shared with create-wizard mode cards; list uses the same chrome. */
+        .setup-mode-card {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
+          width: 100%;
+          text-align: left;
+          padding: 14px 16px;
+          border-radius: var(--ha-border-radius-lg, 12px);
+          border: 2px solid var(--divider-color);
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          cursor: pointer;
+          box-sizing: border-box;
+        }
+        /* After .setup-mode-card so row layout wins (same specificity otherwise
+           leaves the switch under the copy). */
+        .setup-mode-card.list-aul-card {
           margin-bottom: 12px;
           flex-direction: row;
           align-items: center;
@@ -3187,22 +3209,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         .list-aul-card ha-switch {
           flex-shrink: 0;
           pointer-events: auto;
-        }
-        /* Shared with create-wizard mode cards; list uses the same chrome. */
-        .setup-mode-card {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 4px;
-          width: 100%;
-          text-align: left;
-          padding: 14px 16px;
-          border-radius: var(--ha-border-radius-lg, 12px);
-          border: 2px solid var(--divider-color);
-          background: var(--card-background-color);
-          color: var(--primary-text-color);
-          cursor: pointer;
-          box-sizing: border-box;
         }
         .setup-mode-card:hover {
           border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
@@ -3256,6 +3262,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           border-bottom: 1px solid var(--divider-color);
           background: var(--card-background-color);
         }
+        .list.scene-table .scene-table-group {
+          display: flex;
+          align-items: center;
+          padding: 8px 16px;
+          box-sizing: border-box;
+          font-size: 14px;
+          font-weight: 500;
+          color: var(--secondary-text-color);
+          background: var(--primary-background-color);
+          border-bottom: 1px solid var(--divider-color);
+        }
         .list.scene-table .scene-table-header .meta {
           flex: 1;
           min-width: 0;
@@ -3291,7 +3308,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           max-width: 480px;
           margin-inline: auto;
           padding: 48px 24px 112px;
-          min-height: calc(100vh - var(--header-height, 64px) - 96px);
+          /* Prefer the scrollport height over 100vh so empty states do not
+             force a second scrollbar outside ha-top-app-bar. */
+          min-height: calc(100% - 96px);
         }
         .empty-state > ha-icon {
           --mdc-icon-size: 80px;
@@ -3837,8 +3856,14 @@ class SceneExtrapolationPanel extends HTMLElement {
         headerActions.className = "row-actions";
         header.append(headerIcon, headerMeta, headerActions);
         wrap.appendChild(header);
-        for (const item of this._managedScenes) {
-          wrap.appendChild(this._managedSceneRow(item));
+        for (const group of this._groupScenesByArea(this._managedScenes, "name")) {
+          const groupEl = document.createElement("div");
+          groupEl.className = "scene-table-group";
+          groupEl.textContent = group.label;
+          wrap.appendChild(groupEl);
+          for (const item of group.items) {
+            wrap.appendChild(this._managedSceneRow(item, { grouped: true }));
+          }
         }
         page.appendChild(wrap);
       }
@@ -4018,6 +4043,42 @@ class SceneExtrapolationPanel extends HTMLElement {
     return btn;
   }
 
+  _groupScenesByArea(items, nameKey) {
+    const noArea = this._t("frontend.common.no_area", "No area");
+    const groups = new Map();
+    for (const item of items) {
+      const key = item.area_id || "";
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          label: item.area_name || noArea,
+          items: [],
+        });
+      }
+      groups.get(key).items.push(item);
+    }
+    const sorted = [...groups.values()];
+    sorted.sort((a, b) => {
+      if (!a.key && b.key) {
+        return 1;
+      }
+      if (a.key && !b.key) {
+        return -1;
+      }
+      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
+    });
+    for (const group of sorted) {
+      group.items.sort((a, b) => {
+        const an =
+          this._entityFriendlyName(a.entity_id, a[nameKey]) || a[nameKey] || "";
+        const bn =
+          this._entityFriendlyName(b.entity_id, b[nameKey]) || b[nameKey] || "";
+        return an.localeCompare(bn, undefined, { sensitivity: "base" });
+      });
+    }
+    return sorted;
+  }
+
   _listSettingsButton() {
     const btn = document.createElement("ha-icon-button");
     btn.label = this._t("frontend.settings.title", "Settings");
@@ -4110,7 +4171,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     return row;
   }
 
-  _managedSceneRow(item) {
+  _managedSceneRow(item, { grouped = false } = {}) {
     const row = document.createElement("div");
     row.className = "row created-scene";
     row.addEventListener("click", () => {
@@ -4131,7 +4192,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     const sub = document.createElement("div");
     sub.className = "sub";
     const bits = [];
-    if (item.area_name) {
+    // Area is the group header when grouped — keep object id / hidden only.
+    if (!grouped && item.area_name) {
       bits.push(item.area_name);
     }
     const objectId = this._entityObjectId(item.entity_id);
