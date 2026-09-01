@@ -30,6 +30,9 @@
       "created_body": "Native Home Assistant scenes created by Circadian Scenes show up here — from Automatic setup or Create new scene on a solar event.",
       "learn_more": "Learn more"
     },
+    "list": {
+      "column_name": "Name"
+    },
     "settings": {
       "title": "Settings",
       "intro": "These settings apply to every room. Changes take effect immediately.",

@@ -3169,6 +3169,24 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .list-aul-card {
           margin-bottom: 12px;
+          flex-direction: row;
+          align-items: center;
+          gap: 12px;
+        }
+        .list-aul-card .aul-copy {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
+        }
+        .list-aul-card .mode-detail {
+          padding-left: 30px;
+        }
+        .list-aul-card ha-switch {
+          flex-shrink: 0;
+          pointer-events: auto;
         }
         /* Shared with create-wizard mode cards; list uses the same chrome. */
         .setup-mode-card {
@@ -3213,6 +3231,54 @@ class SceneExtrapolationPanel extends HTMLElement {
           line-height: 1.35;
           color: var(--secondary-text-color);
           padding-left: 30px;
+        }
+        /* Scene list: HA data-table-like surface (custom panels cannot load
+           ha-data-table reliably — lazy chunk, Lit column templates). */
+        .list.scene-table {
+          gap: 0;
+          border: 1px solid var(--divider-color);
+          border-radius: var(--ha-card-border-radius, 12px);
+          overflow: hidden;
+          background: var(--card-background-color);
+        }
+        .list.scene-table .scene-table-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 0 16px;
+          height: 48px;
+          box-sizing: border-box;
+          color: var(--secondary-text-color);
+          font-size: 12px;
+          font-weight: 500;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          border-bottom: 1px solid var(--divider-color);
+          background: var(--card-background-color);
+        }
+        .list.scene-table .scene-table-header .meta {
+          flex: 1;
+          min-width: 0;
+        }
+        .list.scene-table .scene-table-header .row-actions {
+          width: 88px;
+          flex-shrink: 0;
+        }
+        .list.scene-table .row {
+          border: none;
+          border-radius: 0;
+          border-bottom: 1px solid var(--divider-color);
+          background: transparent;
+        }
+        .list.scene-table .row:last-child {
+          border-bottom: none;
+        }
+        .list.scene-table .row:hover {
+          background: color-mix(
+            in srgb,
+            var(--primary-text-color) 6%,
+            var(--card-background-color)
+          );
         }
         .empty-state {
           display: flex;
@@ -3758,7 +3824,19 @@ class SceneExtrapolationPanel extends HTMLElement {
         );
       } else {
         const wrap = document.createElement("div");
-        wrap.className = "list";
+        wrap.className = "list scene-table";
+        const header = document.createElement("div");
+        header.className = "scene-table-header";
+        const headerIcon = document.createElement("div");
+        headerIcon.style.width = "24px";
+        headerIcon.style.flexShrink = "0";
+        const headerMeta = document.createElement("div");
+        headerMeta.className = "meta";
+        headerMeta.textContent = this._t("frontend.list.column_name", "Name");
+        const headerActions = document.createElement("div");
+        headerActions.className = "row-actions";
+        header.append(headerIcon, headerMeta, headerActions);
+        wrap.appendChild(header);
         for (const item of this._managedScenes) {
           wrap.appendChild(this._managedSceneRow(item));
         }
@@ -3786,9 +3864,21 @@ class SceneExtrapolationPanel extends HTMLElement {
         })
       );
     } else {
+      page.appendChild(this._buildAutomaticallyUpdateLightsCard());
       const wrap = document.createElement("div");
-      wrap.className = "list";
-      wrap.appendChild(this._buildAutomaticallyUpdateLightsCard());
+      wrap.className = "list scene-table";
+      const header = document.createElement("div");
+      header.className = "scene-table-header";
+      const headerIcon = document.createElement("div");
+      headerIcon.style.width = "24px";
+      headerIcon.style.flexShrink = "0";
+      const headerMeta = document.createElement("div");
+      headerMeta.className = "meta";
+      headerMeta.textContent = this._t("frontend.list.column_name", "Name");
+      const headerActions = document.createElement("div");
+      headerActions.className = "row-actions";
+      header.append(headerIcon, headerMeta, headerActions);
+      wrap.appendChild(header);
       for (const item of this._items) {
         wrap.appendChild(this._listRow(item));
       }
@@ -3842,10 +3932,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     btn.type = "button";
     btn.className = `setup-mode-card list-aul-card${on ? " selected" : ""}`;
     btn.setAttribute("aria-pressed", on ? "true" : "false");
+
+    const copy = document.createElement("div");
+    copy.className = "aul-copy";
     const titleRow = document.createElement("div");
     titleRow.className = "mode-title";
     const icon = document.createElement("ha-icon");
-    icon.setAttribute("icon", on ? "mdi:brightness-auto" : "mdi:brightness-auto");
+    icon.setAttribute("icon", "mdi:brightness-auto");
     const title = document.createElement("span");
     title.textContent = this._t(
       "frontend.settings.automatically_update_lights",
@@ -3863,14 +3956,30 @@ class SceneExtrapolationPanel extends HTMLElement {
           "frontend.settings.automatically_update_lights_off_helper",
           "Automatic updates are off. Activating a scene applies lights once. Tap to turn updates back on for every room."
         );
-    btn.append(titleRow, detail);
-    btn.addEventListener("click", async () => {
+    copy.append(titleRow, detail);
+
+    const toggle = document.createElement("ha-switch");
+    toggle.checked = on;
+    toggle.setAttribute(
+      "aria-label",
+      this._t(
+        "frontend.settings.automatically_update_lights",
+        "Automatically update lights"
+      )
+    );
+
+    const apply = async (nextOn) => {
       const current = this._automaticallyUpdateLightsIntervalSeconds();
       const currentlyOn = current > 0;
+      if (nextOn === currentlyOn) {
+        toggle.checked = currentlyOn;
+        return;
+      }
       const resume =
         this._aulResumeInterval > 0 ? this._aulResumeInterval : 300;
-      const nextSeconds = currentlyOn ? 0 : resume;
+      const nextSeconds = nextOn ? resume : 0;
       btn.disabled = true;
+      toggle.disabled = true;
       try {
         if (currentlyOn && current > 0) {
           this._aulResumeInterval = current;
@@ -3888,11 +3997,24 @@ class SceneExtrapolationPanel extends HTMLElement {
           this._renderList({ keepSidebar: true });
         }
       } catch (err) {
+        toggle.checked = currentlyOn;
         window.alert(err.message || String(err));
       } finally {
         btn.disabled = false;
+        toggle.disabled = false;
       }
+    };
+
+    // Switch handles its own pointer; don't also fire the card click.
+    toggle.addEventListener("click", (ev) => ev.stopPropagation());
+    toggle.addEventListener("change", () => {
+      void apply(Boolean(toggle.checked));
     });
+    btn.addEventListener("click", () => {
+      void apply(!toggle.checked);
+    });
+
+    btn.append(copy, toggle);
     return btn;
   }
 
