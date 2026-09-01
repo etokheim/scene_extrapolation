@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+## [4.0.0] - 2026-09-01
+
 ### 🚨 Breaking changes
 
 - 🚨 Renamed the product to **Circadian Scenes** (domain stays `scene_extrapolation`; search either name in HACS)
