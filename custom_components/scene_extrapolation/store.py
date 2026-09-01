@@ -234,20 +234,33 @@ def to_form_data(item: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+class _ScenesStore(Store):
+    """HA Store that migrates scene_extrapolation.scenes between major versions."""
+
+    async def _async_migrate_func(
+        self,
+        old_major_version: int,
+        old_minor_version: int,
+        old_data: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Migrate stored JSON when STORAGE_VERSION advances."""
+        return _migrate_store(old_major_version, old_data)
+
+
 class SceneExtrapolationStore:
     """Load and persist circadian scene configs."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the store."""
         self.hass = hass
-        self._store = Store(
-            hass, STORAGE_VERSION, STORE_KEY, migrate_func=_migrate_store
-        )
+        # Subclass Store and override _async_migrate_func — Store.__init__ has
+        # no migrate_func kwarg (that caused setup failure / Unknown command).
+        self._store = _ScenesStore(hass, STORAGE_VERSION, STORE_KEY)
         self.scenes: dict[str, dict[str, Any]] = {}
         self.settings: dict[str, Any] = dict(DEFAULT_SETTINGS)
         # YAML scene CONF_ID values created by this integration.
         self.managed_native_scene_ids: list[str] = []
-        # Set when v2 migration forced hide-on; setup applies registry sync once.
+        # Set when migration forced hide-on; setup applies registry sync once.
         self.pending_hide_sync = False
 
     async def async_load(self) -> None:
@@ -274,7 +287,7 @@ class SceneExtrapolationStore:
         self.settings = settings
         ids = raw.get("managed_native_scene_ids") or []
         self.managed_native_scene_ids = [str(item) for item in ids if item]
-        # After migrate_func forces hide on, sync registry once at setup.
+        # After Store migration forces hide on, sync registry once at setup.
         if bool(self.settings.get("hide_managed_native_scenes")):
             self.pending_hide_sync = True
 
