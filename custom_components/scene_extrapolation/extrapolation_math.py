@@ -16,8 +16,8 @@ from homeassistant.components.light import (
     ATTR_RGB_COLOR,
     ATTR_RGBW_COLOR,
     ATTR_RGBWW_COLOR,
+    ColorMode,
 )
-from homeassistant.components.light import ColorMode
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_STATE,

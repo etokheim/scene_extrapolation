@@ -12,12 +12,12 @@ from homeassistant.helpers.storage import Store
 
 from .const import (
     AREA,
+    AUTOMATICALLY_UPDATE_LIGHTS,
     CATEGORY,
     DEFAULT_SCENE_NAME,
     DESCRIPTION,
     DISPLAY_SCENES_COMBINED,
     DOMAIN,
-    AUTOMATICALLY_UPDATE_LIGHTS,
     LABELS,
     SCENE_DAWN,
     SCENE_DAWN_SUNRISE_SUNSET,

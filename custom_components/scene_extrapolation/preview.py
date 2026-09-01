@@ -33,7 +33,6 @@ from .const import (
     SCENE_SUNRISE,
     SCENE_SUNSET,
 )
-from .native_scene import lights_in_area, scene_entity_payload
 from .extrapolation_math import (
     current_sun_event_index,
     extrapolate_brightness,
@@ -45,6 +44,7 @@ from .extrapolation_math import (
     extrapolate_temp_kelvin,
     transition_progress_percent,
 )
+from .native_scene import lights_in_area, scene_entity_payload
 from .solar import CURVE_STEP_MINUTES, build_sun_path
 
 SCENE_KEYS = {

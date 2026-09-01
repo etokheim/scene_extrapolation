@@ -31,13 +31,18 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.util import dt as dt_util
 
+from .activation_cache import cached_in_memory_scenes, cached_solar_events
+from .apply_entities import (
+    apply_entities_parallel,
+    get_scene_by_uuid,
+)
 from .const import (
     AREA,
     CATEGORY,
-    DEFAULT_SCENE_NAME,
     DATA_ADD_ENTITIES,
     DATA_ENTITIES,
     DATA_STORE,
+    DEFAULT_SCENE_NAME,
     DOMAIN,
     LABELS,
     SCENE_DAWN,
@@ -49,24 +54,15 @@ from .const import (
     SCENE_SUNSET,
 )
 from .continuous import (
+    automatically_update_lights_interval_seconds,
     classify_light_report,
     competing_scene_activated,
     context_is_ours,
-    automatically_update_lights_interval_seconds,
     entity_ids_from_service_event,
     last_activated_scene_id,
     should_arm_automatically_update_lights,
     snapshot_from_command,
     snapshot_from_state,
-)
-from .native_scene import scenes_in_area
-from .solar import EVENT_ORDER, dusk_start_seconds
-
-
-from .activation_cache import cached_in_memory_scenes, cached_solar_events
-from .apply_entities import (
-    apply_entities_parallel,
-    get_scene_by_uuid,
 )
 from .extrapolation_math import (
     SunEvent,
@@ -76,6 +72,8 @@ from .extrapolation_math import (
     scene_keys_from_day_percent,
     transition_progress_percent,
 )
+from .native_scene import scenes_in_area
+from .solar import EVENT_ORDER, dusk_start_seconds
 
 _LOGGER = logging.getLogger(__name__)
 
