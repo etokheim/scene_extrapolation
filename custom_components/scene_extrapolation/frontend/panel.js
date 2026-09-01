@@ -10373,48 +10373,40 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   /**
    * Continuous core→outer RGB stops for the horizon rim (then → surface).
-   * Dark palette keeps the prior peach→pink→purple→blue feel; light stays soft.
+   * Colorful gold→pink→purple only through civil twilight; at dusk (sun −6°,
+   * “last light”) and below the rim is dark blue only — no afterglow pinks.
    * Elevation keyframes share the same stop count so scrub never jumps.
-   * Inspired by Rayleigh dusk (gold/orange near sun) + ozone pink/purple twilight.
    */
   _horizonSpectrumStops(elev) {
     const light = !this.hasAttribute("data-dark-mode");
     // 5 stops: near-sun → mid → far, then caller mixes into surface.
+    // Dusk/dawn in this product = civil ±6° (see scene_dusk helper copy).
     const keys = light
       ? [
           {
             e: -90,
             stops: [
-              [176, 186, 210],
-              [186, 196, 216],
-              [200, 208, 222],
-              [212, 218, 230],
-              [224, 228, 236],
+              [130, 145, 175],
+              [145, 158, 185],
+              [160, 172, 198],
+              [175, 185, 208],
+              [190, 198, 218],
             ],
           },
           {
-            e: -18,
-            stops: [
-              [232, 140, 168],
-              [200, 140, 196],
-              [168, 154, 210],
-              [168, 184, 220],
-              [200, 210, 228],
-            ],
-          },
-          {
+            // At/after dusk: dark-blue wash only (soft for light surfaces).
             e: -6,
             stops: [
-              [240, 150, 120],
-              [236, 130, 140],
-              [220, 130, 170],
-              [180, 160, 210],
-              [170, 196, 230],
+              [120, 140, 180],
+              [135, 152, 188],
+              [150, 165, 198],
+              [168, 180, 208],
+              [185, 195, 218],
             ],
           },
           {
             e: 0,
-            // Gold → coral → pink → mauve → soft sky (classic spectrogram dusk).
+            // Gold → coral → pink → mauve → soft sky (sunset / last civil light).
             stops: [
               [255, 178, 88],
               [245, 140, 96],
@@ -10450,36 +10442,25 @@ class SceneExtrapolationPanel extends HTMLElement {
             stops: [
               [8, 12, 28],
               [10, 16, 40],
-              [14, 22, 48],
-              [18, 28, 64],
-              [26, 42, 90],
+              [12, 20, 48],
+              [14, 24, 56],
+              [18, 30, 68],
             ],
           },
           {
-            e: -18,
-            // Afterglow: pink → purple → indigo → deep blue (prior dark look).
-            stops: [
-              [232, 120, 160],
-              [160, 90, 180],
-              [90, 70, 160],
-              [40, 55, 130],
-              [16, 24, 56],
-            ],
-          },
-          {
+            // At/after dusk (−6°): dark blue only — pink/purple end with last light.
             e: -6,
             stops: [
-              [245, 140, 110],
-              [236, 120, 150],
-              [180, 95, 175],
-              [100, 80, 170],
-              [45, 70, 150],
+              [28, 45, 100],
+              [22, 38, 85],
+              [16, 30, 70],
+              [12, 22, 55],
+              [10, 16, 42],
             ],
           },
           {
             e: 0,
-            // Gold/orange core (Rayleigh), then pink, mauve, blue — prior peach
-            // palette nudged slightly warmer/gold at the sun.
+            // Gold/orange core (Rayleigh), then pink, mauve, blue through twilight.
             stops: [
               [255, 170, 85],
               [245, 140, 100],
