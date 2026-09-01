@@ -32,7 +32,7 @@
       "automatically_update_lights_interval": "Automatically update lights interval",
       "automatically_update_lights_interval_helper": "After a scene is activated, keep updating the lights this often with the same transition length (target = how the room should look at the end of the transition). 0 turns automatic updates off for every room. Pause individual rooms from the list.",
       "automatically_update_lights_interval_minutes": "Minutes",
-      "pause_automatically_update_lights": "Pause automatic light updates",
+      "pause_automatically_update_lights": "Stop automatic light updates",
       "resume_automatically_update_lights": "Resume automatic light updates",
       "scene_settings": "Scene settings",
       "hidden_in_ha": "Hidden in Home Assistant"

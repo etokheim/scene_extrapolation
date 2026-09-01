@@ -3109,14 +3109,16 @@ class SceneExtrapolationPanel extends HTMLElement {
           min-width: 36px;
           margin-inline: 2px;
         }
+        /* Tonal ha-button does not pass `color` through to ha-icon; set icon
+           tokens explicitly so stop/play match error/success. */
         .row .row-actions ha-button.automatically-update-lights-pause {
           --ha-button-tonal-container-color: color-mix(
             in srgb,
             var(--error-color, #f44336) 22%,
             var(--card-background-color, transparent)
           );
+          --ha-button-tonal-label-text-color: var(--error-color, #f44336);
           --ha-button-tonal-text-color: var(--error-color, #f44336);
-          color: var(--error-color, #f44336);
         }
         .row .row-actions ha-button.automatically-update-lights-play {
           --ha-button-tonal-container-color: color-mix(
@@ -3124,11 +3126,21 @@ class SceneExtrapolationPanel extends HTMLElement {
             var(--success-color, #4caf50) 22%,
             var(--card-background-color, transparent)
           );
+          --ha-button-tonal-label-text-color: var(--success-color, #4caf50);
           --ha-button-tonal-text-color: var(--success-color, #4caf50);
-          color: var(--success-color, #4caf50);
         }
         .row .row-actions ha-button.automatically-update-lights-btn ha-icon {
           --mdc-icon-size: 20px;
+          --icon-primary-color: currentColor;
+          color: inherit;
+        }
+        .row .row-actions ha-button.automatically-update-lights-pause ha-icon {
+          color: var(--error-color, #f44336);
+          --icon-primary-color: var(--error-color, #f44336);
+        }
+        .row .row-actions ha-button.automatically-update-lights-play ha-icon {
+          color: var(--success-color, #4caf50);
+          --icon-primary-color: var(--success-color, #4caf50);
         }
         .row {
           display: flex;
@@ -3708,7 +3720,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     automaticallyUpdateLightsBtn.title = automaticallyUpdateLightsOn
       ? this._t(
           "frontend.settings.pause_automatically_update_lights",
-          "Pause automatic light updates"
+          "Stop automatic light updates"
         )
       : this._t(
           "frontend.settings.resume_automatically_update_lights",
@@ -3718,7 +3730,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const automaticallyUpdateLightsIcon = document.createElement("ha-icon");
     automaticallyUpdateLightsIcon.setAttribute(
       "icon",
-      automaticallyUpdateLightsOn ? "mdi:pause" : "mdi:play"
+      automaticallyUpdateLightsOn ? "mdi:stop" : "mdi:play"
     );
     automaticallyUpdateLightsBtn.appendChild(automaticallyUpdateLightsIcon);
     automaticallyUpdateLightsBtn.addEventListener("click", async (ev) => {
