@@ -6920,18 +6920,25 @@ class SceneExtrapolationPanel extends HTMLElement {
       return { service: "turn_off", data: { entity_id: entityId } };
     }
     const data = { entity_id: entityId };
-    for (const key of [
-      "brightness",
-      "color_temp_kelvin",
-      "hs_color",
-      "rgb_color",
-      "rgbw_color",
-      "rgbww_color",
-      "effect",
-    ]) {
-      if (stored[key] != null && stored[key] !== "none") {
-        data[key] = stored[key];
-      }
+    if (stored.brightness != null) {
+      data.brightness = stored.brightness;
+    }
+    if (stored.effect != null && stored.effect !== "none") {
+      data.effect = stored.effect;
+    }
+    // HA rejects two+ members of the Color descriptors exclusion group
+    // (e.g. hs_color + rgb_color). Drafts often store both; live entity
+    // snapshots do too — send exactly one.
+    if (stored.rgbww_color != null) {
+      data.rgbww_color = stored.rgbww_color;
+    } else if (stored.rgbw_color != null) {
+      data.rgbw_color = stored.rgbw_color;
+    } else if (stored.hs_color != null) {
+      data.hs_color = stored.hs_color;
+    } else if (stored.rgb_color != null) {
+      data.rgb_color = stored.rgb_color;
+    } else if (stored.color_temp_kelvin != null) {
+      data.color_temp_kelvin = stored.color_temp_kelvin;
     }
     return { service: "turn_on", data };
   }
