@@ -718,12 +718,17 @@ function createLightBrightnessGraph({
   // Full-bleed plot — 0/100% live in the heading subtext, not axis labels.
   // Height stays fixed in CSS (120px); viewBox width tracks the element so
   // circles stay round when the sidebar grows (no aspect-ratio lock).
+  // Extra PAD_B leaves room for a second label row when dawn/sunrise (etc.)
+  // sit too close for one line.
   const HEIGHT = 120;
   const PAD_L = 8;
   const PAD_R = 8;
-  const PAD_T = 14;
-  const PAD_B = 22;
+  const PAD_T = 12;
+  const PAD_B = 30;
   const PLOT_H = HEIGHT - PAD_T - PAD_B;
+  const LABEL_Y0 = HEIGHT - 4;
+  const LABEL_Y1 = HEIGHT - 15;
+  const LABEL_GAP = 3;
   let plotW = 300 - PAD_L - PAD_R;
   let viewW = 300;
 
@@ -804,6 +809,46 @@ function createLightBrightnessGraph({
     const y = (clientY - rect.top) * scaleY;
     const t = 1 - (y - PAD_T) / PLOT_H;
     return Math.round(Math.max(0, Math.min(1, t)) * 255);
+  };
+  // ~10px UI font; prefer overestimate so labels deconflict early.
+  const estimateLabelWidth = (text) => Math.max(24, String(text).length * 6.2);
+
+  /** Keep dots on true time; stagger / nudge labels when names would collide. */
+  const layoutHandleLabels = (coords) => {
+    const laid = coords.map((c) => ({
+      x: c.x,
+      y: LABEL_Y0,
+      w: estimateLabelWidth(c.point.name),
+      name: c.point.name,
+    }));
+    const overlaps = (a, b) =>
+      a.y === b.y && Math.abs(a.x - b.x) < (a.w + b.w) / 2 + LABEL_GAP;
+    for (let i = 1; i < laid.length; i++) {
+      const prev = laid[i - 1];
+      const cur = laid[i];
+      if (overlaps(prev, cur)) {
+        cur.y = prev.y === LABEL_Y0 ? LABEL_Y1 : LABEL_Y0;
+      }
+    }
+    // Same-row neighbors that still collide (e.g. three close events): nudge.
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 1; i < laid.length; i++) {
+        const prev = laid[i - 1];
+        const cur = laid[i];
+        if (!overlaps(prev, cur)) {
+          continue;
+        }
+        const need = (prev.w + cur.w) / 2 + LABEL_GAP;
+        const mid = (prev.x + cur.x) / 2;
+        prev.x = mid - need / 2;
+        cur.x = mid + need / 2;
+      }
+    }
+    for (const item of laid) {
+      const half = item.w / 2;
+      item.x = Math.max(PAD_L + half, Math.min(PAD_L + plotW - half, item.x));
+    }
+    return laid;
   };
 
   const unbindWindowDrag = () => {
@@ -944,7 +989,10 @@ function createLightBrightnessGraph({
       return;
     }
     el.hidden = false;
-    for (const c of coords) {
+    const labelLayout = layoutHandleLabels(coords);
+    for (let i = 0; i < coords.length; i++) {
+      const c = coords[i];
+      const labelPos = labelLayout[i];
       const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
       const classes = ["handle"];
       if (c.point.active) {
@@ -990,8 +1038,8 @@ function createLightBrightnessGraph({
         "text"
       );
       label.setAttribute("class", "handle-label");
-      label.setAttribute("x", c.x.toFixed(1));
-      label.setAttribute("y", String(HEIGHT - 6));
+      label.setAttribute("x", labelPos.x.toFixed(1));
+      label.setAttribute("y", String(labelPos.y));
       label.textContent = c.point.name;
       group.append(hit, dot, fill);
       if (!c.point.member) {
