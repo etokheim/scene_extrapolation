@@ -409,8 +409,8 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Sandbox scenes.yaml is runtime, not source
 
 - **Date:** 2026-09-01
-- **Decision:** Track `dev/config/scenes.yaml.example` as the committed starter. Gitignore live `dev/config/scenes.yaml`. First-time setup copies the example (`cp -n`). Do not bind-mount a second scenes file into the container — `dev/config` is already `/config`.
-- **Why:** The scene editor and this integration write HA’s native YAML back to `/config/scenes.yaml`. Tracking that file made every sandbox tweak a dirty tree and clobbered local scenes on branch switch. Secrets already use the example + gitignore pattern.
+- **Decision:** Gitignore `dev/config/scenes.yaml`. Do not commit the live file or a starter example — native scenes are sandbox-local and do not translate to other setups. First-time setup creates an empty list (`[]`) if the file is missing. Do not bind-mount a second scenes file into the container — `dev/config` is already `/config`.
+- **Why:** The scene editor and this integration write HA’s native YAML back to `/config/scenes.yaml`. Tracking that file made every sandbox tweak a dirty tree and clobbered local scenes on branch switch.
 - **Do not reverse without user ask.**
 
 ## CI lint uses current Home Assistant Requires-Python

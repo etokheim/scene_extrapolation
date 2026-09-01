@@ -5,7 +5,7 @@ This repo is a Home Assistant custom integration. Python changes only take effec
 The sandbox is configured in YAML under `dev/config/`:
 
 - `packages/` — extra virtual lights per area ([hass-virtual](https://github.com/twrecked/hass-virtual), old-style YAML)
-- `scenes.yaml.example` — starter native day/evening/night scenes per area. Copy to `scenes.yaml` (gitignored) so sandbox edits survive branch switches
+- `scenes.yaml` — gitignored native scenes for this sandbox (HA writes it back from the UI)
 - `area_map.yaml` — area assignment (HA has no YAML for this; applied to the registries after first boot)
 
 Onboarding created the areas **Stue**, **Kjøkken**, and **Soverom**.
@@ -21,7 +21,7 @@ cp -R /tmp/hass-virtual/custom_components/virtual dev/config/custom_components/v
 ```
 
 ```bash
-cp -n dev/config/scenes.yaml.example dev/config/scenes.yaml
+test -f dev/config/scenes.yaml || echo '[]' > dev/config/scenes.yaml
 docker compose up -d
 ```
 
