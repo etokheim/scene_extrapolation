@@ -22,13 +22,14 @@ After clone, check out `dev` before starting work (`git checkout dev`). GitHubâ€
 
 - Integration: `custom_components/scene_extrapolation/`
 - Agent instructions: `AGENTS.md`, `.cursor/`, `docs/`
-- Local sandbox **starter** YAML: `dev/config/configuration.yaml`, `scenes.yaml`, `packages/`, `area_map.yaml`, `apply_area_map.py`, plus empty `automations.yaml` / `scripts.yaml`
+- Local sandbox **starter** YAML: `dev/config/configuration.yaml`, `scenes.yaml.example`, `packages/`, `area_map.yaml`, `apply_area_map.py`, plus empty `automations.yaml` / `scripts.yaml`. Live `scenes.yaml` is gitignored (HA writes it back from the UI).
 - Tooling: `docker-compose.yml`, `pyproject.toml`, `DEVELOPMENT.md`, CI under `.github/`
 
 ## What is not versioned
 
 - `dev/config/` runtime: `.storage/`, databases, logs, onboarding, `custom_components/virtual/` (hass-virtual copy)
 - `dev/config/secrets.yaml` (use `dev/config/secrets.yaml.example` as a template)
+- `dev/config/scenes.yaml` (use `dev/config/scenes.yaml.example` as a template)
 - `__pycache__/`, `.env`
 
 ## Clone

@@ -1,4 +1,5 @@
-# Native HA scenes, one set per area. Area assignment is in area_map.yaml.
+# Starter native HA scenes for the sandbox. Copy to scenes.yaml (gitignored).
+# Area assignment is in area_map.yaml.
 
 # --- Stue ---
 - id: stue_dag

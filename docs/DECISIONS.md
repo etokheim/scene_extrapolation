@@ -406,6 +406,13 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Why:** Colored/variable dashed day strokes and tiny dots read poorly; dial buttons unify event affordances across views.
 - **Do not reverse without user ask.**
 
+## Sandbox scenes.yaml is runtime, not source
+
+- **Date:** 2026-09-01
+- **Decision:** Track `dev/config/scenes.yaml.example` as the committed starter. Gitignore live `dev/config/scenes.yaml`. First-time setup copies the example (`cp -n`). Do not bind-mount a second scenes file into the container — `dev/config` is already `/config`.
+- **Why:** The scene editor and this integration write HA’s native YAML back to `/config/scenes.yaml`. Tracking that file made every sandbox tweak a dirty tree and clobbered local scenes on branch switch. Secrets already use the example + gitignore pattern.
+- **Do not reverse without user ask.**
+
 ## CI lint uses current Home Assistant Requires-Python
 
 - **Date:** 2026-08-30
