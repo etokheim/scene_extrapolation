@@ -22,18 +22,25 @@
     },
     "empty": {
       "extrapolation": "No circadian scenes yet. Create one to start lighting a room from the sun.",
-      "created": "No native scenes created by Circadian Scenes yet. They appear here when you use Automatic setup or Create new scene."
+      "extrapolation_title": "Start lighting with the sun",
+      "extrapolation_body": "Circadian Scenes blend your room’s lights between solar events — dawn, sunrise, noon, sunset, and dusk — so brightness and color follow the day.",
+      "extrapolation_example": "Create a scene for a room, assign native scenes to each solar event, then activate it. Optional automatic updates keep adjusting the lights on an interval after that.",
+      "created": "No native scenes created by Circadian Scenes yet. They appear here when you use Automatic setup or Create new scene.",
+      "created_title": "No created scenes yet",
+      "created_body": "Native Home Assistant scenes created by Circadian Scenes show up here — from Automatic setup or Create new scene on a solar event.",
+      "learn_more": "Learn more"
     },
     "settings": {
       "title": "Settings",
       "intro": "These settings apply to every room. Changes take effect immediately.",
       "hide_created": "Hide created scenes in Home Assistant",
       "hide_created_helper": "Marks native scenes created by this integration as hidden in the HA UI (entity registry). You can still manage them here.",
+      "automatically_update_lights": "Automatically update lights",
+      "automatically_update_lights_on_helper": "After you activate a scene, lights keep adjusting on the interval from Settings so the room follows the sun. Tap to turn this off for every room.",
+      "automatically_update_lights_off_helper": "Automatic updates are off. Activating a scene applies lights once. Tap to turn updates back on for every room.",
       "automatically_update_lights_interval": "Automatically update lights interval",
-      "automatically_update_lights_interval_helper": "After a scene is activated, keep updating the lights this often with the same transition length (target = how the room should look at the end of the transition). 0 turns automatic updates off for every room. Pause individual rooms from the list.",
+      "automatically_update_lights_interval_helper": "After a scene is activated, keep updating the lights this often with the same transition length (target = how the room should look at the end of the transition). 0 turns automatic updates off for every room — same as the control at the top of the list.",
       "automatically_update_lights_interval_minutes": "Minutes",
-      "pause_automatically_update_lights": "Stop automatic light updates",
-      "resume_automatically_update_lights": "Resume automatic light updates",
       "scene_settings": "Scene settings",
       "hidden_in_ha": "Hidden in Home Assistant"
     },

@@ -255,6 +255,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._sidebarEventId = null;
     this._sidebarLightId = null;
     this._clockStickySeconds = undefined;
+    this._aulResumeInterval = 300;
     this._hashConfirming = false;
     this._lightView = "dial";
     this._liveEdit = false;
@@ -3140,11 +3141,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         .card-content {
           padding: 16px;
         }
-        .empty {
-          text-align: center;
-          padding: 48px 16px;
-          color: var(--secondary-text-color);
-        }
         .list {
           display: flex;
           flex-direction: column;
@@ -3187,43 +3183,103 @@ class SceneExtrapolationPanel extends HTMLElement {
           --mdc-icon-button-size: 40px;
           color: var(--secondary-text-color);
         }
-        .row .row-actions ha-button.automatically-update-lights-btn {
-          --ha-button-height: 36px;
-          min-width: 36px;
-          margin-inline: 2px;
+        .list-aul-card {
+          margin-bottom: 12px;
         }
-        /* Tonal ha-button does not pass color through to ha-icon; set icon
-           tokens explicitly so stop/play match error/success. */
-        .row .row-actions ha-button.automatically-update-lights-pause {
-          --ha-button-tonal-container-color: color-mix(
+        /* Shared with create-wizard mode cards; list uses the same chrome. */
+        .setup-mode-card {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
+          width: 100%;
+          text-align: left;
+          padding: 14px 16px;
+          border-radius: var(--ha-border-radius-lg, 12px);
+          border: 2px solid var(--divider-color);
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          cursor: pointer;
+          box-sizing: border-box;
+        }
+        .setup-mode-card:hover {
+          border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+        }
+        .setup-mode-card.selected {
+          border-color: var(--primary-color);
+          background: color-mix(
             in srgb,
-            var(--error-color, #f44336) 22%,
-            var(--card-background-color, transparent)
+            var(--primary-color) 10%,
+            var(--card-background-color)
           );
-          --ha-button-tonal-label-text-color: var(--error-color, #f44336);
-          --ha-button-tonal-text-color: var(--error-color, #f44336);
         }
-        .row .row-actions ha-button.automatically-update-lights-play {
-          --ha-button-tonal-container-color: color-mix(
-            in srgb,
-            var(--success-color, #4caf50) 22%,
-            var(--card-background-color, transparent)
-          );
-          --ha-button-tonal-label-text-color: var(--success-color, #4caf50);
-          --ha-button-tonal-text-color: var(--success-color, #4caf50);
+        .setup-mode-card .mode-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 15px;
+          font-weight: 600;
         }
-        .row .row-actions ha-button.automatically-update-lights-btn ha-icon {
-          --mdc-icon-size: 20px;
-          --icon-primary-color: currentColor;
-          color: inherit;
+        .setup-mode-card .mode-title ha-icon {
+          --mdc-icon-size: 22px;
+          color: var(--primary-color);
         }
-        .row .row-actions ha-button.automatically-update-lights-pause ha-icon {
-          color: var(--error-color, #f44336);
-          --icon-primary-color: var(--error-color, #f44336);
+        .setup-mode-card .mode-detail {
+          font-size: 13px;
+          line-height: 1.35;
+          color: var(--secondary-text-color);
+          padding-left: 30px;
         }
-        .row .row-actions ha-button.automatically-update-lights-play ha-icon {
-          color: var(--success-color, #4caf50);
-          --icon-primary-color: var(--success-color, #4caf50);
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          box-sizing: border-box;
+          width: 100%;
+          max-width: 480px;
+          margin-inline: auto;
+          padding: 48px 24px 112px;
+          min-height: calc(100vh - var(--header-height, 64px) - 96px);
+        }
+        .empty-state > ha-icon {
+          --mdc-icon-size: 80px;
+          color: var(--primary-text-color);
+          margin-bottom: 16px;
+        }
+        .empty-state h1 {
+          margin: 0 0 16px;
+          font-size: 1.5rem;
+          font-weight: 400;
+          line-height: 1.3;
+          color: var(--primary-text-color);
+        }
+        .empty-state p {
+          margin: 0 0 12px;
+          font-size: 14px;
+          line-height: 1.5;
+          color: var(--secondary-text-color);
+        }
+        .empty-state a.learn-more {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          margin-top: 8px;
+          color: var(--primary-color);
+          text-decoration: none;
+          font-size: 14px;
+        }
+        .empty-state a.learn-more:hover {
+          text-decoration: underline;
+        }
+        .empty-state a.learn-more ha-icon {
+          --mdc-icon-size: 16px;
+        }
+        .empty {
+          text-align: center;
+          padding: 48px 16px;
+          color: var(--secondary-text-color);
         }
         .row {
           display: flex;
@@ -3305,49 +3361,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: flex;
           flex-direction: column;
           gap: 10px;
-        }
-        .area-dialog .setup-mode-card {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 4px;
-          width: 100%;
-          text-align: left;
-          padding: 14px 16px;
-          border-radius: var(--ha-border-radius-lg, 12px);
-          border: 2px solid var(--divider-color);
-          background: var(--card-background-color);
-          color: var(--primary-text-color);
-          cursor: pointer;
-          box-sizing: border-box;
-        }
-        .area-dialog .setup-mode-card:hover {
-          border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
-        }
-        .area-dialog .setup-mode-card.selected {
-          border-color: var(--primary-color);
-          background: color-mix(
-            in srgb,
-            var(--primary-color) 10%,
-            var(--card-background-color)
-          );
-        }
-        .area-dialog .setup-mode-card .mode-title {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 15px;
-          font-weight: 600;
-        }
-        .area-dialog .setup-mode-card .mode-title ha-icon {
-          --mdc-icon-size: 22px;
-          color: var(--primary-color);
-        }
-        .area-dialog .setup-mode-card .mode-detail {
-          font-size: 13px;
-          line-height: 1.35;
-          color: var(--secondary-text-color);
-          padding-left: 30px;
         }
         .area-dialog .setup-error {
           margin: 0;
@@ -3741,36 +3754,162 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
     page.appendChild(tabs);
 
-    const wrap = document.createElement("div");
     if (this._listTab === "created") {
       if (!this._managedScenes.length) {
-        wrap.className = "empty";
-        wrap.textContent = this._t(
-          "frontend.empty.created",
-          "No native scenes created by Circadian Scenes yet. They appear here when you use Automatic setup or Create new scene."
+        page.appendChild(
+          this._buildEmptyState({
+            icon: "mdi:palette-swatch-outline",
+            title: this._t(
+              "frontend.empty.created_title",
+              "No created scenes yet"
+            ),
+            paragraphs: [
+              this._t(
+                "frontend.empty.created_body",
+                "Native Home Assistant scenes created by Circadian Scenes show up here — from Automatic setup or Create new scene on a solar event."
+              ),
+            ],
+            learnMore: false,
+          })
         );
       } else {
+        const wrap = document.createElement("div");
         wrap.className = "list";
         for (const item of this._managedScenes) {
           wrap.appendChild(this._managedSceneRow(item));
         }
+        page.appendChild(wrap);
       }
     } else if (!this._items.length) {
-      wrap.className = "empty";
-      wrap.textContent = this._t(
-        "frontend.empty.extrapolation",
-        "No extrapolation scenes yet. Create one to start lighting a room from the sun."
+      page.appendChild(
+        this._buildEmptyState({
+          icon: "mdi:white-balance-sunny",
+          title: this._t(
+            "frontend.empty.extrapolation_title",
+            "Start lighting with the sun"
+          ),
+          paragraphs: [
+            this._t(
+              "frontend.empty.extrapolation_body",
+              "Circadian Scenes blend your room’s lights between solar events — dawn, sunrise, noon, sunset, and dusk — so brightness and color follow the day."
+            ),
+            this._t(
+              "frontend.empty.extrapolation_example",
+              "Create a scene for a room, assign native scenes to each solar event, then activate it. Optional automatic updates keep adjusting the lights on an interval after that."
+            ),
+          ],
+          learnMore: true,
+        })
       );
     } else {
+      const wrap = document.createElement("div");
       wrap.className = "list";
+      wrap.appendChild(this._buildAutomaticallyUpdateLightsCard());
       for (const item of this._items) {
         wrap.appendChild(this._listRow(item));
       }
+      page.appendChild(wrap);
     }
-    page.appendChild(wrap);
     this._contentEl.replaceChildren(page);
     this._setActionItems(this._listSettingsButton());
     this._setFab(this._addButton());
+  }
+
+  _buildEmptyState({ icon, title, paragraphs, learnMore = false }) {
+    const el = document.createElement("div");
+    el.className = "empty-state";
+    const iconEl = document.createElement("ha-icon");
+    iconEl.setAttribute("icon", icon);
+    el.appendChild(iconEl);
+    const heading = document.createElement("h1");
+    heading.textContent = title;
+    el.appendChild(heading);
+    for (const text of paragraphs) {
+      const p = document.createElement("p");
+      p.textContent = text;
+      el.appendChild(p);
+    }
+    if (learnMore) {
+      const link = document.createElement("a");
+      link.className = "learn-more";
+      link.href = "https://github.com/etokheim/scene_extrapolation";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = this._t("frontend.empty.learn_more", "Learn more");
+      const openIcon = document.createElement("ha-icon");
+      openIcon.setAttribute("icon", "mdi:open-in-new");
+      link.appendChild(openIcon);
+      el.appendChild(link);
+    }
+    return el;
+  }
+
+  _automaticallyUpdateLightsIntervalSeconds() {
+    return Number(this._settings?.automatically_update_lights_interval ?? 300);
+  }
+
+  _buildAutomaticallyUpdateLightsCard() {
+    const interval = this._automaticallyUpdateLightsIntervalSeconds();
+    const on = interval > 0;
+    if (on) {
+      this._aulResumeInterval = interval;
+    }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `setup-mode-card list-aul-card${on ? " selected" : ""}`;
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    const titleRow = document.createElement("div");
+    titleRow.className = "mode-title";
+    const icon = document.createElement("ha-icon");
+    icon.setAttribute("icon", on ? "mdi:brightness-auto" : "mdi:brightness-auto");
+    const title = document.createElement("span");
+    title.textContent = this._t(
+      "frontend.settings.automatically_update_lights",
+      "Automatically update lights"
+    );
+    titleRow.append(icon, title);
+    const detail = document.createElement("div");
+    detail.className = "mode-detail";
+    detail.textContent = on
+      ? this._t(
+          "frontend.settings.automatically_update_lights_on_helper",
+          "After you activate a scene, lights keep adjusting on the interval from Settings so the room follows the sun. Tap to turn this off for every room."
+        )
+      : this._t(
+          "frontend.settings.automatically_update_lights_off_helper",
+          "Automatic updates are off. Activating a scene applies lights once. Tap to turn updates back on for every room."
+        );
+    btn.append(titleRow, detail);
+    btn.addEventListener("click", async () => {
+      const current = this._automaticallyUpdateLightsIntervalSeconds();
+      const currentlyOn = current > 0;
+      const resume =
+        this._aulResumeInterval > 0 ? this._aulResumeInterval : 300;
+      const nextSeconds = currentlyOn ? 0 : resume;
+      btn.disabled = true;
+      try {
+        if (currentlyOn && current > 0) {
+          this._aulResumeInterval = current;
+        }
+        const result = await this._hass.callWS({
+          type: `${DOMAIN}/update_settings`,
+          settings: { automatically_update_lights_interval: nextSeconds },
+        });
+        this._settings = {
+          hide_managed_native_scenes: true,
+          automatically_update_lights_interval: 300,
+          ...(result?.settings || {}),
+        };
+        if (this._view === "list") {
+          this._renderList({ keepSidebar: true });
+        }
+      } catch (err) {
+        window.alert(err.message || String(err));
+      } finally {
+        btn.disabled = false;
+      }
+    });
+    return btn;
   }
 
   _listSettingsButton() {
@@ -3817,57 +3956,6 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     const actions = document.createElement("div");
     actions.className = "row-actions";
-    const automaticallyUpdateLightsOn = item.automatically_update_lights !== false;
-    const automaticallyUpdateLightsBtn = document.createElement("ha-button");
-    automaticallyUpdateLightsBtn.appearance = "tonal";
-    automaticallyUpdateLightsBtn.size = "small";
-    automaticallyUpdateLightsBtn.className = automaticallyUpdateLightsOn
-      ? "automatically-update-lights-btn automatically-update-lights-pause"
-      : "automatically-update-lights-btn automatically-update-lights-play";
-    automaticallyUpdateLightsBtn.title = automaticallyUpdateLightsOn
-      ? this._t(
-          "frontend.settings.pause_automatically_update_lights",
-          "Stop automatic light updates"
-        )
-      : this._t(
-          "frontend.settings.resume_automatically_update_lights",
-          "Resume automatic light updates"
-        );
-    automaticallyUpdateLightsBtn.setAttribute("aria-label", automaticallyUpdateLightsBtn.title);
-    const automaticallyUpdateLightsIcon = document.createElement("ha-icon");
-    automaticallyUpdateLightsIcon.setAttribute(
-      "icon",
-      automaticallyUpdateLightsOn ? "mdi:stop" : "mdi:play"
-    );
-    automaticallyUpdateLightsBtn.appendChild(automaticallyUpdateLightsIcon);
-    automaticallyUpdateLightsBtn.addEventListener("click", async (ev) => {
-      ev.stopPropagation();
-      const next = !automaticallyUpdateLightsOn;
-      automaticallyUpdateLightsBtn.disabled = true;
-      try {
-        const result = await this._hass.callWS({
-          type: `${DOMAIN}/set_automatically_update_lights`,
-          scene_id: item.id,
-          automatically_update_lights: next,
-        });
-        const idx = this._items.findIndex((row) => row.id === item.id);
-        if (idx >= 0) {
-          this._items[idx] = {
-            ...this._items[idx],
-            automatically_update_lights: result?.automatically_update_lights !== false,
-            ...(result || {}),
-          };
-        }
-        // Rebuild this list without closing a settings sidebar if open.
-        if (this._view === "list") {
-          this._renderList({ keepSidebar: true });
-        }
-      } catch (err) {
-        window.alert(err.message || String(err));
-      } finally {
-        automaticallyUpdateLightsBtn.disabled = false;
-      }
-    });
     const settingsBtn = document.createElement("ha-icon-button");
     settingsBtn.label = this._t(
       "frontend.settings.scene_settings",
@@ -3911,7 +3999,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._renderList();
       }
     });
-    actions.append(automaticallyUpdateLightsBtn, settingsBtn, deleteBtn);
+    actions.append(settingsBtn, deleteBtn);
     row.appendChild(actions);
     return row;
   }
@@ -4083,7 +4171,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     intervalHelper.style.margin = "4px 0 0";
     intervalHelper.textContent = this._t(
       "frontend.settings.automatically_update_lights_interval_helper",
-      "After a scene is activated, keep updating the lights this often with the same transition length (target = how the room should look at the end of the transition). 0 turns automatic updates off for every room. Pause individual rooms from the list."
+      "After a scene is activated, keep updating the lights this often with the same transition length (target = how the room should look at the end of the transition). 0 turns automatic updates off for every room — same as the control at the top of the list."
     );
     intervalLabelWrap.append(intervalLabel, intervalHelper);
     const intervalField = document.createElement("ha-selector");
@@ -4113,9 +4201,16 @@ class SceneExtrapolationPanel extends HTMLElement {
           automatically_update_lights_interval: 300,
           ...(result?.settings || {}),
         };
-        intervalField.value = Math.round(
-          Number(this._settings.automatically_update_lights_interval || 0) / 60
+        const saved = Number(
+          this._settings.automatically_update_lights_interval || 0
         );
+        if (saved > 0) {
+          this._aulResumeInterval = saved;
+        }
+        intervalField.value = Math.round(saved / 60);
+        if (this._view === "list") {
+          this._renderList({ keepSidebar: true });
+        }
       } catch (err) {
         intervalField.value = Math.round(currentSeconds / 60);
         window.alert(err.message || String(err));
@@ -7488,7 +7583,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const step1Intro = document.createElement("p");
     step1Intro.className = "setup-intro";
     step1Intro.innerHTML =
-      "Creates a scene which, when activated, lights your room based on the sun. Automatic light updates are built in: it keeps adjusting lights on an interval (pause per room from the list).<br><br>" +
+      "Creates a scene which, when activated, lights your room based on the sun. Automatic light updates are built in: it keeps adjusting lights on an interval (toggle from the scene list).<br><br>" +
       "<span class=\"muted\">Only <strong>native Home Assistant scenes</strong> are supported (not Hue/integration scenes). All settings can be changed later.</span>";
     step1.appendChild(step1Intro);
 

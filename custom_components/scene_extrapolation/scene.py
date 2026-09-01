@@ -229,8 +229,8 @@ class ExtrapolationScene(Scene):
         return value
 
     def _automatically_update_lights_enabled(self) -> bool:
-        """Per-scene play/pause preference (default on)."""
-        return bool(self._cfg(AUTOMATICALLY_UPDATE_LIGHTS, True))
+        """Always on per scene — master switch is the global interval (0 = off)."""
+        return True
 
     async def async_added_to_hass(self) -> None:
         """Assign the configured area once the entity is registered."""
@@ -286,7 +286,7 @@ class ExtrapolationScene(Scene):
         self._attr_name = scene_config.get(SCENE_NAME) or self._attr_name
         self._area_id = scene_config.get(AREA)
         await self._async_sync_registry()
-        # Pause preference stops a running loop; play does not activate lights.
+        # Global interval 0 (or disabled) stops a running loop.
         if not self._automatically_update_lights_enabled() and self._automatically_update_lights_armed:
             self._stop_automatically_update_lights()
         else:
