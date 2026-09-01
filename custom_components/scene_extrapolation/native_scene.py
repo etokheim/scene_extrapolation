@@ -360,13 +360,13 @@ def list_managed_native_scenes(hass: HomeAssistant) -> list[dict[str, Any]]:
 
 
 def _scene_base_name(area_name: str, event_id: str, *, linked: bool) -> str:
-    """Name for a newly created native scene."""
+    """Name for a newly created native scene.
+
+    Unlinked (and noon/dusk even when the form is linked): ``{area} {Event}``.
+    Combined dawn/sunrise/sunset slot: ``{area} Dawn-Sunset``.
+    """
     if linked and event_id in _DAY_EVENTS:
-        return f"{area_name} Dimmed"
-    if event_id == "noon":
-        return f"{area_name} Bright"
-    if event_id == "dusk":
-        return f"{area_name} Low lights"
+        return f"{area_name} Dawn-Sunset"
     return f"{area_name} {_EVENT_LABEL[event_id]}"
 
 

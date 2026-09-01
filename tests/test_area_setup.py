@@ -10,10 +10,11 @@ from custom_components.scene_extrapolation.native_scene import (
 
 
 def test_scene_base_names_linked_and_event():
-    assert _scene_base_name("Stue", "dawn", linked=True) == "Stue Dimmed"
-    assert _scene_base_name("Stue", "noon", linked=False) == "Stue Bright"
-    assert _scene_base_name("Stue", "dusk", linked=False) == "Stue Low lights"
+    assert _scene_base_name("Stue", "dawn", linked=True) == "Stue Dawn-Sunset"
+    assert _scene_base_name("Stue", "noon", linked=False) == "Stue Noon"
+    assert _scene_base_name("Stue", "dusk", linked=False) == "Stue Dusk"
     assert _scene_base_name("Stue", "sunrise", linked=False) == "Stue Sunrise"
+    assert _scene_base_name("Stue", "sunset", linked=False) == "Stue Sunset"
 
 
 def test_average_light_brightness():
