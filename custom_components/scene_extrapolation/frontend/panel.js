@@ -440,22 +440,30 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: visible;
           position: relative;
         }
-        /* Soft black ramp under top dial controls so date/chips stay readable
-           over horizon bleed (caps at 50% opacity). */
+        /* Surface vignette on L/T/R (max 50% opacity) so date chips, Now
+           readout, and event labels read over horizon bleed in light + dark. */
         .sun-path.dial-view::before {
           content: "";
           position: absolute;
-          left: 0;
-          right: 0;
-          top: 0;
-          height: 160px;
+          inset: 0;
           z-index: 2;
           pointer-events: none;
-          background: linear-gradient(
-            to bottom,
-            rgba(0, 0, 0, 0.5),
-            transparent
-          );
+          background:
+            linear-gradient(
+              to right,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
+              transparent 88px
+            ),
+            linear-gradient(
+              to left,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
+              transparent 88px
+            ),
+            linear-gradient(
+              to bottom,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
+              transparent 160px
+            );
         }
         .sun-path[hidden] {
           display: none;
@@ -847,9 +855,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Flush under the app bar so horizon/bloom/ramp share one top edge
              (margin left a strip where only some bleed painted). */
           margin-top: 0;
-          /* Clip horizon bleed horizontally; allow the light list below the
-             face to extend so the page can scroll to it (landscape + portrait). */
-          overflow-x: hidden;
+          /* Clip horizon bleed on X only. Do not use overflow-x: hidden with
+             overflow-y: visible — CSS computes that Y to auto and the dial
+             grows a second vertical scrollbar beside ha-top-app-bar. */
+          overflow-x: clip;
           overflow-y: visible;
           /* Fallback until _syncDialHeightBudget measures: fill below the
              header, keep event-label pad + gap, leave ~32px of the first
@@ -1443,26 +1452,27 @@ class SceneExtrapolationPanel extends HTMLElement {
           touch-action: none;
           z-index: 7;
         }
-        /* Hourly ticks on the face (with hour numbers); majors every 6h. */
+        /* Hourly ticks on the face (with hour numbers); majors every 6h.
+           Text-colored (not white) so light-mode sky wash stays readable;
+           surface halo replaces the old black shadow. */
         .clock-face-ticks {
           position: absolute;
           inset: 0;
           pointer-events: none;
           overflow: visible;
           z-index: 5;
-          /* Same soft shadow as event labels, +4px blur. */
           filter:
-            drop-shadow(0 0 8px rgba(0, 0, 0, 0.3))
-            drop-shadow(0 1px 6px rgba(0, 0, 0, 0.3));
+            drop-shadow(0 0 8px var(--primary-background-color))
+            drop-shadow(0 1px 6px var(--primary-background-color));
         }
         .clock-face-ticks .clock-tick {
-          stroke: rgba(255, 255, 255, 0.21);
+          stroke: color-mix(in srgb, var(--primary-text-color) 28%, transparent);
           stroke-width: 4.5px;
           vector-effect: non-scaling-stroke;
           stroke-linecap: round;
         }
         .clock-face-ticks .clock-tick.major {
-          stroke: rgba(255, 255, 255, 0.375);
+          stroke: color-mix(in srgb, var(--primary-text-color) 42%, transparent);
           stroke-width: 6px;
         }
         /* HTML hour labels on the face, just inside the tick tips. */
@@ -1472,12 +1482,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           font-size: 16px;
           font-variant-numeric: tabular-nums;
           line-height: 1;
-          color: rgba(255, 255, 255, 0.4);
+          color: color-mix(in srgb, var(--primary-text-color) 48%, transparent);
           pointer-events: none;
           z-index: 7;
           text-shadow:
-            0 0 8px rgba(0, 0, 0, 0.3),
-            0 1px 6px rgba(0, 0, 0, 0.3);
+            0 0 8px var(--primary-background-color),
+            0 1px 6px var(--primary-background-color);
         }
         @media (min-width: 871px) {
           .clock-hour-label {
@@ -1506,10 +1516,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           text-align: center;
           pointer-events: none;
           white-space: nowrap;
-          /* Soft shadow so labels stay readable over path / horizon / rings. */
+          /* Surface halo — readable on light sky wash and dark night disc. */
           text-shadow:
-            0 0 4px rgba(0, 0, 0, 0.3),
-            0 1px 2px rgba(0, 0, 0, 0.3);
+            0 0 4px var(--primary-background-color),
+            0 1px 2px var(--primary-background-color);
         }
         /* Collision placement: below the button (see _layoutClockEventMetas). */
         .clock-event-meta.below {
@@ -1546,7 +1556,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           border: 1px solid var(--divider-color);
           background: var(--card-background-color);
           color: var(--primary-text-color);
-          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+          /* Light gray → softer mid gray (theme-aware); less harsh in light mode. */
+          box-shadow:
+            0 1px 2px color-mix(in srgb, var(--primary-text-color) 10%, transparent),
+            0 2px 6px color-mix(in srgb, var(--primary-text-color) 8%, transparent);
           pointer-events: auto;
           cursor: pointer;
           padding: 0;
@@ -1572,7 +1585,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-event:hover:not(.selected):not(.missing),
         .clock-event:focus-visible:not(.selected):not(.missing) {
           border-color: var(--primary-color);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+          box-shadow:
+            0 1px 3px color-mix(in srgb, var(--primary-text-color) 12%, transparent),
+            0 3px 10px color-mix(in srgb, var(--primary-text-color) 14%, transparent);
         }
         .clock-event ha-icon {
           --mdc-icon-size: 18px;
@@ -1623,7 +1638,8 @@ class SceneExtrapolationPanel extends HTMLElement {
                 var(--warning-color, var(--primary-color)) 28%,
                 transparent
               ),
-            0 2px 8px rgba(0, 0, 0, 0.22);
+            0 2px 8px
+              color-mix(in srgb, var(--primary-text-color) 14%, transparent);
         }
         .clock-event.selected {
           border-color: var(--primary-color);
@@ -1639,7 +1655,8 @@ class SceneExtrapolationPanel extends HTMLElement {
                 var(--warning-color, var(--primary-color)) 28%,
                 transparent
               ),
-            0 2px 8px rgba(0, 0, 0, 0.22);
+            0 2px 8px
+              color-mix(in srgb, var(--primary-text-color) 14%, transparent);
         }
         .sun-light-clock-legend {
           width: min(100%, 500px);
@@ -2812,6 +2829,30 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           height: ${CHART_HEIGHT}px;
         }
+        /* Same L/T/R surface vignette as dial (table view elevation chart). */
+        .sun-chart::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          z-index: 3;
+          pointer-events: none;
+          background:
+            linear-gradient(
+              to right,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
+              transparent 48px
+            ),
+            linear-gradient(
+              to left,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
+              transparent 48px
+            ),
+            linear-gradient(
+              to bottom,
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
+              transparent 56px
+            );
+        }
         .sun-chart svg {
           display: block;
           width: 100%;
@@ -3052,7 +3093,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           .sun-path-stage,
           .sun-path-body,
           .sun-light-clock {
-            overflow-x: hidden;
+            /* clip keeps overflow-y visible (unlike hidden → auto quirk). */
+            overflow-x: clip;
           }
         }
         /* Sidebar open: let horizon/bloom paint under the drawer (desktop). */
