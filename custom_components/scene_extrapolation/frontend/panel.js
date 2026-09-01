@@ -708,12 +708,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: flex;
           flex-wrap: wrap;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-start;
           gap: 8px 12px;
           width: 100%;
           box-sizing: border-box;
         }
-        /* Must beat `.sun-path.dial-view .sun-hover-readout { position:absolute }`
+        /* Must beat .sun-path.dial-view .sun-hover-readout position:absolute
            (same specificity, later in the sheet) or time sits on top of chips. */
         .sun-path.dial-view .sun-toolbar-chrome .sun-hover-readout {
           position: static;
@@ -724,13 +724,20 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-wrap: nowrap;
           align-items: center;
           gap: 8px 16px;
-          flex: 1 1 10rem;
+          flex: 0 1 auto;
+          max-width: none;
           min-width: 0;
-          /* Match chip / reset row height so time+° stay put when reset appears. */
+          /* Match chip / reset row height so time+deg stay put when reset appears. */
           min-height: 32px;
           margin: 0;
           padding: 0;
           pointer-events: none;
+          color: var(--primary-text-color);
+          font-weight: 500;
+        }
+        .sun-path.dial-view .sun-toolbar-chrome .sun-hover-time {
+          font-weight: 600;
+          color: var(--primary-text-color);
         }
         .sun-path.dial-view .sun-toolbar-chrome .sun-hover-reset-slot {
           flex: 0 0 32px;
@@ -744,7 +751,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: auto;
         }
         .sun-toolbar-chrome .sun-chip-row {
-          flex: 1 1 12rem;
+          flex: 0 1 auto;
+          margin-left: auto;
           display: flex;
           flex-wrap: wrap;
           justify-content: flex-end;
@@ -3080,6 +3088,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           margin: 0;
           padding: 8px 16px;
           pointer-events: none;
+          color: var(--primary-text-color);
         }
         .sun-hover-time {
           font-weight: 500;
@@ -7926,7 +7935,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         icon: "mdi:auto-fix",
         title: "Set up automatically",
         detail:
-          "Finds lights in the area and creates Bright, Dimmed, and Low lights scenes for noon, day, and dusk.",
+          "Finds lights in the area and creates a native scene for each solar event (dawn, sunrise, noon, sunset, dusk).",
       },
       {
         id: "manual",
@@ -8149,12 +8158,14 @@ class SceneExtrapolationPanel extends HTMLElement {
       setError("");
       try {
         const linked =
-          state.mode === "automatic" ? true : Boolean(state.linked);
+          state.mode === "automatic" ? false : Boolean(state.linked);
         const assignments =
           state.mode === "automatic"
             ? {
+                dawn: SETUP_AUTOMATIC,
+                sunrise: SETUP_AUTOMATIC,
                 noon: SETUP_AUTOMATIC,
-                linked: SETUP_AUTOMATIC,
+                sunset: SETUP_AUTOMATIC,
                 dusk: SETUP_AUTOMATIC,
               }
             : buildAssignmentsPayload();
