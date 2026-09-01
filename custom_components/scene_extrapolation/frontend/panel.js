@@ -1541,7 +1541,28 @@ class SceneExtrapolationPanel extends HTMLElement {
           cursor: pointer;
           padding: 0;
           font: inherit;
-          transition: box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
+          transform-origin: center center;
+          transition:
+            transform 160ms cubic-bezier(0.2, 0, 0, 1),
+            box-shadow 160ms cubic-bezier(0.2, 0, 0, 1),
+            border-color 160ms cubic-bezier(0.2, 0, 0, 1),
+            background 160ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .clock-event:hover,
+        .clock-event:focus-visible,
+        .clock-event:active,
+        .clock-event.selected {
+          transform: scale(1.12);
+          z-index: 1;
+        }
+        .clock-event:focus-visible {
+          outline: 2px solid var(--primary-color);
+          outline-offset: 2px;
+        }
+        .clock-event:hover:not(.selected):not(.missing),
+        .clock-event:focus-visible:not(.selected):not(.missing) {
+          border-color: var(--primary-color);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
         }
         .clock-event ha-icon {
           --mdc-icon-size: 18px;
@@ -1565,6 +1586,13 @@ class SceneExtrapolationPanel extends HTMLElement {
             var(--card-background-color) 70%,
             transparent
           );
+          transform: none;
+        }
+        .clock-event.ghost:hover,
+        .clock-event.ghost:focus-visible,
+        .clock-event.ghost:active,
+        .clock-event.ghost.selected {
+          transform: none;
         }
         .clock-event.ghost ha-icon {
           --mdc-icon-size: 13px;
@@ -1734,7 +1762,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           display: flex;
           align-items: center;
           gap: 8px;
-          margin: 4px 0 8px;
+          margin: 0;
           padding: 10px 12px;
           border-radius: var(--ha-border-radius-lg, 12px);
           border: 1px solid var(--warning-color, var(--primary-color));
@@ -2686,6 +2714,18 @@ class SceneExtrapolationPanel extends HTMLElement {
           background: var(--secondary-background-color, var(--card-background-color));
           border-color: var(--divider-color);
           box-shadow: var(--ha-box-shadow-s, 0 1px 2px rgba(0, 0, 0, 0.18));
+          transform-origin: center center;
+          transition:
+            transform 160ms cubic-bezier(0.2, 0, 0, 1),
+            border-color 160ms cubic-bezier(0.2, 0, 0, 1),
+            background 160ms cubic-bezier(0.2, 0, 0, 1),
+            box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
+        }
+        .sun-event.clickable:hover,
+        .sun-event.clickable:focus-visible,
+        .sun-event.clickable:active,
+        .sun-event.clickable.selected {
+          transform: scale(1.04);
         }
         .sun-event.clickable:hover {
           border-color: var(--primary-color);
@@ -2694,9 +2734,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-event.clickable:focus-visible {
           outline: 2px solid var(--primary-color);
           outline-offset: 2px;
-        }
-        .sun-event.clickable:active {
-          transform: scale(0.98);
         }
         .sun-event.clickable.missing {
           border: 2px solid var(--warning-color, var(--accent-color, var(--primary-color)));
@@ -2782,9 +2819,21 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform: translate(-50%, -50%);
           z-index: 2;
         }
+        .sun-chart .clock-event:hover,
+        .sun-chart .clock-event:focus-visible,
+        .sun-chart .clock-event:active,
+        .sun-chart .clock-event.selected {
+          transform: translate(-50%, -50%) scale(1.12);
+        }
         .sun-chart .clock-event.ghost {
           width: 22px;
           height: 22px;
+        }
+        .sun-chart .clock-event.ghost:hover,
+        .sun-chart .clock-event.ghost:focus-visible,
+        .sun-chart .clock-event.ghost:active,
+        .sun-chart .clock-event.ghost.selected {
+          transform: translate(-50%, -50%);
         }
         /* List chart: same look, not interactive. */
         .sun-chart .clock-event.inert {
@@ -2801,6 +2850,12 @@ class SceneExtrapolationPanel extends HTMLElement {
             var(--card-background-color) 88%,
             var(--primary-text-color) 12%
           );
+        }
+        .sun-chart .clock-event.inert:hover,
+        .sun-chart .clock-event.inert:focus-visible,
+        .sun-chart .clock-event.inert:active,
+        .sun-chart .clock-event.inert.selected {
+          transform: translate(-50%, -50%);
         }
         .sun-chart .clock-event.inert.missing {
           box-shadow: none;
@@ -2999,18 +3054,25 @@ class SceneExtrapolationPanel extends HTMLElement {
         :host([data-sidebar-docked]) .sun-light-clock {
           overflow: visible;
         }
+        /* Shared inset for draft + location banners (dial zeroes .page padding). */
+        .page-banners {
+          position: relative;
+          z-index: 5;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: var(--ha-space-3);
+          margin-inline: 12px;
+        }
+        .page-banners[hidden] {
+          display: none;
+        }
         .draft-restore {
           position: relative;
-          /* Above dial sky/horizon bleed that paints past the face. */
-          z-index: 5;
           display: flex;
           align-items: center;
           gap: 8px;
-          margin-top: var(--ha-space-3);
-          /* Dial view zeroes .page padding; keep the banner inset either way.
-             Sidebar gutter clears the drawer only (no extra left gap) so this
-             margin is not doubled when the drawer is open. */
-          margin-inline: 12px;
+          margin: 0;
           padding: 10px 12px;
           border-radius: var(--ha-border-radius-lg, 12px);
           border: 1px solid var(--info-color, var(--primary-color));
@@ -3339,16 +3401,29 @@ class SceneExtrapolationPanel extends HTMLElement {
         <div slot="title"></div>
         <div class="page-shell">
         <div class="page">
-          <div class="draft-restore" hidden>
-            <ha-icon icon="mdi:history"></ha-icon>
-            <div class="draft-restore-copy">
-              <div class="title"></div>
-              <div class="detail"></div>
+          <div class="page-banners" hidden>
+            <div class="sun-location-override" hidden>
+              <ha-icon icon="mdi:map-marker"></ha-icon>
+              <div class="sun-location-copy">
+                <div class="title">Previewing another location</div>
+                <div class="coords"></div>
+              </div>
+              <ha-button class="sun-location-change" appearance="plain">Change</ha-button>
+              <ha-icon-button class="sun-location-reset" label="Use home location">
+                <ha-icon icon="mdi:close"></ha-icon>
+              </ha-icon-button>
             </div>
-            <ha-button class="draft-restore-discard" appearance="plain">Discard</ha-button>
-            <ha-icon-button class="draft-restore-dismiss" label="Dismiss">
-              <ha-icon icon="mdi:close"></ha-icon>
-            </ha-icon-button>
+            <div class="draft-restore" hidden>
+              <ha-icon icon="mdi:history"></ha-icon>
+              <div class="draft-restore-copy">
+                <div class="title"></div>
+                <div class="detail"></div>
+              </div>
+              <ha-button class="draft-restore-discard" appearance="plain">Discard</ha-button>
+              <ha-icon-button class="draft-restore-dismiss" label="Dismiss">
+                <ha-icon icon="mdi:close"></ha-icon>
+              </ha-icon-button>
+            </div>
           </div>
           <div class="sun-path" hidden>
             <div class="sun-path-stage">
@@ -3381,6 +3456,17 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._draftBannerDismissed = true;
         this._syncDraftBanner();
       });
+    // Location banner lives with draft under .page-banners (shared inset).
+    this._locationBanner = this.shadowRoot.querySelector(
+      ".sun-location-override",
+    );
+    this._locationCoords = this._locationBanner?.querySelector(".coords");
+    this._locationBanner
+      ?.querySelector(".sun-location-change")
+      ?.addEventListener("click", () => this._openLocationDialog());
+    this._locationBanner
+      ?.querySelector(".sun-location-reset")
+      ?.addEventListener("click", () => this._setPreviewLocation(null));
     this._syncHash();
   }
 
@@ -4538,6 +4624,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._sessionIsDirty() &&
       !this._draftBannerDismissed;
     el.hidden = !show;
+    this._syncPageBannersVisibility();
     if (!show) {
       return;
     }
@@ -4545,6 +4632,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     el.querySelector(".title").textContent = "Picked up where you left off";
     el.querySelector(".detail").textContent =
       `Unsaved edits from ${age}. This browser only — save the scene to keep them.`;
+  }
+
+  _syncPageBannersVisibility() {
+    const stack = this.shadowRoot?.querySelector(".page-banners");
+    if (!stack) {
+      return;
+    }
+    const anyVisible = [...stack.children].some((child) => !child.hidden);
+    stack.hidden = !anyVisible;
   }
 
   async _discardRestoredDraft() {
@@ -8154,31 +8250,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     // the landscape rail (column + align-end).
     dateTools.append(chipRow, dateBtn);
 
-    const banner = document.createElement("div");
-    banner.className = "sun-location-override";
-    banner.hidden = true;
-    const bannerIcon = document.createElement("ha-icon");
-    bannerIcon.setAttribute("icon", "mdi:map-marker");
-    const copy = document.createElement("div");
-    copy.className = "sun-location-copy";
-    const title = document.createElement("div");
-    title.className = "title";
-    title.textContent = "Previewing another location";
-    const coords = document.createElement("div");
-    coords.className = "coords";
-    copy.append(title, coords);
-    const change = document.createElement("ha-button");
-    change.appearance = "plain";
-    change.textContent = "Change";
-    change.addEventListener("click", () => this._openLocationDialog());
-    const reset = document.createElement("ha-icon-button");
-    reset.label = "Use home location";
-    const resetIcon = document.createElement("ha-icon");
-    resetIcon.setAttribute("icon", "mdi:close");
-    reset.appendChild(resetIcon);
-    reset.addEventListener("click", () => this._setPreviewLocation(null));
-    banner.append(bannerIcon, copy, change, reset);
-
     const scrubBlock = document.createElement("div");
     scrubBlock.className = "sun-scrub-block";
     scrubBlock.append(dateTools, this._buildYearScrub());
@@ -8190,9 +8261,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._dateTools = dateTools;
     this._chipRow = chipRow;
     this._scrubBlock = scrubBlock;
-    this._locationBanner = banner;
-    this._locationCoords = coords;
-    toolbar.append(banner, scrubBlock);
+    // Location banner is in .page-banners (wired in first render), not toolbar.
+    toolbar.append(scrubBlock);
     this._syncLocationToolbar();
     this._syncScrubDateLabel();
     return toolbar;
@@ -8292,6 +8362,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (this._locationBanner) {
       this._locationBanner.hidden = !active;
     }
+    this._syncPageBannersVisibility();
     if (this._locationCoords && this._previewLocation) {
       this._locationCoords.textContent = formatLatLng(
         this._previewLocation.latitude,
