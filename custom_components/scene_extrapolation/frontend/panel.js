@@ -3065,6 +3065,32 @@ class SceneExtrapolationPanel extends HTMLElement {
           --mdc-icon-button-size: 40px;
           color: var(--secondary-text-color);
         }
+        .row .row-actions ha-button.continuous-btn {
+          --ha-button-height: 36px;
+          min-width: 36px;
+          margin-inline: 2px;
+        }
+        .row .row-actions ha-button.continuous-pause {
+          --ha-button-tonal-container-color: color-mix(
+            in srgb,
+            var(--error-color, #f44336) 22%,
+            var(--card-background-color, transparent)
+          );
+          --ha-button-tonal-text-color: var(--error-color, #f44336);
+          color: var(--error-color, #f44336);
+        }
+        .row .row-actions ha-button.continuous-play {
+          --ha-button-tonal-container-color: color-mix(
+            in srgb,
+            var(--success-color, #4caf50) 22%,
+            var(--card-background-color, transparent)
+          );
+          --ha-button-tonal-text-color: var(--success-color, #4caf50);
+          color: var(--success-color, #4caf50);
+        }
+        .row .row-actions ha-button.continuous-btn ha-icon {
+          --mdc-icon-size: 20px;
+        }
         .row {
           display: flex;
           align-items: center;
@@ -3634,8 +3660,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     const actions = document.createElement("div");
     actions.className = "row-actions";
     const continuousOn = item.continuous !== false;
-    const continuousBtn = document.createElement("ha-icon-button");
-    continuousBtn.label = continuousOn
+    const continuousBtn = document.createElement("ha-button");
+    continuousBtn.appearance = "tonal";
+    continuousBtn.size = "small";
+    continuousBtn.className = continuousOn
+      ? "continuous-btn continuous-pause"
+      : "continuous-btn continuous-play";
+    continuousBtn.title = continuousOn
       ? this._t(
           "frontend.settings.pause_continuous",
           "Pause automatic follow-up"
@@ -3644,6 +3675,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           "frontend.settings.resume_continuous",
           "Resume automatic follow-up"
         );
+    continuousBtn.setAttribute("aria-label", continuousBtn.title);
     const continuousIcon = document.createElement("ha-icon");
     continuousIcon.setAttribute(
       "icon",
@@ -3807,6 +3839,13 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   async _openListSettingsSidebar() {
+    const existing = this.shadowRoot?.querySelector(
+      ".scene-sidebar.list-settings-dialog"
+    );
+    if (existing && !existing._closing) {
+      await this._requestCloseSceneSidebar(existing);
+      return;
+    }
     const opened = await this._openSceneSidebar({
       title: this._t("frontend.settings.title", "Settings"),
       className: "list-settings-dialog",
@@ -10055,7 +10094,13 @@ class SceneExtrapolationPanel extends HTMLElement {
 
     // Year-scrub patch only refreshes path/marks — recreating sun chrome here
     // would replace _clockSunEl with a detached node and skip spoke layout.
+    // Re-append the fill group so new paths stay *under* the sun (append order
+    // otherwise paints the path on top of the fill; HTML outline is separate).
     if (!includeSun) {
+      const dayGroup = overlay.querySelector(".clock-sun-day-group");
+      if (dayGroup) {
+        overlay.appendChild(dayGroup);
+      }
       return;
     }
 

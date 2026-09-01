@@ -287,12 +287,14 @@ class ExtrapolationScene(Scene):
         self._target_date_time = None
         self._area_id = scene_config.get(AREA)
         self._overridden: set[str] = set()
+        self._interrupted: set[str] = set()
         self._commanded: dict[str, dict[str, Any]] = {}
         self._pre_apply: dict[str, dict[str, Any] | None] = {}
         self._apply_context: Context | None = None
         self._apply_until = 0.0
         self._continuous_armed = False
         self._activating_follow_up = False
+        self._only_entity_ids: set[str] | None = None
         self._follow_up_generation = 0
         self._internal_scene_call = False
         self._unsub_follow_up = None
@@ -439,6 +441,7 @@ class ExtrapolationScene(Scene):
             "integration": self._attr_integration,
             "continuous": self._continuous_armed,
             "overridden_lights": sorted(self._overridden),
+            "interrupted_lights": sorted(self._interrupted),
         }
         if self._target_date_time is not None:
             attrs["target_date_time"] = self._target_date_time.isoformat()
@@ -475,9 +478,11 @@ class ExtrapolationScene(Scene):
         self._unsub_light_tracking()
         self._continuous_armed = False
         self._overridden.clear()
+        self._interrupted.clear()
         self._commanded = {}
         self._pre_apply = {}
         self._apply_context = None
+        self._only_entity_ids = None
         if write_state and self.hass and self.entity_id:
             self.async_write_ha_state()
 
@@ -568,26 +573,34 @@ class ExtrapolationScene(Scene):
                 user_id=None,
                 from_our_context=False,
                 mid_transition=mid,
+                previous_was_down=False,
+                was_interrupted=entity_id in self._interrupted,
             )
-            if kind == "override":
+            if kind == "interrupt":
+                self._interrupted.add(entity_id)
+            elif kind == "override":
                 _LOGGER.info(
                     "%s: %s looks manually overridden; skipping on follow-up",
                     self.entity_id,
                     entity_id,
                 )
+                self._interrupted.discard(entity_id)
                 self._overridden.add(entity_id)
+            elif kind in ("sync", "drift", "recover"):
+                self._interrupted.discard(entity_id)
 
     def _sync_light_listener(self) -> None:
         self._unsub_light_tracking()
-        if not self._continuous_armed or not self._commanded:
+        watch = set(self._commanded) | self._interrupted
+        if not self._continuous_armed or not watch:
             return
         self._unsub_light_listener = async_track_state_change_event(
-            self.hass, list(self._commanded), self._on_light_state_changed
+            self.hass, list(watch), self._on_light_state_changed
         )
 
     @callback
     def _on_light_state_changed(self, event: Event) -> None:
-        """Mark a lamp overridden when a user (or off-path jump) changes it."""
+        """Track overrides, power interrupts, and restore reclaim."""
         if not self._continuous_armed:
             return
         entity_id = event.data.get("entity_id")
@@ -596,8 +609,14 @@ class ExtrapolationScene(Scene):
         commanded = self._commanded.get(entity_id)
         if commanded is None:
             return
+        old_state = event.data.get("old_state")
         new_state = event.data.get("new_state")
         actual = snapshot_from_state(new_state)
+        previous_was_down = old_state is None or old_state.state in (
+            STATE_UNAVAILABLE,
+            STATE_UNKNOWN,
+            STATE_OFF,
+        )
         ctx = event.context
         kind = classify_light_report(
             actual=actual,
@@ -606,7 +625,29 @@ class ExtrapolationScene(Scene):
             user_id=getattr(ctx, "user_id", None),
             from_our_context=context_is_ours(ctx, self._apply_context),
             mid_transition=time.time() < self._apply_until,
+            previous_was_down=previous_was_down,
+            was_interrupted=entity_id in self._interrupted,
         )
+        if kind == "interrupt":
+            if entity_id not in self._interrupted:
+                _LOGGER.debug(
+                    "%s: %s interrupted (power loss / off); will reclaim on restore",
+                    self.entity_id,
+                    entity_id,
+                )
+                self._interrupted.add(entity_id)
+                self.async_write_ha_state()
+            return
+        if kind == "recover":
+            _LOGGER.info(
+                "%s: %s restored after interrupt; re-applying circadian target",
+                self.entity_id,
+                entity_id,
+            )
+            self._interrupted.discard(entity_id)
+            self.async_write_ha_state()
+            self.hass.async_create_task(self._async_reapply_one_light(entity_id))
+            return
         if kind != "override":
             return
         _LOGGER.info(
@@ -614,8 +655,23 @@ class ExtrapolationScene(Scene):
             self.entity_id,
             entity_id,
         )
+        self._interrupted.discard(entity_id)
         self._overridden.add(entity_id)
         self.async_write_ha_state()
+
+    async def _async_reapply_one_light(self, entity_id: str) -> None:
+        """Re-apply the current circadian target to one restored light."""
+        if not self._continuous_armed or entity_id in self._overridden:
+            return
+        if not self._is_last_activated_in_area():
+            return
+        self._only_entity_ids = {entity_id}
+        self._activating_follow_up = True
+        try:
+            # Short transition — reclaim without a full-interval fade.
+            await self.async_activate(transition=1)
+        finally:
+            self._only_entity_ids = None
 
     @callback
     def _on_call_service(self, event: Event) -> None:
@@ -662,8 +718,10 @@ class ExtrapolationScene(Scene):
         """
         follow_up = self._activating_follow_up
         self._activating_follow_up = False
+        only_ids = self._only_entity_ids
         if not follow_up:
             self._overridden.clear()
+            self._interrupted.clear()
             self._cancel_follow_up()
             self._unsub_light_tracking()
             self._continuous_armed = False
@@ -991,22 +1049,34 @@ class ExtrapolationScene(Scene):
             scene_transition_progress_percent,
             self.hass,
             brightness_modifier,
-            skip_entity_ids=self._overridden,
+            skip_entity_ids=self._overridden | self._interrupted,
         )
+        if only_ids is not None:
+            entity_changes = [
+                item for item in entity_changes if item.get(ATTR_ENTITY_ID) in only_ids
+            ]
         light_changes = [
             item
             for item in entity_changes
             if str(item.get(ATTR_ENTITY_ID, "")).startswith("light.")
         ]
-        self._pre_apply = {
-            item[ATTR_ENTITY_ID]: snapshot_from_state(
-                self.hass.states.get(item[ATTR_ENTITY_ID])
-            )
-            for item in light_changes
-        }
-        self._commanded = {
-            item[ATTR_ENTITY_ID]: snapshot_from_command(item) for item in light_changes
-        }
+        if follow_up:
+            # Keep snapshots for interrupted/overridden lamps we are not touching.
+            for item in light_changes:
+                eid = item[ATTR_ENTITY_ID]
+                self._pre_apply[eid] = snapshot_from_state(self.hass.states.get(eid))
+                self._commanded[eid] = snapshot_from_command(item)
+        else:
+            self._pre_apply = {
+                item[ATTR_ENTITY_ID]: snapshot_from_state(
+                    self.hass.states.get(item[ATTR_ENTITY_ID])
+                )
+                for item in light_changes
+            }
+            self._commanded = {
+                item[ATTR_ENTITY_ID]: snapshot_from_command(item)
+                for item in light_changes
+            }
         self._apply_context = Context()
         self._apply_until = time.time() + float(apply_transition or 0)
         if entity_changes:
@@ -1021,8 +1091,12 @@ class ExtrapolationScene(Scene):
 
         if generation != self._follow_up_generation:
             return
-        if will_follow:
+        # Single-light recover must not reset the interval timer.
+        if will_follow and only_ids is None:
             self._schedule_follow_up(interval)
+        elif will_follow:
+            self._continuous_armed = True
+            self.async_write_ha_state()
         else:
             self._continuous_armed = False
             self.async_write_ha_state()

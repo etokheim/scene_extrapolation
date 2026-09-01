@@ -37,7 +37,7 @@ _COLOR_ATTRS = (
     ATTR_RGBWW_COLOR,
 )
 
-ReportKind = Literal["sync", "drift", "override", "ignore"]
+ReportKind = Literal["sync", "drift", "override", "ignore", "interrupt", "recover"]
 
 
 def continuous_interval_seconds(hass: HomeAssistant) -> int:
@@ -291,18 +291,20 @@ def classify_light_report(
     user_id: str | None,
     from_our_context: bool,
     mid_transition: bool,
+    previous_was_down: bool = False,
+    was_interrupted: bool = False,
 ) -> ReportKind:
-    """Classify a light report as in-sync, drift/unresponsive, or user override.
+    """Classify a light report as in-sync, drift, override, interrupt, or recover.
 
-    Unavailable/unknown reports are ignored (retry later, do not mark manual).
-    Mid-transition reports are ignored unless a logged-in user changed the lamp.
-    After the transition, a lamp that never left its pre-command state (or is
-    still moving toward the command) is drift — keep retrying. A lamp that
-    jumped somewhere else is an override.
+    Unavailable/unknown (and non-user off while we want on) are an *interrupt* —
+    power cut / physical switch — not a manual override. When the lamp comes
+    back after an interrupt, *recover* so we can re-apply the circadian target.
+    A reading-light bump while continuously available stays override.
     """
-    if actual is None:
-        return "ignore"
-    if actual.get("state") in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+    if actual is None or actual.get("state") in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+        # Track power-loss so restore can reclaim the lamp.
+        if commanded.get("state") == "on":
+            return "interrupt"
         return "ignore"
 
     if user_id:
@@ -315,6 +317,20 @@ def classify_light_report(
 
     if states_match(actual, commanded):
         return "sync"
+
+    # Physical off (no logged-in user) while we want on — leave dark until restore.
+    if actual.get("state") == "off" and commanded.get("state") == "on":
+        return "interrupt"
+
+    # Came back after interrupt / was down — reclaim unless our own write.
+    if (
+        (was_interrupted or previous_was_down)
+        and not from_our_context
+        and actual.get("state") == "on"
+        and commanded.get("state") == "on"
+    ):
+        return "recover"
+
     if from_our_context:
         return "drift"
     if pre is not None and states_match(actual, pre):

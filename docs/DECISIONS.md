@@ -468,6 +468,8 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## Continuous follow-up is built into the integration
 
 - **Date:** 2026-09-01
+- **Superseded in part:** 2026-09-01 — non-user `off` / `unavailable` during continuous is an *interrupt* (leave dark); when the lamp comes back, re-apply that light’s circadian target once. Available off-path jumps and HA-UI (`user_id`) changes stay overrides.
 - **Decision:** After activation, extrapolation scenes re-apply on a global interval (`continuous_interval`, default 300s; 0 = master off). The same value is the follow-up light transition; targets use `now + transition` (existing offset math). First activation keeps the caller’s transition (usually 0); wait one interval, then follow-up ticks. Per-scene `continuous` defaults to on; list play/pause is preference-only (pause stops a running loop; play does not turn lights on). Stop when another scene in the area is last-activated or when modifiers are set. Skip manually overridden lights; treat drift/unresponsive within tolerance (or still moving toward the command) as retryable. Do not stop merely because all lights are off (dawn). Do not ship this as a blueprint — blueprints cannot skip lamps inside apply or keep commanded vs reported state.
-- **Why:** The user’s continuously-activate blueprint was a roundabout loop and blocked override/drift features. Built-in follow-up matches the product and keeps override state on the scene entity.
+- **Why:** The user’s continuously-activate blueprint was a roundabout loop and blocked override/drift features. Built-in follow-up matches the product and keeps override state on the scene entity. Power-cut restore must reclaim the lamp; a reading-light dim must not.
 - **Do not reverse without user ask.**
+

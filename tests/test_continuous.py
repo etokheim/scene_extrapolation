@@ -123,7 +123,7 @@ def test_moved_toward_brightness():
     assert not moved_toward(pre, commanded, _on(brightness=220))
 
 
-def test_classify_unavailable_is_ignore():
+def test_classify_unavailable_is_interrupt():
     assert (
         classify_light_report(
             actual=None,
@@ -133,7 +133,18 @@ def test_classify_unavailable_is_ignore():
             from_our_context=False,
             mid_transition=False,
         )
-        == "ignore"
+        == "interrupt"
+    )
+    assert (
+        classify_light_report(
+            actual={"state": STATE_UNAVAILABLE},
+            commanded=_on(brightness=200),
+            pre=_on(brightness=180),
+            user_id=None,
+            from_our_context=False,
+            mid_transition=False,
+        )
+        == "interrupt"
     )
 
 
@@ -238,7 +249,7 @@ def test_classify_reading_light_bump_is_override():
     )
 
 
-def test_classify_user_turned_off_is_override():
+def test_classify_physical_off_is_interrupt():
     assert (
         classify_light_report(
             actual=_off(),
@@ -248,5 +259,52 @@ def test_classify_user_turned_off_is_override():
             from_our_context=False,
             mid_transition=False,
         )
+        == "interrupt"
+    )
+
+
+def test_classify_ha_ui_off_is_override():
+    assert (
+        classify_light_report(
+            actual=_off(),
+            commanded=_on(brightness=180),
+            pre=_on(brightness=180),
+            user_id="user-1",
+            from_our_context=False,
+            mid_transition=False,
+        )
         == "override"
+    )
+
+
+def test_classify_restore_after_interrupt_is_recover():
+    assert (
+        classify_light_report(
+            actual=_on(brightness=40),
+            commanded=_on(brightness=180),
+            pre=_on(brightness=180),
+            user_id=None,
+            from_our_context=False,
+            mid_transition=False,
+            previous_was_down=True,
+            was_interrupted=True,
+        )
+        == "recover"
+    )
+
+
+def test_classify_restore_matching_command_is_sync():
+    commanded = _on(brightness=180)
+    assert (
+        classify_light_report(
+            actual=commanded,
+            commanded=commanded,
+            pre=commanded,
+            user_id=None,
+            from_our_context=False,
+            mid_transition=False,
+            previous_was_down=True,
+            was_interrupted=True,
+        )
+        == "sync"
     )
