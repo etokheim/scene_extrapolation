@@ -4988,18 +4988,27 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!payload) {
       return null;
     }
-    const server = this._snapshotSession();
-    if (!this._sessionEqual(payload.baseline, server)) {
-      // Server copy moved on; the local draft was based on an older save.
-      this._clearPersistedDraft();
-      return null;
-    }
-    if (this._sessionEqual(payload.session, server)) {
+    // Existing scenes: drop the draft if HA's form moved on since we buffered.
+    // #new has no server entity — after refresh we always reset to emptyFormData(),
+    // so comparing baseline to that "server" would wipe every post-wizard draft.
+    if (this._editId) {
+      const server = this._snapshotSession();
+      if (!this._sessionEqual(payload.baseline, server)) {
+        this._clearPersistedDraft();
+        return null;
+      }
+      if (this._sessionEqual(payload.session, server)) {
+        this._clearPersistedDraft();
+        return null;
+      }
+    } else if (this._sessionEqual(payload.session, payload.baseline)) {
       this._clearPersistedDraft();
       return null;
     }
     this._formData = structuredClone(payload.session.form);
     this._nativeDrafts = structuredClone(payload.session.nativeDrafts);
+    // Keep the buffered baseline so dirty/discard match the pre-refresh session.
+    this._sessionBaseline = structuredClone(payload.baseline);
     this._syncPreviewOverlay();
     this._clearPreviewCache();
     return { savedAt: payload.savedAt };
