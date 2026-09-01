@@ -3109,7 +3109,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           min-width: 36px;
           margin-inline: 2px;
         }
-        /* Tonal ha-button does not pass `color` through to ha-icon; set icon
+        /* Tonal ha-button does not pass color through to ha-icon; set icon
            tokens explicitly so stop/play match error/success. */
         .row .row-actions ha-button.automatically-update-lights-pause {
           --ha-button-tonal-container-color: color-mix(
