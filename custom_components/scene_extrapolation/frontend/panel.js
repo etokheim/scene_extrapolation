@@ -8854,6 +8854,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._fillHoverReadout(this._idleReadoutSeconds(), { hovering: false });
     this._displayedSunPath = this._sunPath;
   }
+
+  _secondsFromPlotPointer(ev, plots) {
     const rect = plots.getBoundingClientRect();
     const viewX = rect.width
       ? ((ev.clientX - rect.left) / rect.width) * CHART_WIDTH
