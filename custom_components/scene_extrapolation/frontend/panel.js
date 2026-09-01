@@ -1513,10 +1513,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           left: 50%;
           bottom: 50%;
           width: 22px;
-          height: ${(CLOCK_TICK_OUTER / CLOCK_VIEW) * 100}%;
+          /* Tip only (planet rim → tick tips). A full center→rim spoke sat
+             above the light rings and ate dial clicks along the sun angle. */
+          height: ${((CLOCK_TICK_OUTER - CLOCK_RINGS_OUTER) / CLOCK_VIEW) * 100}%;
+          margin-bottom: ${(CLOCK_RINGS_OUTER / CLOCK_VIEW) * 100}%;
           transform-origin: center bottom;
           transform: translateX(-50%) rotate(var(--handle-deg, 0deg));
-          z-index: 8;
+          /* Below .sun-light-clock-rings (7) so the planet keeps ring picks. */
+          z-index: 6;
           cursor: grab;
           pointer-events: auto;
           touch-action: none;
@@ -1573,7 +1577,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: auto;
           cursor: grab;
           touch-action: none;
-          z-index: 7;
+          /* Below rings so an oversized night sun does not steal planet clicks. */
+          z-index: 6;
         }
         /* Hourly ticks on the face (with hour numbers); majors every 6h.
            Text-colored (not white) so light-mode sky wash stays readable;
