@@ -466,11 +466,14 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Surface vignette on L/T/R (max 50% opacity) so date chips, Now
            readout, and event labels read over horizon bleed in light + dark.
-           Long multi-stops ≈ soft blur (hard 88/160 edges read as a hard cut). */
+           Long multi-stops ≈ soft blur (hard 88/160 edges read as a hard cut).
+           Extend under --scene-sidebar-gutter like .clock-horizon-back so the
+           right fade does not hard-cut at the drawer. */
         .sun-path.dial-view::before {
           content: "";
           position: absolute;
           inset: 0;
+          right: calc(-1 * var(--scene-sidebar-gutter));
           z-index: 2;
           pointer-events: none;
           background:
@@ -10721,6 +10724,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const sunrise = this._clockSunriseSeconds;
     const sunset = this._clockSunsetSeconds;
     if (sunrise == null && sunset == null) {
+      this._horizonGlowCacheKey = null;
       el.style.background = "transparent";
       if (this._clockSkyDayEl) {
         this._clockSkyDayEl.setAttribute("fill", "transparent");
@@ -10728,6 +10732,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     const maxElev = Math.max(this._sunPath?.max_elevation || 0, 1e-6);
+    // Skip rebuild when scrub elev has not moved enough to change the wash.
+    const elevQ = Math.round(elev / 0.25) * 0.25;
+    const cacheKey = `${elevQ}|${sunrise}|${sunset}|${maxElev.toFixed(2)}`;
+    if (cacheKey === this._horizonGlowCacheKey) {
+      return;
+    }
+    this._horizonGlowCacheKey = cacheKey;
     // Climb 0 at/below horizon → 1 at that day's peak (smooth; no hard palette cut).
     const climb = Math.min(1, Math.max(0, elev) / maxElev);
     const nearHorizon = elev < 0 ? 1 : 1 - climb;
