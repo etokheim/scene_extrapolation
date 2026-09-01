@@ -409,8 +409,9 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 ## CI lint uses current Home Assistant Requires-Python
 
 - **Date:** 2026-08-30
-- **Decision:** GitHub Actions lint installs `homeassistant` on Python **3.14** (not 3.11). `StaticPathConfig` is imported inside `async_setup_panel`, not at panel module import, so pure unit tests can load package modules even if an older HA is present.
-- **Why:** Unpinned `pip install homeassistant` on 3.11 resolves to ~2024.3, which lacks `StaticPathConfig` / `LockState` and breaks pytest collection via `panel.py`. Current HA requires Python ≥3.14.2.
+- **Superseded in part:** 2026-09-01 — with Python 3.14, CI installs current HA, so `StaticPathConfig` stays a normal top-level import (lazy import tripped pylint `import-outside-toplevel`). Workflows use current `actions/checkout` / `actions/setup-python` majors.
+- **Decision:** GitHub Actions lint/tests use Python **3.14** and install the latest PyPI `homeassistant`.
+- **Why:** Unpinned `pip install homeassistant` on 3.11 resolves to ~2024.3, which lacks `StaticPathConfig` / `LockState` and breaks pytest collection via `panel.py`. Current HA requires Python ≥3.14.2; matching that keeps lint and unit tests on the same API surface as the sandbox.
 - **Do not reverse without user ask.**
 
 ## Work on `dev`; a PR to `master` is a release
