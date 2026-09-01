@@ -81,10 +81,11 @@ const CLOCK_RINGS_INSET_PCT = 50 - CLOCK_RINGS_OUTER / 2;
 /* Wedges/rays cover the square including corners; back layer is slightly
    larger than the face so they land just outside the container. */
 const CLOCK_SKY_R = (CLOCK_VIEW / 2) * Math.SQRT2;
-/* Night wedges: sunset→sunrise = light gray; dusk→dawn = mid gray
-   (readable on light-mode sky wash; still distinct from day blue). */
-const CLOCK_NIGHT_OUTER = "#c4c4c8";
-const CLOCK_NIGHT_DEEP = "#8a8a90";
+/* Night wedges: sunset→sunrise = warm light gray; dusk→dawn = warm mid gray. */
+const CLOCK_NIGHT_OUTER = "#c8c4c0";
+const CLOCK_NIGHT_DEEP = "#8e8884";
+/* Subtle warm bias mixed into day-sky / horizon fills (light + dark). */
+const CLOCK_WARM_TINT = "#f0d2b4";
 /* Outline diameter ≈ 3.47% of dial core (1/3 of the prior 10.4%). */
 const CLOCK_SUN_SIZE_PCT = 10.4 / 3;
 const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
@@ -1494,8 +1495,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           overflow: visible;
           z-index: 5;
           filter:
-            drop-shadow(0 0 8px var(--primary-background-color))
-            drop-shadow(0 1px 6px var(--primary-background-color));
+            drop-shadow(
+              0 0 8px
+                color-mix(in srgb, var(--primary-background-color) 50%, transparent)
+            )
+            drop-shadow(
+              0 1px 6px
+                color-mix(in srgb, var(--primary-background-color) 50%, transparent)
+            );
         }
         .clock-face-ticks .clock-tick {
           stroke: color-mix(in srgb, var(--primary-text-color) 28%, transparent);
@@ -1518,8 +1525,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           pointer-events: none;
           z-index: 7;
           text-shadow:
-            0 0 8px var(--primary-background-color),
-            0 1px 6px var(--primary-background-color);
+            0 0 8px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent),
+            0 1px 6px
+              color-mix(in srgb, var(--primary-background-color) 50%, transparent);
         }
         @media (min-width: 871px) {
           .clock-hour-label {
@@ -10333,13 +10342,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Peach → sky as the sun climbs. A binary nearHorizon threshold flipped the
     // whole conic in one frame mid-morning.
     const peachRaw = glowLook.horizonFill || glowLook.pathColor;
-    const sky = glowLook.skyColor || glowLook.pathColor;
-    // Light mode + multiply: push peach warmer so the rim reads as sunset,
-    // not a muddy gray over the pale sky wash.
+    const skyRaw = glowLook.skyColor || glowLook.pathColor;
+    // Slight warm bias on horizon rim + day-sky fill (not too peachy).
     const light = !this.hasAttribute("data-dark-mode");
+    const warmAmt = light ? 18 : 10;
+    const sky = `color-mix(in srgb, ${skyRaw} ${100 - warmAmt}%, ${CLOCK_WARM_TINT} ${warmAmt}%)`;
     const peach = light
-      ? `color-mix(in srgb, ${peachRaw} 55%, #e8a060 45%)`
-      : peachRaw;
+      ? `color-mix(in srgb, ${peachRaw} 58%, #e8a060 42%)`
+      : `color-mix(in srgb, ${peachRaw} ${100 - warmAmt}%, ${CLOCK_WARM_TINT} ${warmAmt}%)`;
     const peachPct = Math.round(100 * nearHorizon);
     const rimFill =
       peachPct >= 100
@@ -10365,7 +10375,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     el.style.background = `conic-gradient(from 180deg, ${stops.join(", ")})`;
 
-    // Day wedge (sunrise→sunset): Apple Solar–style sky blue behind the planet.
+    // Day wedge (sunrise→sunset): warmed sky blue behind the planet.
     const dayEl = this._clockSkyDayEl;
     if (dayEl) {
       // Bridge civil twilight so fill alpha does not jump at elev=0.
