@@ -1012,5 +1012,3 @@ class ExtrapolationScene(Scene):
             starts[current_key], starts[next_key], seconds
         )
         return day_transition_percent(current_key, next_key, intra)
-
-

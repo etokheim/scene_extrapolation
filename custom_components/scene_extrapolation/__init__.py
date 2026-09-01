@@ -19,6 +19,7 @@ from .const import (
     DOMAIN,
     SCENE_NAME,
 )
+from .native_scene import apply_managed_native_scene_visibility
 from .panel import async_setup_panel, async_unload_panel
 from .store import SceneExtrapolationStore
 from .websocket_api import async_setup_websocket
@@ -178,8 +179,6 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         if store.pending_hide_sync and store.settings.get(
             "hide_managed_native_scenes"
         ):
-            from .native_scene import apply_managed_native_scene_visibility
-
             apply_managed_native_scene_visibility(hass, hidden=True)
             store.pending_hide_sync = False
 
