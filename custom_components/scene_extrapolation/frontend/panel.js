@@ -713,19 +713,34 @@ class SceneExtrapolationPanel extends HTMLElement {
           width: 100%;
           box-sizing: border-box;
         }
-        .sun-toolbar-chrome .sun-hover-readout {
+        /* Must beat `.sun-path.dial-view .sun-hover-readout { position:absolute }`
+           (same specificity, later in the sheet) or time sits on top of chips. */
+        .sun-path.dial-view .sun-toolbar-chrome .sun-hover-readout {
           position: static;
           top: auto;
           left: auto;
           z-index: auto;
+          display: flex;
+          flex-wrap: nowrap;
+          align-items: center;
+          gap: 8px 16px;
           flex: 1 1 10rem;
           min-width: 0;
-          min-height: 0;
+          /* Match chip / reset row height so time+° stay put when reset appears. */
+          min-height: 32px;
           margin: 0;
           padding: 0;
           pointer-events: none;
         }
-        .sun-toolbar-chrome .sun-hover-reset {
+        .sun-path.dial-view .sun-toolbar-chrome .sun-hover-reset-slot {
+          flex: 0 0 32px;
+          width: 32px;
+          height: 32px;
+          display: inline-grid;
+          place-items: center;
+          pointer-events: none;
+        }
+        .sun-path.dial-view .sun-toolbar-chrome .sun-hover-reset {
           pointer-events: auto;
         }
         .sun-toolbar-chrome .sun-chip-row {
@@ -960,6 +975,9 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 5;
           width: min(100%, 500px);
           max-width: 500px;
+          /* Match the 8px gap between legend rows. */
+          padding-inline: 8px;
+          box-sizing: border-box;
           flex: 0 0 auto;
           pointer-events: auto;
         }
@@ -1133,6 +1151,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .sun-light-clock-glow.glow-lg {
           transform: translateZ(0) scale(2.76);
+          /* Outermost bloom: half of the shared glow opacity. */
+          opacity: 0.4075;
+        }
+        :host(:not([data-dark-mode])) .sun-light-clock-glow.glow-lg {
+          opacity: 0.20375;
         }
         .sun-light-clock-glow.glow-md {
           transform: translateZ(0) scale(1.38);
@@ -3185,8 +3208,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           margin-right: calc(-1 * var(--scene-sidebar-gutter));
           width: calc(100% + var(--scene-sidebar-gutter));
           padding-right: var(--scene-sidebar-gutter);
-          /* FAB clearance: former empty .content bottom pad (88) + 64. */
-          padding-bottom: 152px;
+          /* FAB clearance under the light list (~156px). */
+          padding-bottom: 156px;
           box-sizing: border-box;
           position: relative;
           /* Event chips sit near the face edge — do not clip them. */
@@ -3198,15 +3221,14 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Must follow .page.dial-wide { overflow: visible } — that shorthand
            was overriding an earlier mobile overflow-x and letting
-           .clock-horizon-back widen ha-top-app-bar’s .ha-scrollbar. */
+           .clock-horizon-back widen ha-top-app-bar’s .ha-scrollbar.
+           Only clip the page shell / dial-wide — not stage/body/clock, or
+           overflow-x:clip promotes overflow-y to a scrollport and the huge
+           absolute horizon-back inflates scroll height below the light list. */
         @media (max-width: 870px) {
           .page-shell,
           .page.dial-wide,
-          .sun-path.dial-view,
-          .sun-path-stage,
-          .sun-path-body,
-          .sun-light-clock {
-            /* clip keeps overflow-y visible (unlike hidden → auto quirk). */
+          .sun-path.dial-view {
             overflow-x: clip;
           }
         }
@@ -9868,7 +9890,9 @@ class SceneExtrapolationPanel extends HTMLElement {
     const sun = document.createElement("span");
     const elev = interpolateElevation(this._sunPath.curve, seconds);
     sun.textContent = `Sun ${elev.toFixed(1)}°`;
-    readout.append(time, sun);
+    // Always reserve the reset slot so time/° do not shift when sticky.
+    const resetSlot = document.createElement("span");
+    resetSlot.className = "sun-hover-reset-slot";
     if (sticky && this._view === "edit" && this._lightView === "dial") {
       const reset = document.createElement("button");
       reset.type = "button";
@@ -9882,8 +9906,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         ev.stopPropagation();
         this._resetClockSunToNow();
       });
-      readout.appendChild(reset);
+      resetSlot.appendChild(reset);
     }
+    readout.append(time, sun, resetSlot);
   }
 
   _resetClockSunToNow() {
@@ -10301,10 +10326,16 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const cx = fr.left + fr.width / 2;
     const cy = fr.top + fr.height / 2;
-    // Reach the light list under the face so horizon/bloom fill behind it.
+    // Reach the light list under the face so horizon/bloom fill behind it —
+    // but stop ~156px past the list so an abspos back cannot inflate scroll
+    // height when an ancestor becomes a scrollport (overflow-x: clip quirk).
     const clock = face.closest(".sun-light-clock");
-    const clockBottom =
-      clock?.getBoundingClientRect().bottom ?? Math.max(fr.bottom, host.bottom);
+    const legend = this._clockLegendEl;
+    const listBottom =
+      legend?.getBoundingClientRect().bottom ??
+      clock?.getBoundingClientRect().bottom ??
+      fr.bottom;
+    const contentBottom = listBottom + 156;
     // Cover the full panel host from the face center — including when the
     // dial shifts left for an open sidebar (gutter). Axis + corners so a
     // square always fills the viewport under the drawer.
@@ -10312,12 +10343,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       cx - host.left,
       host.right - cx,
       cy - host.top,
-      host.bottom - cy,
-      clockBottom - cy,
+      Math.min(host.bottom, contentBottom) - cy,
+      contentBottom - cy,
       Math.hypot(cx - host.left, cy - host.top),
       Math.hypot(host.right - cx, cy - host.top),
-      Math.hypot(cx - host.left, host.bottom - cy),
-      Math.hypot(host.right - cx, host.bottom - cy),
+      Math.hypot(cx - host.left, Math.min(host.bottom, contentBottom) - cy),
+      Math.hypot(host.right - cx, Math.min(host.bottom, contentBottom) - cy),
       fr.width * 0.62
     );
     const side = reach * 2 + 2;
