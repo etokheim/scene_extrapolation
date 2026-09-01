@@ -81,11 +81,13 @@ const CLOCK_RINGS_INSET_PCT = 50 - CLOCK_RINGS_OUTER / 2;
 /* Wedges/rays cover the square including corners; back layer is slightly
    larger than the face so they land just outside the container. */
 const CLOCK_SKY_R = (CLOCK_VIEW / 2) * Math.SQRT2;
-/* Night wedges: sunset→sunrise / dusk→dawn — warmer, light-leaning grays. */
-const CLOCK_NIGHT_OUTER = "#dbd2c8";
-const CLOCK_NIGHT_DEEP = "#aea299";
-/* Warm bias mixed into day-sky / horizon fills. */
-const CLOCK_WARM_TINT = "#f6d6a8";
+/* Night wedges: light theme = warm gray; dark theme = near-black (CSS vars). */
+const CLOCK_NIGHT_OUTER_LIGHT = "#e4d8cc";
+const CLOCK_NIGHT_DEEP_LIGHT = "#bba89a";
+const CLOCK_NIGHT_OUTER_DARK = "#101218";
+const CLOCK_NIGHT_DEEP_DARK = "#06070b";
+/* Crispy day sky (light mode day wedge / daytime horizon glow). */
+const CLOCK_DAY_SKY_LIGHT = "rgb(79, 179, 255)";
 /* Outline diameter ≈ 3.47% of dial core (1/3 of the prior 10.4%). */
 const CLOCK_SUN_SIZE_PCT = 10.4 / 3;
 const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
@@ -436,6 +438,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           background: var(--primary-background-color);
           color: var(--primary-text-color);
           --scene-sidebar-gutter: 0px;
+          /* Night wedges: warm gray in light; near-black in dark. */
+          --clock-night-outer: ${CLOCK_NIGHT_OUTER_LIGHT};
+          --clock-night-deep: ${CLOCK_NIGHT_DEEP_LIGHT};
+        }
+        :host([data-dark-mode]) {
+          --clock-night-outer: ${CLOCK_NIGHT_OUTER_DARK};
+          --clock-night-deep: ${CLOCK_NIGHT_DEEP_DARK};
         }
         /* ha-panel-custom often computes to 0 height, so 100% on the app bar
            collapses. Fill the viewport, then stretch the bar to this host. */
@@ -1347,11 +1356,11 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .clock-horizon-sky .clock-sky-night {
           /* Sunset→sunrise shadow (outer night). */
-          fill: color-mix(in srgb, ${CLOCK_NIGHT_OUTER} 72%, transparent);
+          fill: color-mix(in srgb, var(--clock-night-outer) 72%, transparent);
         }
         .clock-horizon-sky .clock-sky-deep {
           /* Dusk→dawn wrap (deeper band). */
-          fill: color-mix(in srgb, ${CLOCK_NIGHT_DEEP} 78%, transparent);
+          fill: color-mix(in srgb, var(--clock-night-deep) 78%, transparent);
         }
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
@@ -1744,11 +1753,30 @@ class SceneExtrapolationPanel extends HTMLElement {
           opacity: 0.92;
         }
         .clock-legend-row.unavailable {
-          opacity: 0.62;
+          opacity: 0.55;
+          filter: grayscale(1);
+          pointer-events: none;
+        }
+        .clock-legend-row.unavailable .clock-legend-icon-wrap {
+          background: color-mix(
+            in srgb,
+            var(--disabled-text-color, var(--secondary-text-color)) 18%,
+            transparent
+          );
+          color: var(--disabled-text-color, var(--secondary-text-color));
         }
         .clock-legend-row.unavailable .clock-legend-title,
+        .clock-legend-row.unavailable .clock-legend-sub,
         .light-row.unavailable .light-name {
-          color: var(--secondary-text-color);
+          color: var(--disabled-text-color, var(--secondary-text-color));
+        }
+        .light-row.unavailable {
+          opacity: 0.55;
+          filter: grayscale(1);
+          pointer-events: none;
+        }
+        .light-row.unavailable .light-bar {
+          filter: grayscale(1);
         }
         .clock-legend-icon-wrap {
           flex-shrink: 0;
@@ -3110,6 +3138,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           margin-right: calc(-1 * var(--scene-sidebar-gutter));
           width: calc(100% + var(--scene-sidebar-gutter));
           padding-right: var(--scene-sidebar-gutter);
+          /* FAB clearance: former empty .content bottom pad (88) + 64. */
+          padding-bottom: 152px;
           box-sizing: border-box;
           position: relative;
           /* Event chips sit near the face edge — do not clip them. */
@@ -3199,6 +3229,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           z-index: 5;
           padding: var(--ha-space-3) 0 88px;
+        }
+        /* Dial editor leaves content empty — do not reserve FAB pad twice. */
+        .content:empty {
+          display: none;
+          padding: 0;
         }
         .content.wide {
           width: 100%;
@@ -10317,7 +10352,85 @@ class SceneExtrapolationPanel extends HTMLElement {
     return 0.5 * (1 + Math.cos((delta / band) * Math.PI));
   }
 
-  _updateHorizonGlow(elev, glowLook) {
+  /**
+   * Horizon rim / day-wedge palette from solar elevation.
+   * After sunset: warm peach → pink → purple → dark blue → night.
+   * Light day: crispy sky blue; light night: dark (not gray).
+   */
+  _horizonAuraAtElevation(elev) {
+    const light = !this.hasAttribute("data-dark-mode");
+    // Keys are absolute colors (no peach warm-tint pass). Horizon (+0) is three
+    // steps warmer than the prior #edb070 mix.
+    const keys = light
+      ? [
+          { e: -90, rim: "#08101c" },
+          { e: -28, rim: "#0c1a38" },
+          { e: -18, rim: "#1a2a6c" },
+          { e: -12, rim: "#6b3fa0" },
+          { e: -5, rim: "#e878a0" },
+          { e: 0, rim: "#f5a45c" },
+          { e: 5, rim: "#7ec8ff" },
+          { e: 10, rim: CLOCK_DAY_SKY_LIGHT },
+          { e: 90, rim: CLOCK_DAY_SKY_LIGHT },
+        ]
+      : [
+          { e: -90, rim: "rgb(4, 6, 14)" },
+          { e: -28, rim: "rgb(10, 16, 40)" },
+          { e: -18, rim: "rgb(26, 42, 108)" },
+          { e: -12, rim: "rgb(120, 70, 180)" },
+          { e: -5, rim: "rgb(232, 120, 160)" },
+          { e: 0, rim: "rgb(245, 164, 92)" },
+          { e: 8, rim: "rgb(79, 179, 255)" },
+          { e: 90, rim: "rgb(64, 165, 250)" },
+        ];
+    let lo = keys[0];
+    let hi = keys[keys.length - 1];
+    for (let i = 0; i < keys.length - 1; i += 1) {
+      if (elev >= keys[i].e && elev <= keys[i + 1].e) {
+        lo = keys[i];
+        hi = keys[i + 1];
+        break;
+      }
+      if (elev < keys[0].e) {
+        lo = hi = keys[0];
+        break;
+      }
+    }
+    if (elev > keys[keys.length - 1].e) {
+      lo = hi = keys[keys.length - 1];
+    }
+    const span = hi.e - lo.e || 1;
+    const t = lo === hi ? 0 : (elev - lo.e) / span;
+    const parse = (c) => {
+      if (c.startsWith("#")) {
+        return [
+          parseInt(c.slice(1, 3), 16),
+          parseInt(c.slice(3, 5), 16),
+          parseInt(c.slice(5, 7), 16),
+        ];
+      }
+      const m = c.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      return m
+        ? [Number(m[1]), Number(m[2]), Number(m[3])]
+        : [79, 179, 255];
+    };
+    const a = parse(lo.rim);
+    const b = parse(hi.rim);
+    const rgb = [
+      Math.round(a[0] + (b[0] - a[0]) * t),
+      Math.round(a[1] + (b[1] - a[1]) * t),
+      Math.round(a[2] + (b[2] - a[2]) * t),
+    ];
+    const rim = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    const daySky = light
+      ? CLOCK_DAY_SKY_LIGHT
+      : elev >= 4
+        ? rim
+        : "rgb(79, 179, 255)";
+    return { rim, daySky, light };
+  }
+
+  _updateHorizonGlow(elev, _glowLook) {
     const el = this._clockHorizonGlowEl;
     if (!el) {
       return;
@@ -10341,26 +10454,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Cosine ramp is smooth enough at 36 stops; half the scrub-time string work.
     const steps = 36;
     const stops = [];
-    // Peach → sky as the sun climbs. A binary nearHorizon threshold flipped the
-    // whole conic in one frame mid-morning.
-    const peachRaw = glowLook.horizonFill || glowLook.pathColor;
-    const skyRaw = glowLook.skyColor || glowLook.pathColor;
-    // Warmer + lighter day sky / horizon rim (still reads as sky, not peach).
-    const light = !this.hasAttribute("data-dark-mode");
-    const warmAmt = light ? 36 : 20;
-    const lightenAmt = light ? 16 : 10;
-    const skyWarmed = `color-mix(in srgb, ${skyRaw} ${100 - warmAmt}%, ${CLOCK_WARM_TINT} ${warmAmt}%)`;
-    const sky = `color-mix(in srgb, ${skyWarmed} ${100 - lightenAmt}%, white ${lightenAmt}%)`;
-    const peach = light
-      ? `color-mix(in srgb, ${peachRaw} 38%, #edb070 62%)`
-      : `color-mix(in srgb, ${peachRaw} ${100 - warmAmt}%, ${CLOCK_WARM_TINT} ${warmAmt}%)`;
-    const peachPct = Math.round(100 * nearHorizon);
-    const rimFill =
-      peachPct >= 100
-        ? peach
-        : peachPct <= 0
-          ? sky
-          : `color-mix(in srgb, ${peach} ${peachPct}%, ${sky})`;
+    const { rim: rimFill, daySky, light } = this._horizonAuraAtElevation(elev);
     // Multiply is darker than screen — lift strength a bit in light mode.
     const strengthScale = light ? 1.15 : 1;
     for (let i = 0; i <= steps; i += 1) {
@@ -10379,7 +10473,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     el.style.background = `conic-gradient(from 180deg, ${stops.join(", ")})`;
 
-    // Day wedge (sunrise→sunset): warmed sky blue behind the planet.
+    // Day wedge (sunrise→sunset): crispy sky blue in light; elevation sky in dark.
     const dayEl = this._clockSkyDayEl;
     if (dayEl) {
       // Bridge civil twilight so fill alpha does not jump at elev=0.
@@ -10388,7 +10482,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       const dayAlpha = 0.16 + 0.26 * twilight + 0.38 * climb;
       dayEl.setAttribute(
         "fill",
-        `color-mix(in srgb, ${sky} ${Math.round(dayAlpha * 100)}%, transparent)`
+        `color-mix(in srgb, ${daySky} ${Math.round(dayAlpha * 100)}%, transparent)`
       );
     }
   }

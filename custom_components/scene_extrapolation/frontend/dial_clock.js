@@ -148,14 +148,14 @@ function interpolateElevation(curve, seconds) {
 }
 
 /** Sky glow + sun flare palette from solar elevation (degrees).
- *  Aligned with Apple Solar-style faces: day = sky blue / periwinkle;
- *  horizon = narrow muted peach (never hot pink); night = deep navy. */
+ *  Day = crispy sky blue; horizon = warm peach; after sunset =
+ *  pink → purple → dark blue → deep night (matches dial rim aura). */
 function skyLookFromElevation(elev) {
   const keys = [
     {
       e: -90,
-      outer: [4, 6, 14],
-      mid: [8, 10, 22],
+      outer: [8, 16, 28],
+      mid: [10, 18, 36],
       glowOpacity: 0.16,
       sunCore: "#c5d0e8",
       sunCorona: "#6a7a9a",
@@ -165,60 +165,74 @@ function skyLookFromElevation(elev) {
       ghostOpacity: 0.1,
     },
     {
+      // Deep blue night after astronomical dusk.
+      e: -28,
+      outer: [12, 26, 56],
+      mid: [18, 36, 80],
+      glowOpacity: 0.2,
+      sunCore: "#c8d0e8",
+      sunCorona: "#6a7a9a",
+      sunStreak: "#9aa8c4",
+      streakOpacity: 0.14,
+      rayOpacity: 0.1,
+      ghostOpacity: 0.12,
+    },
+    {
       e: -18,
-      outer: [12, 18, 42],
-      mid: [18, 26, 58],
-      glowOpacity: 0.22,
+      outer: [26, 42, 108],
+      mid: [40, 55, 140],
+      glowOpacity: 0.28,
       sunCore: "#d0daf0",
       sunCorona: "#7a8ab0",
       sunStreak: "#a8b6d4",
-      streakOpacity: 0.18,
-      rayOpacity: 0.12,
-      ghostOpacity: 0.14,
+      streakOpacity: 0.2,
+      rayOpacity: 0.14,
+      ghostOpacity: 0.16,
     },
     {
+      // Purple band after sunset.
       e: -12,
-      outer: [28, 48, 108],
-      mid: [48, 72, 140],
-      glowOpacity: 0.42,
-      sunCore: "#e4ecff",
-      sunCorona: "#7a94c8",
-      sunStreak: "#b0c4ff",
-      streakOpacity: 0.3,
-      rayOpacity: 0.18,
-      ghostOpacity: 0.2,
+      outer: [80, 48, 140],
+      mid: [120, 70, 180],
+      glowOpacity: 0.45,
+      sunCore: "#ece4ff",
+      sunCorona: "#a888d0",
+      sunStreak: "#c8b0e8",
+      streakOpacity: 0.32,
+      rayOpacity: 0.2,
+      ghostOpacity: 0.22,
     },
     {
-      // Civil twilight — cool periwinkle, only a hint of warmth.
-      e: -4,
-      outer: [88, 108, 168],
-      mid: [140, 148, 188],
-      glowOpacity: 0.55,
-      sunCore: "#f0eef8",
-      sunCorona: "#c8b8d8",
-      sunStreak: "#ddd0e8",
-      streakOpacity: 0.45,
-      rayOpacity: 0.28,
-      ghostOpacity: 0.28,
+      // Civil twilight — pink afterglow.
+      e: -5,
+      outer: [200, 100, 140],
+      mid: [232, 120, 160],
+      glowOpacity: 0.58,
+      sunCore: "#fff0f4",
+      sunCorona: "#e8a0b8",
+      sunStreak: "#f0c0d0",
+      streakOpacity: 0.48,
+      rayOpacity: 0.3,
+      ghostOpacity: 0.3,
     },
     {
-      // Horizon — muted peach / apricot band, not saturated pink-red.
+      // Horizon — warmer peach / apricot (three steps warmer than prior).
       e: 0,
-      outer: [150, 138, 178],
-      mid: [220, 186, 168],
-      glowOpacity: 0.62,
+      outer: [230, 150, 100],
+      mid: [245, 164, 92],
+      glowOpacity: 0.64,
       sunCore: "#fff4ea",
-      sunCorona: "#e8c4a8",
-      sunStreak: "#f0d8c4",
+      sunCorona: "#f0b878",
+      sunStreak: "#f8d4a8",
       streakOpacity: 0.55,
       rayOpacity: 0.35,
       ghostOpacity: 0.32,
     },
     {
-      // Just above — soft peach into clear day sky.
-      e: 4,
-      outer: [100, 165, 230],
-      mid: [210, 200, 205],
+      // Just above — peach into crispy day sky.
+      e: 5,
+      outer: [100, 180, 245],
+      mid: [180, 210, 235],
       glowOpacity: 0.58,
       sunCore: "#fff8f2",
       sunCorona: "#e8d0b8",
