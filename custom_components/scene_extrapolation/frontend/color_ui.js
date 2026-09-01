@@ -17,7 +17,11 @@ const HUE_PIN_PATH =
   "M 24,0 C 10.745166,0 0,10.575951 0,23.622046 0,39.566928 21,57.578739 22.05,58.346457 L 24,60 25.95,58.346457 C 27,57.578739 48,39.566928 48,23.622046 48,10.575951 37.254834,0 24,0 Z";
 const HUE_DOT_PATH = "M6 0A6 6 0 006 12 6 6 0 006 0Z";
 const HUE_DOT_OUTLINE_PATH = "M8 0A8 8 0 008 16 8 8 0 008 0Z";
-const HUE_PATH_STEPS = 24;
+/* Cosmetic path density only — lerp math is unchanged (same samples as runtime). */
+const HUE_PATH_STEPS = 72;
+/* Same-mode HS: near-constant sat → denser polar samples (~deg per step). */
+const HUE_PATH_HS_DEG_PER_STEP = 2.5;
+const HUE_PATH_HS_SAT_EPS = 0.03;
 const _hueWheelImageCache = new Map();
 
 function hueLinearScale(t, min, max) {
@@ -582,6 +586,107 @@ function interpolateDraftSample(fromDraft, toDraft, t) {
       lerpNumber(start[2], end[2], t),
     ],
   };
+}
+
+/** Steps for a wheel-path edge (cosmetic denser than runtime; same lerp). */
+function huePathStepCount(fromDraft, toDraft, wheelMode) {
+  const fromKind = inferDraftColorKind(fromDraft);
+  const toKind = inferDraftColorKind(toDraft);
+  if (
+    wheelMode === "color" &&
+    fromKind === "hs" &&
+    toKind === "hs" &&
+    fromDraft?.hs_color &&
+    toDraft?.hs_color
+  ) {
+    const hueDelta = Math.abs(toDraft.hs_color[0] - fromDraft.hs_color[0]);
+    const satDelta =
+      Math.abs(toDraft.hs_color[1] - fromDraft.hs_color[1]) / 100;
+    if (satDelta <= HUE_PATH_HS_SAT_EPS) {
+      // Near-constant sat: follow the rim with ~2.5° chords.
+      return Math.max(
+        HUE_PATH_STEPS,
+        Math.ceil(Math.max(hueDelta, 1) / HUE_PATH_HS_DEG_PER_STEP)
+      );
+    }
+    // Sat-varying HS: denser samples before Catmull-Rom stroke.
+    return Math.max(HUE_PATH_STEPS, 96);
+  }
+  return HUE_PATH_STEPS;
+}
+
+function huePathEdgeIsVaryingHs(fromDraft, toDraft, wheelMode) {
+  const fromKind = inferDraftColorKind(fromDraft);
+  const toKind = inferDraftColorKind(toDraft);
+  if (
+    wheelMode !== "color" ||
+    fromKind !== "hs" ||
+    toKind !== "hs" ||
+    !fromDraft?.hs_color ||
+    !toDraft?.hs_color
+  ) {
+    return false;
+  }
+  return (
+    Math.abs(toDraft.hs_color[1] - fromDraft.hs_color[1]) / 100 >
+    HUE_PATH_HS_SAT_EPS
+  );
+}
+
+/** Sample the same lerp as runtime onto wheel coordinates. */
+function sampleHuePathEdge(fromDraft, toDraft, wheelMode, radius, tempMin, tempMax) {
+  const steps = huePathStepCount(fromDraft, toDraft, wheelMode);
+  const pts = [];
+  for (let step = 0; step <= steps; step += 1) {
+    const sample = interpolateDraftSample(fromDraft, toDraft, step / steps);
+    const point = wheelPointForSample(
+      sample,
+      wheelMode,
+      radius,
+      tempMin,
+      tempMax
+    );
+    if (point) {
+      pts.push(point);
+    }
+  }
+  return pts;
+}
+
+function polylinePathD(pts) {
+  return pts
+    .map(
+      (pt, index) =>
+        `${index ? "L" : "M"}${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`
+    )
+    .join(" ");
+}
+
+/** Uniform Catmull-Rom → cubic Bezier path (cosmetic stroke only). */
+function catmullRomPathD(pts) {
+  if (pts.length < 2) {
+    return "";
+  }
+  if (pts.length === 2) {
+    return polylinePathD(pts);
+  }
+  let d = `M${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const p0 = pts[i === 0 ? i : i - 1];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return d;
+}
+
+function huePathStrokeD(pts, smooth) {
+  return smooth && pts.length >= 3 ? catmullRomPathD(pts) : polylinePathD(pts);
 }
 
 function colorWheelXY(hue, saturation, radius) {
@@ -1450,58 +1555,37 @@ function createSceneColorWheel({
       if (!from || !to) {
         continue;
       }
-      const pts = [];
-      for (let step = 0; step <= HUE_PATH_STEPS; step += 1) {
-        const sample = interpolateDraftSample(
-          from.draft,
-          to.draft,
-          step / HUE_PATH_STEPS
-        );
-        const point = wheelPointForSample(
-          sample,
-          mode,
-          radius,
-          tempMin,
-          tempMax
-        );
-        if (point) {
-          pts.push(point);
-        }
-      }
+      const pts = sampleHuePathEdge(
+        from.draft,
+        to.draft,
+        mode,
+        radius,
+        tempMin,
+        tempMax
+      );
       if (pts.length >= 2) {
-        edges.push(pts);
+        edges.push({
+          pts,
+          smooth: huePathEdgeIsVaryingHs(from.draft, to.draft, mode),
+        });
       }
     }
     const ns = "http://www.w3.org/2000/svg";
-    for (const pts of edges) {
+    for (const edge of edges) {
       const under = document.createElementNS(ns, "path");
       under.setAttribute("class", "hue-path-under");
-      under.setAttribute(
-        "d",
-        pts
-          .map(
-            (pt, index) =>
-              `${index ? "L" : "M"}${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`
-          )
-          .join(" ")
-      );
+      under.setAttribute("d", huePathStrokeD(edge.pts, edge.smooth));
       pathLayer.appendChild(under);
     }
-    for (const pts of edges) {
+    for (const edge of edges) {
       const mid = document.createElementNS(ns, "path");
       mid.setAttribute("class", "hue-path-mid");
-      mid.setAttribute(
-        "d",
-        pts
-          .map(
-            (pt, index) =>
-              `${index ? "L" : "M"}${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`
-          )
-          .join(" ")
-      );
+      mid.setAttribute("d", huePathStrokeD(edge.pts, edge.smooth));
       pathLayer.appendChild(mid);
     }
-    for (const pts of edges) {
+    // Colored rim stays dense straight chords (matches lerp samples / rgb).
+    for (const edge of edges) {
+      const { pts } = edge;
       for (let index = 1; index < pts.length; index += 1) {
         const start = pts[index - 1];
         const end = pts[index];
@@ -1740,6 +1824,11 @@ export {
   interpolateDraftSample,
   colorWheelXY,
   wheelPointForSample,
+  huePathStepCount,
+  sampleHuePathEdge,
+  polylinePathD,
+  catmullRomPathD,
+  huePathStrokeD,
   hueColorAt,
   hueTempAt,
   coordinatesForColor,
