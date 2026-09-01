@@ -10359,101 +10359,155 @@ class SceneExtrapolationPanel extends HTMLElement {
     return 0.5 * (1 + Math.cos((delta / band) * Math.PI));
   }
 
-  /**
-   * Multi-stop sunset spectrum (core → outer) for the horizon rim band.
-   * Light mode stays soft — no near-black dusk. Outer stop is always the
-   * surface so the wash dissolves into the panel background.
-   */
-  _horizonSpectrum(elev) {
-    const light = !this.hasAttribute("data-dark-mode");
-    const SURFACE = "var(--primary-background-color)";
-    // Day: crispy sky into surface (no dusk pinks).
-    if (elev >= 8) {
-      return light
-        ? [CLOCK_DAY_SKY_LIGHT, "#9ecfff", "#c8e6ff", SURFACE]
-        : ["rgb(79, 179, 255)", "rgb(56, 130, 220)", "rgb(28, 64, 120)", SURFACE];
-    }
-    // Climbing / near-horizon: peach → pink → mauve → sky → surface.
-    if (elev >= -2) {
-      return light
-        ? ["#f5a45c", "#f08a78", "#e878a0", "#c4a0d4", "#9ecfff", SURFACE]
-        : [
-            "rgb(245, 164, 92)",
-            "rgb(240, 130, 110)",
-            "rgb(232, 120, 160)",
-            "rgb(150, 90, 180)",
-            "rgb(70, 120, 200)",
-            SURFACE,
-          ];
-    }
-    // After sunset: pink → purple → blue → surface (soft blues in light).
-    if (elev >= -18) {
-      return light
-        ? ["#e878a0", "#d090c8", "#a8a0d8", "#9eb0d8", "#c5d0e4", SURFACE]
-        : [
-            "rgb(232, 120, 160)",
-            "rgb(160, 90, 180)",
-            "rgb(90, 70, 160)",
-            "rgb(40, 55, 130)",
-            "rgb(16, 24, 56)",
-            SURFACE,
-          ];
-    }
-    // Deep night: muted cool wash into surface — light stays pale.
-    return light
-      ? ["#b8c0d4", "#c8d0e0", "#d8dee8", SURFACE]
-      : ["rgb(26, 42, 108)", "rgb(14, 22, 48)", "rgb(8, 12, 28)", SURFACE];
+  _rgbCss(rgb) {
+    return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
   }
 
-  /** Color along spectrum for band weight 1 (event) → 0 (far / surface). */
-  _horizonBandColor(weight, elev) {
-    const spectrum = this._horizonSpectrum(elev);
-    const u = 1 - Math.min(1, Math.max(0, weight));
-    const last = spectrum.length - 1;
-    const pos = u * last;
-    const i = Math.min(last - 1, Math.floor(pos));
-    const f = pos - i;
-    const a = spectrum[i];
-    const b = spectrum[i + 1];
-    const pct = Math.round((1 - f) * 100);
-    if (pct >= 100) {
-      return a;
-    }
-    if (pct <= 0) {
-      return b;
-    }
-    return `color-mix(in srgb, ${a} ${pct}%, ${b})`;
+  _lerpRgb(a, b, t) {
+    return [
+      Math.round(a[0] + (b[0] - a[0]) * t),
+      Math.round(a[1] + (b[1] - a[1]) * t),
+      Math.round(a[2] + (b[2] - a[2]) * t),
+    ];
   }
 
   /**
-   * Horizon rim / day-wedge palette from solar elevation.
-   * After sunset: warm peach → pink → purple → blue (soft in light mode).
-   * Light day: crispy sky blue.
+   * Continuous core→outer RGB stops for the horizon rim (then → surface).
+   * Dark palette keeps the prior peach→pink→purple→blue feel; light stays soft.
+   * Elevation keyframes share the same stop count so scrub never jumps.
+   * Inspired by Rayleigh dusk (gold/orange near sun) + ozone pink/purple twilight.
    */
-  _horizonAuraAtElevation(elev) {
+  _horizonSpectrumStops(elev) {
     const light = !this.hasAttribute("data-dark-mode");
-    // Light keys stay mid/soft — no near-black rim colors on a light surface.
+    // 5 stops: near-sun → mid → far, then caller mixes into surface.
     const keys = light
       ? [
-          { e: -90, rim: "#c8d0e0" },
-          { e: -28, rim: "#b0bcd4" },
-          { e: -18, rim: "#a8a0d8" },
-          { e: -12, rim: "#d090c8" },
-          { e: -5, rim: "#e878a0" },
-          { e: 0, rim: "#f5a45c" },
-          { e: 5, rim: "#7ec8ff" },
-          { e: 10, rim: CLOCK_DAY_SKY_LIGHT },
-          { e: 90, rim: CLOCK_DAY_SKY_LIGHT },
+          {
+            e: -90,
+            stops: [
+              [176, 186, 210],
+              [186, 196, 216],
+              [200, 208, 222],
+              [212, 218, 230],
+              [224, 228, 236],
+            ],
+          },
+          {
+            e: -18,
+            stops: [
+              [232, 140, 168],
+              [200, 140, 196],
+              [168, 154, 210],
+              [168, 184, 220],
+              [200, 210, 228],
+            ],
+          },
+          {
+            e: -6,
+            stops: [
+              [240, 150, 120],
+              [236, 130, 140],
+              [220, 130, 170],
+              [180, 160, 210],
+              [170, 196, 230],
+            ],
+          },
+          {
+            e: 0,
+            // Gold → coral → pink → mauve → soft sky (classic spectrogram dusk).
+            stops: [
+              [255, 178, 88],
+              [245, 140, 96],
+              [236, 120, 150],
+              [196, 148, 210],
+              [158, 200, 245],
+            ],
+          },
+          {
+            e: 8,
+            stops: [
+              [126, 200, 255],
+              [140, 206, 255],
+              [168, 216, 250],
+              [196, 228, 252],
+              [220, 238, 255],
+            ],
+          },
+          {
+            e: 90,
+            stops: [
+              [79, 179, 255],
+              [120, 198, 255],
+              [158, 214, 252],
+              [190, 226, 255],
+              [220, 238, 255],
+            ],
+          },
         ]
       : [
-          { e: -90, rim: "rgb(4, 6, 14)" },
-          { e: -28, rim: "rgb(10, 16, 40)" },
-          { e: -18, rim: "rgb(26, 42, 108)" },
-          { e: -12, rim: "rgb(120, 70, 180)" },
-          { e: -5, rim: "rgb(232, 120, 160)" },
-          { e: 0, rim: "rgb(245, 164, 92)" },
-          { e: 8, rim: "rgb(79, 179, 255)" },
-          { e: 90, rim: "rgb(64, 165, 250)" },
+          {
+            e: -90,
+            stops: [
+              [8, 12, 28],
+              [10, 16, 40],
+              [14, 22, 48],
+              [18, 28, 64],
+              [26, 42, 90],
+            ],
+          },
+          {
+            e: -18,
+            // Afterglow: pink → purple → indigo → deep blue (prior dark look).
+            stops: [
+              [232, 120, 160],
+              [160, 90, 180],
+              [90, 70, 160],
+              [40, 55, 130],
+              [16, 24, 56],
+            ],
+          },
+          {
+            e: -6,
+            stops: [
+              [245, 140, 110],
+              [236, 120, 150],
+              [180, 95, 175],
+              [100, 80, 170],
+              [45, 70, 150],
+            ],
+          },
+          {
+            e: 0,
+            // Gold/orange core (Rayleigh), then pink, mauve, blue — prior peach
+            // palette nudged slightly warmer/gold at the sun.
+            stops: [
+              [255, 170, 85],
+              [245, 140, 100],
+              [232, 120, 160],
+              [150, 90, 180],
+              [70, 120, 200],
+            ],
+          },
+          {
+            e: 8,
+            stops: [
+              [100, 185, 250],
+              [79, 179, 255],
+              [70, 150, 230],
+              [50, 110, 190],
+              [36, 80, 150],
+            ],
+          },
+          {
+            e: 90,
+            stops: [
+              [79, 179, 255],
+              [64, 165, 250],
+              [50, 130, 220],
+              [36, 90, 170],
+              [28, 64, 120],
+            ],
+          },
         ];
     let lo = keys[0];
     let hi = keys[keys.length - 1];
@@ -10473,33 +10527,45 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     const span = hi.e - lo.e || 1;
     const t = lo === hi ? 0 : (elev - lo.e) / span;
-    const parse = (c) => {
-      if (c.startsWith("#")) {
-        return [
-          parseInt(c.slice(1, 3), 16),
-          parseInt(c.slice(3, 5), 16),
-          parseInt(c.slice(5, 7), 16),
-        ];
+    return lo.stops.map((a, i) => this._lerpRgb(a, hi.stops[i], t));
+  }
+
+  /** Color along spectrum for band weight 1 (event) → 0 (surface). */
+  _horizonBandColor(weight, spectrumStops) {
+    const SURFACE = "var(--primary-background-color)";
+    const u = 1 - Math.min(1, Math.max(0, weight));
+    // Evenly space RGB stops, then a final segment into the surface color.
+    const n = spectrumStops.length;
+    const pos = u * n;
+    if (pos >= n - 1e-6) {
+      return SURFACE;
+    }
+    const i = Math.min(n - 1, Math.floor(pos));
+    const f = pos - i;
+    if (i >= n - 1) {
+      const pct = Math.round((1 - f) * 100);
+      if (pct >= 100) {
+        return this._rgbCss(spectrumStops[n - 1]);
       }
-      const m = c.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-      return m
-        ? [Number(m[1]), Number(m[2]), Number(m[3])]
-        : [79, 179, 255];
-    };
-    const a = parse(lo.rim);
-    const b = parse(hi.rim);
-    const rgb = [
-      Math.round(a[0] + (b[0] - a[0]) * t),
-      Math.round(a[1] + (b[1] - a[1]) * t),
-      Math.round(a[2] + (b[2] - a[2]) * t),
-    ];
-    const rim = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-    const daySky = light
-      ? CLOCK_DAY_SKY_LIGHT
-      : elev >= 4
-        ? rim
-        : "rgb(79, 179, 255)";
-    return { rim, daySky, light };
+      if (pct <= 0) {
+        return SURFACE;
+      }
+      return `color-mix(in srgb, ${this._rgbCss(spectrumStops[n - 1])} ${pct}%, ${SURFACE})`;
+    }
+    return this._rgbCss(this._lerpRgb(spectrumStops[i], spectrumStops[i + 1], f));
+  }
+
+  /**
+   * Day-wedge sky from elevation (smooth; light = crispy blue).
+   */
+  _horizonDaySky(elev, spectrumStops) {
+    const light = !this.hasAttribute("data-dark-mode");
+    if (light) {
+      return CLOCK_DAY_SKY_LIGHT;
+    }
+    return elev >= 4
+      ? this._rgbCss(spectrumStops[0])
+      : "rgb(79, 179, 255)";
   }
 
   _updateHorizonGlow(elev, _glowLook) {
@@ -10522,11 +10588,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     const nearHorizon = elev < 0 ? 1 : 1 - climb;
     // Keep some wash at noon so sky blue still peeks; stronger near horizon.
     const strength = 0.42 + 0.58 * nearHorizon;
-    // Wider than the prior 2.5h so peach→pink→purple→blue can stretch into surface.
+    // Wider band so gold→pink→purple→blue can stretch into surface.
     const band = 5 * 3600;
     const steps = 48;
     const stops = [];
-    const { daySky } = this._horizonAuraAtElevation(elev);
+    const spectrum = this._horizonSpectrumStops(elev);
+    const daySky = this._horizonDaySky(elev, spectrum);
     for (let i = 0; i <= steps; i += 1) {
       const seconds = (i / steps) * SECONDS_PER_DAY;
       let weight = 0;
@@ -10537,9 +10604,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         weight = Math.max(weight, this._horizonWeight(seconds, sunset, band));
       }
       const mix = Math.min(1, weight * strength);
-      // Multi-color falloff → surface (not a single tint → transparent).
       stops.push(
-        `${this._horizonBandColor(mix, elev)} ${((i / steps) * 100).toFixed(2)}%`
+        `${this._horizonBandColor(mix, spectrum)} ${((i / steps) * 100).toFixed(2)}%`
       );
     }
     el.style.background = `conic-gradient(from 180deg, ${stops.join(", ")})`;
