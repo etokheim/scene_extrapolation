@@ -447,7 +447,8 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 
 - **Date:** 2026-09-01
 - **Decision:** Preview date changes morph sun path + light rings over 1.5s with cubic ease-out (`1-(1-u)³`). Solar-event sun moves use the same duration and curve. After year-scrub release, morph client rings to the HA preview (~0.8s) instead of swapping DOM/gradients in one frame. Quintic ease-out raced to the end then crawled; cubic decelerates across more of the span.
-- **Why:** Instant date jumps and the coarse→Astral ring swap read as flicker. A longer ease-out is the requested motion.
+- **Superseded in part:** 2026-09-01 — scrub-release refine densifies 5-event knot samples onto a 5-minute grid before morphing to Astral (avoids CSS-conic→dense flash at the midnight wrap). Mid-morph skips bloom-clone gradient updates and horizon-rim rebuilds (in-place wedge `d` only); full bloom + rim paint once at the end — stacked translucent layers were doubling chroma under the dial during the transition.
+- **Why:** Instant date jumps and the coarse→Astral ring swap read as flicker. A longer ease-out is the requested motion. Knot CSS ramps ≠ dense sample conics; destroying/recreating night wedges every frame flashed the bottom of the dial; updating two 0.815-opacity bloom clones every frame made mid-morph colors look stronger until settle.
 - **Do not reverse without user ask.**
 
 ## Sandbox scenes.yaml is runtime, not source

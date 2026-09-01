@@ -7805,15 +7805,26 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _morphSunPath(from, to, durationMs) {
     this._cancelSunPathMorph();
+    // Scrub uses 5-event knots (CSS ramps between stops). Morphing that straight
+    // into Astral's dense samples flashes — especially the midnight wrap at the
+    // bottom of the dial. Densify the "from" lights onto a 5-minute grid first
+    // so frame 0 already matches how we paint rings during the morph.
+    const fromDense = this._withDenseScrubLights(from);
+    this._sunPath = fromDense;
+    this._displayedSunPath = fromDense;
+    if (this._lightView === "dial" && this._clockRingsHost) {
+      this._patchLightClock(fromDense, { morphing: true });
+    }
     const started = performance.now();
     const tick = (now) => {
       const u = Math.min(1, (now - started) / durationMs);
       const eased = easeOutCubic(u);
-      const frame = lerpSunPath(from, to, eased);
+      const frame = lerpSunPath(fromDense, to, eased);
       this._sunPath = frame;
       this._displayedSunPath = frame;
       const patched =
-        this._lightView === "dial" && this._patchLightClock(frame);
+        this._lightView === "dial" &&
+        this._patchLightClock(frame, { morphing: true });
       if (!patched) {
         this._drawSunPath();
         this._cancelSunPathMorph();
@@ -7828,9 +7839,37 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._sunPathMorphRaf = undefined;
       this._sunPath = to;
       this._displayedSunPath = to;
-      this._patchLightClock(to);
+      // Full paint once: bloom + horizon wedges (skipped mid-morph to avoid
+      // stacked translucent flashes under the dial).
+      this._patchLightClock(to, { morphing: false });
     };
     this._sunPathMorphRaf = window.requestAnimationFrame(tick);
+  }
+
+  /**
+   * Expand knot-only scrub lights to a dense sample grid before refine morph.
+   * Leaves already-dense Astral payloads unchanged.
+   */
+  _withDenseScrubLights(payload) {
+    const lights = payload?.lights;
+    if (!lights?.length || !payload?.events?.length) {
+      return payload;
+    }
+    const sparse = lights.some(
+      (light) =>
+        !light.suggested &&
+        (light.samples?.length || 0) > 0 &&
+        (light.samples?.length || 0) <= 8
+    );
+    if (!sparse) {
+      return payload;
+    }
+    return {
+      ...payload,
+      lights: resampleLightsForEvents(lights, payload.events, draftRgb, {
+        stepMinutes: 5,
+      }),
+    };
   }
 
   async _ensureSunPath() {
@@ -9570,7 +9609,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     return event?.seconds != null ? event.seconds : null;
   }
 
-  _applyClockSunAppearance(seconds) {
+  _applyClockSunAppearance(seconds, { skipHorizonGlow = false } = {}) {
     const curve = this._sunPath?.curve;
     if (!curve?.length) {
       return;
@@ -9612,7 +9651,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       );
     }
     // Dial glow is a blurred clone of the rings — not elevation-tinted.
-    this._updateHorizonGlow(elev, glowLook);
+    // Skip rim rebuild mid-morph — sunrise/sunset lerps made the bottom flash.
+    if (!skipHorizonGlow) {
+      this._updateHorizonGlow(elev, glowLook);
+    }
     this._updateOverrideArc(this._clockStickySeconds);
   }
 
@@ -10580,8 +10622,12 @@ class SceneExtrapolationPanel extends HTMLElement {
   /**
    * Update an existing dial face for year scrub without replaceChildren.
    * Returns false when the light set changed and a full rebuild is required.
+   *
+   * morphing: mid refine/date morph — update ring fills + sun only. Skip bloom
+   * clones and horizon wedge rebuilds (those are translucent layers that stack
+   * and flash under the dial when destroyed/recreated every frame).
    */
-  _patchLightClock(payload) {
+  _patchLightClock(payload, { morphing = false } = {}) {
     const ringsHost = this._clockRingsHost;
     const overlay = this._clockOverlayEl;
     if (!ringsHost || !overlay || !payload?.events) {
@@ -10604,16 +10650,21 @@ class SceneExtrapolationPanel extends HTMLElement {
         fill.style.background = bg;
       }
     }
-    for (const glow of this._clockGlowLayer?.querySelectorAll(
-      ":scope > .sun-light-clock-glow"
-    ) || []) {
-      const glowRings = glow.querySelectorAll(":scope > .clock-ring");
-      for (let index = 0; index < glowRings.length; index += 1) {
-        const fill = glowRings[index].querySelector(".clock-ring-fill");
-        if (fill && ringLights[index]) {
-          fill.style.background = conicGradientFromSamples(
-            ringLights[index].samples || []
-          );
+    // Bloom is two semi-transparent blurred clones of the same conics. Updating
+    // them every morph frame doubles the mid-transition chroma under the dial;
+    // sync once when morphing finishes.
+    if (!morphing) {
+      for (const glow of this._clockGlowLayer?.querySelectorAll(
+        ":scope > .sun-light-clock-glow"
+      ) || []) {
+        const glowRings = glow.querySelectorAll(":scope > .clock-ring");
+        for (let index = 0; index < glowRings.length; index += 1) {
+          const fill = glowRings[index].querySelector(".clock-ring-fill");
+          if (fill && ringLights[index]) {
+            fill.style.background = conicGradientFromSamples(
+              ringLights[index].samples || []
+            );
+          }
         }
       }
     }
@@ -10627,12 +10678,17 @@ class SceneExtrapolationPanel extends HTMLElement {
       overlay.querySelectorAll(sel).forEach((el) => el.remove());
     }
     this._paintClockSunPath(overlay, payload.events, { includeSun: false });
-    const sky = this._clockHorizonSkyEl;
-    if (sky) {
-      while (sky.firstChild) {
-        sky.removeChild(sky.firstChild);
+    if (!morphing) {
+      const sky = this._clockHorizonSkyEl;
+      if (sky) {
+        while (sky.firstChild) {
+          sky.removeChild(sky.firstChild);
+        }
+        this._paintHorizonShadow(sky, payload.events);
       }
-      this._paintHorizonShadow(sky, payload.events);
+    } else {
+      // Keep wedge geometry in sync without tear-down (avoids bottom flash).
+      this._syncHorizonShadowPaths(payload.events);
     }
     this._syncClockEventAnchorsForScrub(payload.events);
     this._layoutDialChromeFn?.();
@@ -10640,11 +10696,49 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._clockStickySeconds ??
       this._clockSunDisplayedSeconds ??
       this._clockSunIdleSeconds();
-    this._applyClockSunAppearance(seconds);
+    this._applyClockSunAppearance(seconds, { skipHorizonGlow: morphing });
     if (this._hoverReadout) {
       this._fillHoverReadout(seconds, { hovering: false });
     }
     return true;
+  }
+
+  /** Update night/day wedge path `d` in place during morph (no node churn). */
+  _syncHorizonShadowPaths(events) {
+    const sky = this._clockHorizonSkyEl;
+    if (!sky) {
+      return;
+    }
+    const sunrise = this._clockEventSeconds(events, "sunrise");
+    const sunset = this._clockEventSeconds(events, "sunset");
+    const dawn = this._clockEventSeconds(events, "dawn");
+    const dusk = this._clockEventSeconds(events, "dusk");
+    this._clockSunriseSeconds = sunrise;
+    this._clockSunsetSeconds = sunset;
+    const dayEl = sky.querySelector(".clock-sky-day");
+    const nightEl = sky.querySelector(".clock-sky-night");
+    const deepEl = sky.querySelector(".clock-sky-deep");
+    if (sunrise != null && sunset != null) {
+      if (dayEl) {
+        dayEl.setAttribute(
+          "d",
+          this._clockWedgePath(sunrise, sunset, CLOCK_SKY_R)
+        );
+        this._clockSkyDayEl = dayEl;
+      }
+      if (nightEl) {
+        nightEl.setAttribute(
+          "d",
+          this._clockWedgePath(sunset, sunrise, CLOCK_SKY_R)
+        );
+      }
+    }
+    if (dusk != null && dawn != null && deepEl) {
+      deepEl.setAttribute(
+        "d",
+        this._clockWedgePath(dusk, dawn, CLOCK_SKY_R)
+      );
+    }
   }
 
   /** Reposition / relabel event buttons mid-scrub (ghosts move with solar marks). */
