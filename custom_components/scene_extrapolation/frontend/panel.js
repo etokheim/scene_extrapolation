@@ -81,9 +81,10 @@ const CLOCK_RINGS_INSET_PCT = 50 - CLOCK_RINGS_OUTER / 2;
 /* Wedges/rays cover the square including corners; back layer is slightly
    larger than the face so they land just outside the container. */
 const CLOCK_SKY_R = (CLOCK_VIEW / 2) * Math.SQRT2;
-/* Night wedges: near-black shades with a slight blue tint (not deep navy). */
-const CLOCK_NIGHT_OUTER = "#101218";
-const CLOCK_NIGHT_DEEP = "#06070b";
+/* Night wedges: sunset→sunrise = light gray; dusk→dawn = mid gray
+   (readable on light-mode sky wash; still distinct from day blue). */
+const CLOCK_NIGHT_OUTER = "#c4c4c8";
+const CLOCK_NIGHT_DEEP = "#8a8a90";
 /* Outline diameter ≈ 3.47% of dial core (1/3 of the prior 10.4%). */
 const CLOCK_SUN_SIZE_PCT = 10.4 / 3;
 const CLOCK_SUN_R_VIEW = (CLOCK_VIEW * (CLOCK_SUN_SIZE_PCT / 100)) / 2;
@@ -1327,10 +1328,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           fill: transparent;
         }
         .clock-horizon-sky .clock-sky-night {
-          fill: color-mix(in srgb, ${CLOCK_NIGHT_OUTER} 78%, transparent);
+          /* Sunset→sunrise shadow (outer night). */
+          fill: color-mix(in srgb, ${CLOCK_NIGHT_OUTER} 72%, transparent);
         }
         .clock-horizon-sky .clock-sky-deep {
-          fill: color-mix(in srgb, ${CLOCK_NIGHT_DEEP} 88%, transparent);
+          /* Dusk→dawn wrap (deeper band). */
+          fill: color-mix(in srgb, ${CLOCK_NIGHT_DEEP} 78%, transparent);
         }
         .sun-light-clock-overlay .clock-sun-day {
           fill: none;
@@ -1556,10 +1559,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           border: 1px solid var(--divider-color);
           background: var(--card-background-color);
           color: var(--primary-text-color);
-          /* Light gray → softer mid gray (theme-aware); less harsh in light mode. */
-          box-shadow:
-            0 1px 2px color-mix(in srgb, var(--primary-text-color) 10%, transparent),
-            0 2px 6px color-mix(in srgb, var(--primary-text-color) 8%, transparent);
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
           pointer-events: auto;
           cursor: pointer;
           padding: 0;
@@ -1585,9 +1585,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         .clock-event:hover:not(.selected):not(.missing),
         .clock-event:focus-visible:not(.selected):not(.missing) {
           border-color: var(--primary-color);
-          box-shadow:
-            0 1px 3px color-mix(in srgb, var(--primary-text-color) 12%, transparent),
-            0 3px 10px color-mix(in srgb, var(--primary-text-color) 14%, transparent);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
         }
         .clock-event ha-icon {
           --mdc-icon-size: 18px;
@@ -1638,8 +1636,7 @@ class SceneExtrapolationPanel extends HTMLElement {
                 var(--warning-color, var(--primary-color)) 28%,
                 transparent
               ),
-            0 2px 8px
-              color-mix(in srgb, var(--primary-text-color) 14%, transparent);
+            0 2px 8px rgba(0, 0, 0, 0.22);
         }
         .clock-event.selected {
           border-color: var(--primary-color);
@@ -1655,8 +1652,7 @@ class SceneExtrapolationPanel extends HTMLElement {
                 var(--warning-color, var(--primary-color)) 28%,
                 transparent
               ),
-            0 2px 8px
-              color-mix(in srgb, var(--primary-text-color) 14%, transparent);
+            0 2px 8px rgba(0, 0, 0, 0.22);
         }
         .sun-light-clock-legend {
           width: min(100%, 500px);
