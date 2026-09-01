@@ -12,14 +12,12 @@ from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.components.lock import LockState
 from homeassistant.const import (
     ATTR_ENTITY_ID,
-    ATTR_STATE,
     SERVICE_LOCK,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
     SERVICE_UNLOCK,
     STATE_CLOSED,
     STATE_CLOSING,
-    STATE_OFF,
     STATE_OPEN,
     STATE_OPENING,
     STATE_PROBLEM,

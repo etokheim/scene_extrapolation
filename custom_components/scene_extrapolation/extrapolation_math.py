@@ -6,7 +6,6 @@ import asyncio
 import logging
 import numbers
 import time
-from typing import Any
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
@@ -23,7 +22,6 @@ from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_STATE,
     STATE_OFF,
-    STATE_ON,
     STATE_UNAVAILABLE,
 )
 from homeassistant.core import HomeAssistant

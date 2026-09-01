@@ -2,7 +2,6 @@
 Create a scene entity which when activated calculates the appropriate lighting by extrapolating between user configured scenes.
 """  # noqa: D200, D212
 
-import asyncio
 import logging
 import numbers
 import time
@@ -11,43 +10,18 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from astral import LocationInfo
-from homeassistant.components.fan import DOMAIN as FAN_DOMAIN
-from homeassistant.components.light import (
-    ATTR_BRIGHTNESS,
-    ATTR_COLOR_MODE,
-    ATTR_COLOR_TEMP_KELVIN,
-    ATTR_EFFECT,
-    ATTR_HS_COLOR,
-    ATTR_RGB_COLOR,
-    ATTR_RGBW_COLOR,
-    ATTR_RGBWW_COLOR,
-    ATTR_TRANSITION,
-)
-from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
-from homeassistant.components.light import ColorMode
-from homeassistant.components.lock import LockState
 from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN
 from homeassistant.components.scene import Scene
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
-    ATTR_STATE,
     EVENT_CALL_SERVICE,
-    SERVICE_LOCK,
-    SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
-    SERVICE_UNLOCK,
-    STATE_CLOSED,
-    STATE_CLOSING,
     STATE_OFF,
-    STATE_OPEN,
-    STATE_OPENING,
-    STATE_PROBLEM,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
 )
 from homeassistant.core import Context, Event, HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
@@ -57,17 +31,10 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.util import dt as dt_util
 
-from .color_math import (
-    blend_entity_rgb,
-    infer_color_mode,
-    normalize_color_mode,
-    same_color_mode,
-)
 from .const import (
     AREA,
     CATEGORY,
     DEFAULT_SCENE_NAME,
-    AUTOMATICALLY_UPDATE_LIGHTS,
     DATA_ADD_ENTITIES,
     DATA_ENTITIES,
     DATA_STORE,
@@ -99,24 +66,13 @@ from .solar import EVENT_ORDER, dusk_start_seconds
 from .activation_cache import cached_in_memory_scenes, cached_solar_events
 from .apply_entities import (
     apply_entities_parallel,
-    apply_single_entity,
     get_scene_by_uuid,
 )
 from .extrapolation_math import (
     SunEvent,
     current_sun_event_index,
     day_transition_percent,
-    extrapolate_brightness,
-    extrapolate_effect,
     extrapolate_entities,
-    extrapolate_hs,
-    extrapolate_number,
-    extrapolate_rgb,
-    extrapolate_rgbw,
-    extrapolate_rgbww,
-    extrapolate_state,
-    extrapolate_temp_kelvin,
-    extrapolate_value,
     scene_keys_from_day_percent,
     transition_progress_percent,
 )
