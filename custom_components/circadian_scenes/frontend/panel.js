@@ -2470,9 +2470,10 @@ class CircadianScenesPanel extends HTMLElement {
         }
         .hue-wheel-chrome {
           position: relative;
-          display: grid;
-          grid-template-columns: auto minmax(0, 1fr) auto;
+          display: flex;
+          flex-wrap: nowrap;
           align-items: center;
+          justify-content: space-between;
           gap: 8px;
           pointer-events: none;
           z-index: 3;
@@ -2483,18 +2484,27 @@ class CircadianScenesPanel extends HTMLElement {
         .hue-wheel-chrome > * {
           pointer-events: auto;
         }
-        .hue-wheel-readout {
-          min-width: 0;
-          padding: 0 4px;
-          text-align: center;
-          font-size: 0.8125rem;
+        .hue-wheel-float-readout {
+          position: absolute;
+          z-index: 4;
+          transform: translate(-50%, calc(-100% - 14px));
+          padding: 4px 8px;
+          border-radius: 8px;
+          background: color-mix(
+            in srgb,
+            var(--card-background-color, #1c1c1c) 92%,
+            transparent
+          );
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+          font-size: 0.75rem;
           font-variant-numeric: tabular-nums;
           line-height: 1.2;
-          color: var(--secondary-text-color);
+          color: var(--primary-text-color);
           white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
           pointer-events: none;
+        }
+        .hue-wheel-float-readout[hidden] {
+          display: none !important;
         }
         .hue-mode-pill,
         .hue-presets {
@@ -2516,6 +2526,7 @@ class CircadianScenesPanel extends HTMLElement {
         }
         .hue-presets {
           position: relative;
+          flex: 1 1 auto;
           justify-content: flex-start;
           overflow: hidden;
         }
@@ -2809,7 +2820,7 @@ class CircadianScenesPanel extends HTMLElement {
           align-items: stretch;
           padding: 0;
         }
-        /* Activate + undo/redo — left-aligned, sticky at the sheet bottom. */
+        /* Undo/redo first, then live preview + activate — left-aligned. */
         .sidebar-actions-bar {
           display: flex;
           flex-wrap: wrap;
@@ -2820,10 +2831,29 @@ class CircadianScenesPanel extends HTMLElement {
           background: var(--card-background-color);
         }
         .sidebar-actions-bar .live-edit-toggle {
-          margin-inline-end: 4px;
+          margin-inline-start: 4px;
         }
         .sidebar-actions-bar .activate-scene-btn {
           margin-inline-end: 4px;
+        }
+        .light-effect-row {
+          display: flex;
+          justify-content: center;
+          margin: 16px 0 4px;
+        }
+        .light-effect-row ha-control-select-menu,
+        .light-effect-row ha-more-info-control-select-container {
+          min-width: 160px;
+          max-width: 220px;
+          width: 100%;
+        }
+        .light-list-add {
+          display: flex;
+          justify-content: center;
+          padding: 12px 8px 4px;
+        }
+        .light-list-add ha-button {
+          --mdc-typography-button-text-transform: none;
         }
         .live-edit-toggle {
           display: inline-flex;
@@ -4830,7 +4860,7 @@ class CircadianScenesPanel extends HTMLElement {
     const redo = this._undoRedoButton("redo");
     this._undoBtn = undo;
     this._redoBtn = redo;
-    this._setActionItems(previewToggle, undo, redo, this._overflowMenu());
+    this._setActionItems(undo, redo, previewToggle, this._overflowMenu());
     this._syncUndoButtons();
     this._syncLocationToolbar();
     this._maybeResumeRoomPreview();
@@ -5949,6 +5979,163 @@ class CircadianScenesPanel extends HTMLElement {
     this._ensureSunPath();
   }
 
+  _snapshotEntityForScene(entityId) {
+    const state = this._hass?.states?.[entityId];
+    if (!state) {
+      return { state: "off" };
+    }
+    if (entityId.startsWith("light.")) {
+      return this._snapshotLight(entityId);
+    }
+    const attrs = state.attributes || {};
+    const payload = { state: state.state };
+    for (const key of [
+      "brightness",
+      "percentage",
+      "current_position",
+      "current_tilt_position",
+      "position",
+      "tilt_position",
+      "color_temp_kelvin",
+      "hs_color",
+      "rgb_color",
+      "effect",
+      "temperature",
+      "target_temp_high",
+      "target_temp_low",
+      "hvac_mode",
+      "preset_mode",
+      "fan_mode",
+      "swing_mode",
+      "volume_level",
+      "is_volume_muted",
+      "source",
+      "sound_mode",
+      "activity",
+      "message",
+    ]) {
+      if (attrs[key] != null && attrs[key] !== "none") {
+        payload[key] = attrs[key];
+      }
+    }
+    return payload;
+  }
+
+  _addEntityToAssignedScenes(entityId) {
+    const scenes = this._assignedSceneIds();
+    if (!entityId || !scenes.length) {
+      return;
+    }
+    const listed = (this._sunPath?.lights || []).some(
+      (light) => light.entity_id === entityId && !light.suggested
+    );
+    if (listed) {
+      return;
+    }
+    this._commitUndo();
+    const snapshot = this._snapshotEntityForScene(entityId);
+    for (const sceneId of scenes) {
+      let state = snapshot;
+      if (entityId.startsWith("light.")) {
+        const eventId =
+          Object.entries(EVENT_SCENE_KEYS).find(
+            ([, key]) => this._formData[key] === sceneId
+          )?.[0] || "noon";
+        state = this._adaptStateToLight(entityId, snapshot, eventId);
+      }
+      this._ensureNativeDraft(sceneId).entities[entityId] = { ...state };
+    }
+    this._syncPreviewOverlay();
+    this._sunPathKey = undefined;
+    this._ensureSunPath();
+  }
+
+  _openAddEntityDialog() {
+    const scenes = this._assignedSceneIds();
+    if (!scenes.length) {
+      return;
+    }
+    this.shadowRoot.querySelector("ha-dialog.add-entity-dialog")?.remove();
+    const listed = new Set(
+      (this._sunPath?.lights || [])
+        .filter((light) => !light.suggested)
+        .map((light) => light.entity_id)
+    );
+    let selected = null;
+    const dialog = document.createElement("ha-dialog");
+    dialog.className = "add-entity-dialog";
+    dialog.setAttribute(
+      "header-title",
+      this._t("frontend.lights.add_entity_title", "Add entity")
+    );
+    dialog.open = true;
+    const note = document.createElement("p");
+    note.className = "sidebar-note";
+    note.textContent = this._t(
+      "frontend.lights.add_entity_help",
+      "Add a light from another area, or another entity (for example a cover), to every assigned native scene using its current state."
+    );
+    dialog.appendChild(note);
+    const picker = document.createElement("ha-selector");
+    picker.hass = this._hass;
+    picker.label = this._t("frontend.lights.entity", "Entity");
+    picker.selector = { entity: {} };
+    picker.addEventListener("value-changed", (ev) => {
+      ev.stopPropagation();
+      selected = ev.detail?.value || null;
+    });
+    dialog.appendChild(picker);
+    const footer = customElements.get("ha-dialog-footer")
+      ? document.createElement("ha-dialog-footer")
+      : document.createElement("div");
+    footer.slot = "footer";
+    const cancel = document.createElement("ha-button");
+    cancel.slot = "secondaryAction";
+    cancel.appearance = "plain";
+    cancel.textContent = this._loc("ui.common.cancel", "Cancel");
+    const add = document.createElement("ha-button");
+    add.slot = "primaryAction";
+    add.textContent = this._t("frontend.lights.add_entity", "Add entity");
+    const close = () => {
+      dialog.open = false;
+      dialog.remove();
+    };
+    cancel.addEventListener("click", close);
+    add.addEventListener("click", () => {
+      if (!selected || listed.has(selected)) {
+        close();
+        return;
+      }
+      this._addEntityToAssignedScenes(selected);
+      close();
+    });
+    footer.append(cancel, add);
+    dialog.appendChild(footer);
+    dialog.addEventListener("closed", () => dialog.remove());
+    this.shadowRoot.appendChild(dialog);
+  }
+
+  _lightListAddButton() {
+    if (this._view !== "edit" || !this._assignedSceneIds().length) {
+      return null;
+    }
+    const wrap = document.createElement("div");
+    wrap.className = "light-list-add";
+    const btn = document.createElement("ha-button");
+    btn.appearance = "plain";
+    btn.textContent = this._t("frontend.lights.add_entity", "Add entity");
+    const icon = document.createElement("ha-icon");
+    icon.slot = "start";
+    icon.setAttribute("icon", "mdi:plus");
+    btn.appendChild(icon);
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this._openAddEntityDialog();
+    });
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
   async _flushNativeDrafts() {
     const creates = [];
     const renames = [];
@@ -6839,7 +7026,11 @@ class CircadianScenesPanel extends HTMLElement {
 
   _clockRingLights(lights) {
     return (lights || []).filter(
-      (light) => !light.suggested && !this._lightIsUnavailable(light.entity_id)
+      (light) =>
+        !light.suggested &&
+        !light.non_light &&
+        String(light.entity_id || "").startsWith("light.") &&
+        !this._lightIsUnavailable(light.entity_id)
     );
   }
 
@@ -7370,8 +7561,11 @@ class CircadianScenesPanel extends HTMLElement {
     return { service: "turn_on", data };
   }
 
-  async _applyLightState(entityId, stored) {
+  async _applyLightState(entityId, stored, { transition } = {}) {
     const payload = this._lightServicePayload(entityId, stored);
+    if (transition != null && Number(transition) > 0) {
+      payload.data.transition = Number(transition);
+    }
     await this._hass.callService("light", payload.service, payload.data);
   }
 
@@ -7696,13 +7890,53 @@ class CircadianScenesPanel extends HTMLElement {
         liveApplied = false;
       }
     };
-    const applyLive = async () => {
+    // Dragging floods pointermove → service calls. Cap live updates and match
+    // HA transition length so the lamp blends between samples (same pattern as
+    // continuous auto-update ticks).
+    const LIVE_PREVIEW_MS = 500;
+    let liveLastSent = 0;
+    let liveTimer = null;
+    let livePending = false;
+    const flushLive = async ({ transitionSec = 0 } = {}) => {
       if (!this._liveEdit) {
         return;
       }
+      livePending = false;
+      liveLastSent = performance.now();
       liveApplied = true;
-      await this._applyLightState(light.entity_id, currentDraft());
+      await this._applyLightState(light.entity_id, currentDraft(), {
+        transition: transitionSec,
+      });
     };
+    const scheduleLive = async ({ dragging = false } = {}) => {
+      if (!this._liveEdit) {
+        return;
+      }
+      if (!dragging) {
+        if (liveTimer) {
+          clearTimeout(liveTimer);
+          liveTimer = null;
+        }
+        await flushLive({ transitionSec: 0 });
+        return;
+      }
+      const now = performance.now();
+      const elapsed = now - liveLastSent;
+      if (elapsed >= LIVE_PREVIEW_MS) {
+        await flushLive({ transitionSec: LIVE_PREVIEW_MS / 1000 });
+        return;
+      }
+      livePending = true;
+      if (!liveTimer) {
+        liveTimer = setTimeout(() => {
+          liveTimer = null;
+          if (livePending) {
+            void flushLive({ transitionSec: LIVE_PREVIEW_MS / 1000 });
+          }
+        }, LIVE_PREVIEW_MS - elapsed);
+      }
+    };
+    const applyLive = async () => scheduleLive({ dragging: false });
 
     const activateBtn = document.createElement("ha-button");
     activateBtn.className = "activate-scene-btn";
@@ -7784,6 +8018,10 @@ class CircadianScenesPanel extends HTMLElement {
           }
           this._syncRoomPreviewControl();
         });
+        if (liveTimer) {
+          clearTimeout(liveTimer);
+          liveTimer = null;
+        }
         restoreLive();
         brightnessGraphCtl?.disconnect();
         colorBriGraphCtl?.disconnect();
@@ -7811,13 +8049,109 @@ class CircadianScenesPanel extends HTMLElement {
     const colorBriMount = document.createElement("div");
     const whiteBriMount = document.createElement("div");
     const wheelMount = document.createElement("div");
+    const effectMount = document.createElement("div");
+    effectMount.className = "light-effect-row";
     body.append(
       chipsHost,
       brightnessGraphMount,
       colorBriMount,
       whiteBriMount,
-      wheelMount
+      wheelMount,
+      effectMount
     );
+
+    let effectMenu = null;
+    const effectList = Array.isArray(attrs.effect_list) ? attrs.effect_list : [];
+    const formatEffect = (effect) => {
+      try {
+        if (typeof this._hass?.formatEntityAttributeValue === "function") {
+          return this._hass.formatEntityAttributeValue(
+            this._hass.states[light.entity_id],
+            "effect",
+            effect
+          );
+        }
+      } catch (_err) {
+        /* fall through */
+      }
+      return effect;
+    };
+    const syncEffectControl = () => {
+      if (!effectMenu) {
+        return;
+      }
+      const draft = currentDraft();
+      const value =
+        draft?.effect && draft.effect !== "none" ? draft.effect : undefined;
+      effectMenu.value = value;
+      effectMenu.disabled = !draft || draft.state === "off";
+    };
+    if (effectList.length && customElements.get("ha-control-select-menu")) {
+      const menu = document.createElement("ha-control-select-menu");
+      menu.label = this._loc("ui.card.light.effect", "Effect");
+      menu.options = effectList.map((effect) => ({
+        value: effect,
+        label: formatEffect(effect),
+        icon: "mdi:creation",
+      }));
+      const icon = document.createElement("ha-icon");
+      icon.slot = "icon";
+      icon.setAttribute("icon", "mdi:creation");
+      menu.appendChild(icon);
+      menu.addEventListener("select", (ev) => {
+        const next = ev.detail?.item?.value;
+        const draft = currentDraft();
+        if (!draft || !next || draft.effect === next) {
+          return;
+        }
+        draft.effect = next;
+        draft.state = "on";
+        applyToSession();
+        syncEffectControl();
+        void applyLive();
+      });
+      effectMenu = menu;
+      if (customElements.get("ha-more-info-control-select-container")) {
+        const wrap = document.createElement("ha-more-info-control-select-container");
+        wrap.appendChild(menu);
+        effectMount.appendChild(wrap);
+      } else {
+        effectMount.appendChild(menu);
+      }
+      syncEffectControl();
+    } else if (effectList.length) {
+      // Fallback when more-info controls are not registered yet.
+      const sel = document.createElement("ha-selector");
+      sel.hass = this._hass;
+      sel.label = this._loc("ui.card.light.effect", "Effect");
+      sel.selector = {
+        select: {
+          mode: "dropdown",
+          options: effectList.map((effect) => ({
+            value: effect,
+            label: formatEffect(effect),
+          })),
+        },
+      };
+      sel.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        const next = ev.detail?.value;
+        const draft = currentDraft();
+        if (!draft || !next || draft.effect === next) {
+          return;
+        }
+        draft.effect = next;
+        draft.state = "on";
+        applyToSession();
+        sel.value = next;
+        void applyLive();
+      });
+      effectMenu = sel;
+      effectMount.appendChild(sel);
+      syncEffectControl();
+    } else {
+      effectMount.hidden = true;
+    }
 
     const selectScene = async (next, { fromWheel = false } = {}) => {
       const nextId = this._eventSceneId(next.id);
@@ -7843,6 +8177,7 @@ class CircadianScenesPanel extends HTMLElement {
         wheelCtl?.setMode(mode, { convertDraft: false });
       }
       wheelCtl?.sync();
+      syncEffectControl();
       if (this._liveEdit) {
         await applyLive();
       }
@@ -7897,13 +8232,14 @@ class CircadianScenesPanel extends HTMLElement {
       }
     };
 
-    const onWheelChange = async () => {
+    const onWheelChange = async (meta = {}) => {
       applyToSession();
       wheelCtl?.syncPresets();
       brightnessGraphCtl?.sync();
       colorBriGraphCtl?.sync();
       whiteBriGraphCtl?.sync();
-      await applyLive();
+      syncEffectControl();
+      await scheduleLive({ dragging: Boolean(meta.dragging) });
     };
 
     brightnessGraphCtl = createLightBrightnessGraph({
@@ -8194,7 +8530,7 @@ class CircadianScenesPanel extends HTMLElement {
     const redo = this._undoRedoButton("redo");
     undo.id = "sidebar-button-undo";
     redo.id = "sidebar-button-redo";
-    bar.append(liveToggle, activateBtn, undo, redo);
+    bar.append(undo, redo, liveToggle, activateBtn);
     footer.appendChild(bar);
     this._sidebarUndoBtn = undo;
     this._sidebarRedoBtn = redo;
@@ -12929,6 +13265,10 @@ class CircadianScenesPanel extends HTMLElement {
     for (const light of legendLights) {
       legend.appendChild(this._clockLegendRow(light, events));
     }
+    const addBtn = this._lightListAddButton();
+    if (addBtn) {
+      legend.appendChild(addBtn);
+    }
     this._clockLegendEl = legend;
     wrap.appendChild(legend);
     return wrap;
@@ -12993,6 +13333,10 @@ class CircadianScenesPanel extends HTMLElement {
         row.setAttribute("aria-label", `Edit ${light.name}`);
         const openClosest = (ev) => {
           ev.stopPropagation();
+          if (light.non_light || !String(light.entity_id || "").startsWith("light.")) {
+            this._showEntityMoreInfo(light.entity_id);
+            return;
+          }
           const seconds =
             this._clockSunDisplayedSeconds ??
             this._clockStickySeconds ??
@@ -13128,6 +13472,10 @@ class CircadianScenesPanel extends HTMLElement {
     for (const light of this._legendLights(lights)) {
       wrap.appendChild(this._lightRow(light, xOf, events));
     }
+    const addBtn = this._lightListAddButton();
+    if (addBtn) {
+      wrap.appendChild(addBtn);
+    }
     return wrap;
   }
 
@@ -13197,6 +13545,10 @@ class CircadianScenesPanel extends HTMLElement {
       hit.setAttribute("aria-label", `Edit ${light.name}`);
       const openClosest = (ev) => {
         ev.stopPropagation();
+        if (light.non_light || !String(light.entity_id || "").startsWith("light.")) {
+          this._showEntityMoreInfo(light.entity_id);
+          return;
+        }
         const seconds = this._secondsFromElementPointer(ev, bar);
         const closest = this._closestEvent(assigned, seconds);
         if (closest) {

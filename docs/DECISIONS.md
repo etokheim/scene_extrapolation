@@ -3,6 +3,13 @@
 Durable product and architecture choices for Circadian Scenes.
 Agents: do not reverse these without an explicit user request. Supersede entries in the same change set when intentionally changing course.
 
+## Live preview throttle while dragging the color wheel
+
+- **Date:** 2026-09-02
+- **Decision:** While dragging a wheel pin, live-preview `light.turn_on` calls are rate-limited to about once per 500 ms with a matching 500 ms transition. Click/preset/final release updates send immediately (no transition). Do not flood HA with per-pointermove service calls.
+- **Why:** Instant click updates feel fine; unrestricted drag updates queue up and make lamps lag. Matching transition length keeps motion continuous between throttled samples.
+- **Do not reverse without user ask.**
+
 ## Domain and repo rename to circadian_scenes (v4)
 
 - **Date:** 2026-09-02

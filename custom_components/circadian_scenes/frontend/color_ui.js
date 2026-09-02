@@ -1438,25 +1438,47 @@ function createSceneColorWheel({
   pathLayer.setAttribute("class", "hue-wheel-paths");
   svg.appendChild(pathLayer);
   canvasWrap.append(glow, svg, bg);
+  const floatReadout = document.createElement("div");
+  floatReadout.className = "hue-wheel-float-readout";
+  floatReadout.hidden = true;
+  floatReadout.setAttribute("aria-live", "polite");
+  canvasWrap.appendChild(floatReadout);
   const chrome = document.createElement("div");
   chrome.className = "hue-wheel-chrome";
   const pill = document.createElement("div");
   pill.className = "hue-mode-pill";
-  const readout = document.createElement("div");
-  readout.className = "hue-wheel-readout";
-  readout.setAttribute("aria-live", "polite");
   const presets = document.createElement("div");
   presets.className = "hue-presets";
   const presetTrack = document.createElement("div");
   presetTrack.className = "hue-presets-track";
   presetTrack.setAttribute("role", "list");
   presets.appendChild(presetTrack);
-  chrome.append(pill, readout, presets);
+  // Readout lives on the drag handle — not between mode pill and presets
+  // (that middle cell overlapped the swatches on narrow sidebars).
+  chrome.append(pill, presets);
   stage.append(canvasWrap, chrome);
 
   const markers = new Map();
   let drag = null;
   let glideTimer;
+
+  const emitChange = (meta = {}) => {
+    onChange?.({
+      dragging: Boolean(drag),
+      ...meta,
+    });
+  };
+
+  const showFloatReadout = (draft, x, y) => {
+    floatReadout.hidden = false;
+    floatReadout.textContent = formatWheelReadout(draft, mode);
+    floatReadout.style.left = `${x}px`;
+    floatReadout.style.top = `${y}px`;
+  };
+
+  const hideFloatReadout = () => {
+    floatReadout.hidden = true;
+  };
 
   const radiusPx = () => canvasWrap.clientWidth / 2;
 
@@ -1543,6 +1565,7 @@ function createSceneColorWheel({
       btn.setAttribute("role", "listitem");
       if (mode === "color") {
         btn.style.backgroundColor = item;
+        btn.title = item.toUpperCase();
         const rgb = hexToRgb(item);
         const current = active ? draftRgb(active.draft) : null;
         if (
@@ -1565,12 +1588,13 @@ function createSceneColorWheel({
             clearTimeout(glideTimer);
             glideTimer = setTimeout(() => marker.g.classList.remove("glide"), 450);
           }
-          onChange();
+          emitChange({ dragging: false });
           sync();
         });
       } else {
         const rgb = hueTempToRgb(item);
         btn.style.backgroundColor = rgbCss(rgb);
+        btn.title = `${item} K`;
         if (active?.draft?.color_temp_kelvin === item) {
           btn.classList.add("active");
         }
@@ -1585,7 +1609,7 @@ function createSceneColorWheel({
             clearTimeout(glideTimer);
             glideTimer = setTimeout(() => marker.g.classList.remove("glide"), 450);
           }
-          onChange();
+          emitChange({ dragging: false });
           sync();
         });
       }
@@ -1674,7 +1698,7 @@ function createSceneColorWheel({
                 kelvinForTempConvert(item.draft, tempMin, tempMax)
               );
             }
-            onChange();
+            emitChange({ dragging: false });
           }
           const pt = pointFromEvent(ev);
           startDrag(
@@ -1713,8 +1737,9 @@ function createSceneColorWheel({
     }
     syncPath();
     syncPresets();
-    const activeScene = scenes.find((item) => item.id === activeId);
-    readout.textContent = formatWheelReadout(activeScene?.draft, mode);
+    if (!drag) {
+      hideFloatReadout();
+    }
   };
 
   const syncPath = () => {
@@ -1821,8 +1846,9 @@ function createSceneColorWheel({
       marker.icon.style.fill = pinForeground(draftRgb(item.draft));
       placeMarker(marker, limited.x, limited.y, true);
     }
+    showFloatReadout(item.draft, limited.x, limited.y);
     syncPath();
-    onChange();
+    emitChange({ dragging: true });
   };
 
   const onPointerUp = (ev) => {
@@ -1834,6 +1860,7 @@ function createSceneColorWheel({
     marker?.g.classList.add("boing");
     setTimeout(() => marker?.g.classList.remove("boing"), 200);
     drag = null;
+    hideFloatReadout();
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
@@ -1843,6 +1870,8 @@ function createSceneColorWheel({
         composed: true,
       })
     );
+    // Flush any throttled live preview with the final sample.
+    emitChange({ dragging: false, final: true });
     sync();
   };
 
@@ -1882,8 +1911,9 @@ function createSceneColorWheel({
     if (marker) {
       placeMarker(marker, limited.x, limited.y, true);
     }
+    showFloatReadout(item.draft, limited.x, limited.y);
     syncPath();
-    onChange();
+    emitChange({ dragging: true });
   });
 
   const setMode = (next, { convertDraft = false } = {}) => {
@@ -1913,7 +1943,7 @@ function createSceneColorWheel({
         changed = true;
       }
       if (changed) {
-        onChange();
+        emitChange({ dragging: false });
       }
     }
     if (mode !== next) {
@@ -1985,6 +2015,7 @@ function lightDraftFingerprint(draft) {
     hs_color: draft?.hs_color ?? null,
     rgbw_color: draft?.rgbw_color ?? null,
     rgbww_color: draft?.rgbww_color ?? null,
+    effect: draft?.effect ?? null,
   });
 }
 

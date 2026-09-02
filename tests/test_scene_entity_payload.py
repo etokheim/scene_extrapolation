@@ -55,3 +55,16 @@ def test_hs_preferred_over_rgb_when_both_present_without_mode():
 
 def test_off_state():
     assert scene_entity_payload(None) == {"state": "off"}
+
+
+def test_non_light_keeps_generic_attrs():
+    payload = scene_entity_payload(
+        {
+            "state": "open",
+            "current_position": 40,
+            "friendly_name": "Garage",
+            "supported_features": 3,
+        },
+        entity_id="cover.garage",
+    )
+    assert payload == {"state": "open", "current_position": 40}

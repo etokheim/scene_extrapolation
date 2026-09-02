@@ -10,6 +10,7 @@ from typing import Any
 from homeassistant.components.homeassistant.scene import HomeAssistantScene
 from homeassistant.components.scene import DOMAIN as SCENE_DOMAIN
 from homeassistant.config import SCENE_CONFIG_PATH
+from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
 from homeassistant.const import ATTR_STATE, CONF_ID, SERVICE_RELOAD
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -38,6 +39,34 @@ SCENE_ENTITY_KEYS = (
     "rgbw_color",
     "rgbww_color",
     "effect",
+)
+
+# Non-light scene members: keep state + a small set of actionable attributes.
+# Do not use the light color exclusivity rules (covers, locks, fans, …).
+_GENERIC_SCENE_ATTRS = (
+    "brightness",
+    "percentage",
+    "current_position",
+    "current_tilt_position",
+    "position",
+    "tilt_position",
+    "color_temp_kelvin",
+    "hs_color",
+    "rgb_color",
+    "effect",
+    "temperature",
+    "target_temp_high",
+    "target_temp_low",
+    "hvac_mode",
+    "preset_mode",
+    "fan_mode",
+    "swing_mode",
+    "volume_level",
+    "is_volume_muted",
+    "source",
+    "sound_mode",
+    "activity",
+    "message",
 )
 
 # Attr to keep for each color_mode (HA ColorMode values).
@@ -95,15 +124,20 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
-def scene_entity_payload(raw: dict[str, Any] | None) -> dict[str, Any]:
+def scene_entity_payload(
+    raw: dict[str, Any] | None, *, entity_id: str | None = None
+) -> dict[str, Any]:
     """Strip live-only attributes down to what a YAML scene should store.
 
     Home Assistant's light reproduce path uses ``color_mode`` when present,
     otherwise the first of hs / color_temp_kelvin / rgb / …. Storing several
     color attrs without ``color_mode`` (common in live snapshots) made kelvin
     scenes reopen as RGB in our wheel. Keep color_mode + exactly one color
-    attribute.
+    attribute for lights. Non-light domains keep state + a small attr allowlist.
     """
+    domain = entity_id.partition(".")[0] if entity_id else None
+    if domain and domain != LIGHT_DOMAIN:
+        return _generic_scene_entity_payload(raw)
     if not raw:
         return {ATTR_STATE: "off"}
     payload: dict[str, Any] = {}
@@ -147,6 +181,21 @@ def scene_entity_payload(raw: dict[str, Any] | None) -> dict[str, Any]:
     return payload
 
 
+def _generic_scene_entity_payload(raw: dict[str, Any] | None) -> dict[str, Any]:
+    """Persist state (+ allowlisted attrs) for non-light scene members."""
+    if not raw:
+        return {ATTR_STATE: "off"}
+    payload: dict[str, Any] = {
+        ATTR_STATE: raw.get(ATTR_STATE) or raw.get("state") or "off"
+    }
+    for key in _GENERIC_SCENE_ATTRS:
+        value = raw.get(key)
+        if value is None or value == "none":
+            continue
+        payload[key] = _jsonable(value)
+    return payload
+
+
 def native_scene_by_entity_id(
     hass: HomeAssistant, scene_entity_id: str
 ) -> dict[str, Any] | None:
@@ -165,7 +214,8 @@ def native_scene_by_entity_id(
         entities: dict[str, dict[str, Any]] = {}
         for entity_id, state in scene_config.states.items():
             entities[entity_id] = scene_entity_payload(
-                {"state": state.state, **state.attributes}
+                {"state": state.state, **state.attributes},
+                entity_id=entity_id,
             )
         return {
             "id": scene_config.id,
@@ -217,7 +267,11 @@ async def async_update_native_scene_entities(
                 f"{scene_entity_id} has no YAML id, so it cannot be edited here"
             )
         resolved.append(
-            (str(config_key), scene_entity_id, scene_entity_payload(entity_state))
+            (
+                str(config_key),
+                scene_entity_id,
+                scene_entity_payload(entity_state, entity_id=light_entity_id),
+            )
         )
 
     path = hass.config.path(SCENE_CONFIG_PATH)
@@ -739,7 +793,12 @@ async def async_apply_native_drafts(
         if key in delete_keys:
             continue
         entity_ops.setdefault(key, []).append(
-            (item["entity_id"], scene_entity_payload(item["entity_state"]))
+            (
+                item["entity_id"],
+                scene_entity_payload(
+                    item["entity_state"], entity_id=item["entity_id"]
+                ),
+            )
         )
     for item in removes:
         key = yaml_key(item["scene_entity_id"])
@@ -772,7 +831,7 @@ async def async_apply_native_drafts(
             name = _unique_scene_name(next_scenes, str(create["name"]).strip())
             config_id = str(create.get("id") or int(time.time() * 1000))
             entities = {
-                entity_id: scene_entity_payload(state)
+                entity_id: scene_entity_payload(state, entity_id=entity_id)
                 for entity_id, state in (create.get("entities") or {}).items()
             }
             item = {

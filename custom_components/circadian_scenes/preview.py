@@ -151,7 +151,7 @@ def _overlay_native_scenes(
         created = patch.get("create_scene")
         if isinstance(created, dict):
             entities = {
-                entity_id: scene_entity_payload(state)
+                entity_id: scene_entity_payload(state, entity_id=entity_id)
                 for entity_id, state in (created.get("entities") or {}).items()
                 if isinstance(state, dict)
             }
@@ -186,7 +186,9 @@ def _overlay_native_scenes(
                     "entities": {},
                 }
             patched = copy.deepcopy(scene)
-            patched["entities"][entity_id] = scene_entity_payload(entity_state)
+            patched["entities"][entity_id] = scene_entity_payload(
+                entity_state, entity_id=entity_id
+            )
             result = {**result, scene_id: patched}
             continue
         if not scene:
@@ -256,10 +258,13 @@ def _light_series(
         return lights, [], empty_split
 
     light_ids: set[str] = set()
+    other_ids: set[str] = set()
     for item in assigned:
         for entity_id in item["scene"]["entities"]:
             if entity_id.startswith("light."):
                 light_ids.add(entity_id)
+            else:
+                other_ids.add(entity_id)
 
     warnings = _gap_warnings(bound, light_ids)
     warnings_by_light: dict[str, list[dict[str, Any]]] = {}
@@ -289,6 +294,20 @@ def _light_series(
                 "in_area": (
                     entity_id in area_lights if area_lights is not None else None
                 ),
+            }
+        )
+    for entity_id in sorted(other_ids):
+        state = hass.states.get(entity_id)
+        lights.append(
+            {
+                "entity_id": entity_id,
+                "name": state.name if state else entity_id,
+                "samples": [],
+                "gaps": [],
+                "event_states": _event_states_for_light(bound, entity_id),
+                "suggested": False,
+                "in_area": None,
+                "non_light": True,
             }
         )
     samples_ms = (time.perf_counter() - t_samples) * 1000
@@ -358,7 +377,7 @@ def _event_states_for_light(
                 "scene_id": scene.get("id"),
                 "scene_name": scene.get("name"),
                 "present": stored is not None,
-                "state": scene_entity_payload(stored),
+                "state": scene_entity_payload(stored, entity_id=entity_id),
             }
         )
     return rows
