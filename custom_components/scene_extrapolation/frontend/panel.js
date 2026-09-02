@@ -1097,8 +1097,11 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform-origin: center;
           animation: clock-sun-counter-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
         }
-        .sun-light-clock-face.clock-face-enter .clock-event-anchor {
-          animation: clock-event-spin 2250ms cubic-bezier(0.2, 0, 0, 1) both;
+        /* Buttons live on the face (outside the SVG overlay). Spin this layer
+           around the dial center so they orbit with the path, not in place. */
+        .sun-light-clock-face.clock-face-enter .clock-event-layer {
+          transform-origin: center center;
+          animation: clock-overlay-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
         }
         @keyframes clock-face-fade {
           from {
@@ -1130,14 +1133,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           }
           to {
             transform: rotate(0deg);
-          }
-        }
-        @keyframes clock-event-spin {
-          from {
-            transform: translate(-50%, -50%) rotate(-12deg);
-          }
-          to {
-            transform: translate(-50%, -50%) rotate(0deg);
           }
         }
         /* Registered via CSS.registerProperty (document), not @property here —
@@ -1629,6 +1624,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           .clock-hour-label {
             font-size: 32px;
           }
+        }
+        .clock-event-layer {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 6;
         }
         .clock-event-anchor {
           position: absolute;
@@ -10961,8 +10962,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     void face.offsetWidth;
     face.classList.add("clock-face-enter");
     const clearEnter = (ev) => {
-      // Events + sun finish last (1.5s); wait for that spin before clearing.
-      if (ev.animationName && ev.animationName !== "clock-event-spin") {
+      // Overlay + event-layer spin finish together (1.5s).
+      if (ev.animationName && ev.animationName !== "clock-overlay-spin") {
         return;
       }
       face.classList.remove("clock-face-enter");
@@ -12011,6 +12012,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     face.append(horizonBack, glowLayer, core, faceTicks);
 
     const editable = this._view === "edit";
+    const eventLayer = document.createElement("div");
+    eventLayer.className = "clock-event-layer";
     const eventAnchors = [];
     const polarForSeconds = (seconds) => {
       const deg = this._clockAngleDeg(seconds);
@@ -12088,7 +12091,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         });
       }
       anchor.append(meta, btn);
-      face.appendChild(anchor);
+      eventLayer.appendChild(anchor);
       eventAnchors.push(anchor);
 
       if (
@@ -12109,11 +12112,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         ghostIcon.setAttribute("icon", event.icon);
         ghostBtn.appendChild(ghostIcon);
         ghost.appendChild(ghostBtn);
-        face.appendChild(ghost);
+        eventLayer.appendChild(ghost);
         eventAnchors.push(ghost);
       }
     }
     // Hour labels on the face (above event anchors in paint order).
+    face.appendChild(eventLayer);
     for (const label of hourLabels) {
       face.appendChild(label);
     }
