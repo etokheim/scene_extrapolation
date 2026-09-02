@@ -10928,7 +10928,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       ((fromSeconds % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
     const to =
       ((toSeconds % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
-    // Enter sweep wants a fixed 12h forward run; hover uses shortest arc.
+    // Enter sweep wants a fixed 6h forward run; hover uses shortest arc.
     const delta = forward
       ? (((to - from) % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY
       : this._shortestSecondsDelta(from, to);
@@ -10954,7 +10954,7 @@ class SceneExtrapolationPanel extends HTMLElement {
   _playClockEnterAnimation(face) {
     const idle = this._clockSunIdleSeconds();
     const from =
-      (((idle - 12 * 3600) % SECONDS_PER_DAY) + SECONDS_PER_DAY) %
+      (((idle - 6 * 3600) % SECONDS_PER_DAY) + SECONDS_PER_DAY) %
       SECONDS_PER_DAY;
     face.classList.remove("clock-face-enter");
     // Restart CSS enter if the face was recycled in the same document.
