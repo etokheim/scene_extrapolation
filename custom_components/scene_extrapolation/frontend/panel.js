@@ -6385,10 +6385,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
   }
 
-  _closeSceneSidebar({ animate = false } = {}) {
-    this._setSidebarEvent(null);
-    this._setSidebarLight(null);
-    this._clearClockRingHover();
+  _closeSceneSidebar({ animate = false, clearSelection = true } = {}) {
+    // Opening a replacement sidebar passes clearSelection:false — otherwise the
+    // pre-await ring highlight (_setSidebarLight before _openSceneSidebar) is
+    // wiped and the band looks deselected until a second click.
+    if (clearSelection) {
+      this._setSidebarEvent(null);
+      this._setSidebarLight(null);
+      this._clearClockRingHover();
+    }
     const el = this.shadowRoot?.querySelector(".scene-sidebar");
     if (!el) {
       this._setSidebarDocked(false);
@@ -6506,7 +6511,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         return null;
       }
     }
-    this._closeSceneSidebar();
+    this._closeSceneSidebar({ clearSelection: false });
     const host = useSheet
       ? document.createElement("ha-bottom-sheet")
       : document.createElement("div");
@@ -7749,6 +7754,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     this._liveEditSidebarHandler = onLiveEditChange;
+    // Re-assert: _openSceneSidebar may close a prior host whose `closed`
+    // handler clears a matching _sidebarLightId.
+    this._setSidebarLight(light.entity_id);
     this._setSidebarEvent(event.id);
     const { host, header, body, footer } = opened;
     host._lightEntityId = light.entity_id;
