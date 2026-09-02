@@ -714,7 +714,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           box-sizing: border-box;
           pointer-events: none;
           background: transparent;
-          padding: 8px 12px 0 12px;
+          padding: 8px 12px 0 16px;
         }
         .sun-path.dial-view .sun-toolbar:not(.toolbar-rail-only) > * {
           pointer-events: auto;
@@ -2817,11 +2817,15 @@ class SceneExtrapolationPanel extends HTMLElement {
         /* Activate + undo/redo — left-aligned, sticky at the sheet bottom. */
         .sidebar-actions-bar {
           display: flex;
+          flex-wrap: wrap;
           align-items: center;
           justify-content: flex-start;
-          gap: 4px;
+          gap: 4px 8px;
           padding: 8px 12px calc(12px + var(--safe-area-inset-bottom, 0px));
           background: var(--card-background-color);
+        }
+        .sidebar-actions-bar .live-edit-toggle {
+          margin-inline-end: 4px;
         }
         .sidebar-actions-bar .activate-scene-btn {
           margin-inline-end: 4px;
@@ -3177,7 +3181,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           left: calc(-1 * var(--scrub-rail-width));
           top: 12px;
           /* Match .page-banners margin-inline so Now/Sun° line up with the banner. */
-          padding-left: 12px;
+          padding-left: 16px;
         }
         .sun-hover-time {
           font-weight: 500;
@@ -3346,7 +3350,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-direction: column;
           gap: 8px;
           margin-top: var(--ha-space-3);
-          margin-inline: 12px;
+          margin-inline: 16px;
         }
         .page-banners[hidden] {
           display: none;
@@ -4798,24 +4802,15 @@ class SceneExtrapolationPanel extends HTMLElement {
   _setEditorActions() {
     this._lightView = this._readLightView();
     this._liveEdit = this._readLiveEditPref();
-    const liveToggle = document.createElement("label");
-    liveToggle.className = "live-edit-toggle";
-    const liveLabel = document.createElement("span");
-    liveLabel.textContent = this._t("frontend.actions.live_edit", "Live edit");
-    const liveSwitch = document.createElement("ha-switch");
-    liveSwitch.checked = Boolean(this._liveEdit);
-    liveSwitch.addEventListener("change", () => {
-      this._setLiveEdit(Boolean(liveSwitch.checked));
-    });
-    liveToggle.append(liveLabel, liveSwitch);
-    this._liveEditSwitch = liveSwitch;
+    // Live preview lives in the light sidebar — clear any stale app-bar switch.
+    this._liveEditSwitch = null;
 
     const previewToggle = document.createElement("label");
     previewToggle.className = "live-edit-toggle room-preview-toggle";
     const previewLabel = document.createElement("span");
     previewLabel.textContent = this._t(
-      "frontend.actions.room_preview",
-      "Preview room"
+      "frontend.actions.scene_preview",
+      "Preview scene"
     );
     const previewSwitch = document.createElement("ha-switch");
     previewSwitch.checked = Boolean(this._roomPreview);
@@ -4825,47 +4820,22 @@ class SceneExtrapolationPanel extends HTMLElement {
     previewToggle.append(previewLabel, previewSwitch);
     this._roomPreviewSwitch = previewSwitch;
 
+    // Location + dial/table view always live in the overflow menu.
+    this._locationBtn = null;
+    this._lightViewToggleBtn = null;
+
     if (this._narrow) {
-      // Location + view live in the overflow menu on narrow (with undo/redo).
-      this._locationBtn = null;
-      this._lightViewToggleBtn = null;
-      this._setActionItems(liveToggle, previewToggle, this._overflowMenu());
+      this._setActionItems(previewToggle, this._overflowMenu());
       this._syncLocationToolbar();
       this._maybeResumeRoomPreview();
       return;
     }
 
-    const locationBtn = document.createElement("ha-icon-button");
-    locationBtn.className = "sun-location-btn";
-    locationBtn.label = "Preview another location";
-    const locationIcon = document.createElement("ha-icon");
-    locationIcon.setAttribute("icon", "mdi:map-marker-outline");
-    locationBtn.appendChild(locationIcon);
-    locationBtn.addEventListener("click", () => this._openLocationDialog());
-    this._locationBtn = locationBtn;
-
-    const viewBtn = document.createElement("ha-button");
-    viewBtn.className = "light-view-toggle-btn";
-    viewBtn.appearance = "plain";
-    viewBtn.addEventListener("click", () => {
-      this._setLightView(this._lightView === "dial" ? "table" : "dial");
-    });
-    this._lightViewToggleBtn = viewBtn;
-    this._syncLightViewButtons();
-
     const undo = this._undoRedoButton("undo");
     const redo = this._undoRedoButton("redo");
     this._undoBtn = undo;
     this._redoBtn = redo;
-    this._setActionItems(
-      liveToggle,
-      previewToggle,
-      locationBtn,
-      viewBtn,
-      undo,
-      redo,
-      this._overflowMenu()
-    );
+    this._setActionItems(previewToggle, undo, redo, this._overflowMenu());
     this._syncUndoButtons();
     this._syncLocationToolbar();
     this._maybeResumeRoomPreview();
@@ -5272,7 +5242,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._syncLightViewButtons();
     this._syncEditorChrome();
     // Narrow: view label lives in the overflow menu — rebuild so it updates.
-    if (this._narrow && this._view === "edit") {
+    // Wide too: location + view are overflow-only now.
+    if (this._view === "edit") {
       this._setEditorActions();
     }
     if (this._sunPath) {
@@ -6052,24 +6023,21 @@ class SceneExtrapolationPanel extends HTMLElement {
         "mdi:redo",
         { disabled: !this._redoStack.length }
       );
-      addItem(
-        "preview-location",
-        "Preview location",
-        "mdi:map-marker-outline",
-        // Banner Change covers this while an override is active.
-        { disabled: Boolean(this._previewLocation) }
-      );
-      addItem(
-        "toggle-view",
-        this._lightView === "dial" ? "Table view" : "Dial view",
-        this._lightView === "dial" ? "mdi:table" : "mdi:clock-outline"
-      );
     }
+    // Location + table/dial: always in overflow (Preview scene replaces Activate).
     addItem(
-      "apply",
-      this._loc("ui.panel.config.scene.picker.apply", "Activate"),
-      "mdi:play",
-      { disabled: !hasEntity }
+      "preview-location",
+      this._t("frontend.actions.preview_location", "Preview another location"),
+      "mdi:map-marker-outline",
+      // Banner Change covers this while an override is active.
+      { disabled: Boolean(this._previewLocation) }
+    );
+    addItem(
+      "toggle-view",
+      this._lightView === "dial"
+        ? this._t("frontend.actions.table_view", "Table view")
+        : this._t("frontend.actions.dial_view", "Dial view"),
+      this._lightView === "dial" ? "mdi:table" : "mdi:clock-outline"
     );
     addItem(
       "show-info",
@@ -6139,13 +6107,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (action === "toggle-view") {
       this._setLightView(this._lightView === "dial" ? "table" : "dial");
-      return;
-    }
-    if (action === "apply") {
-      if (!this._entityId) {
-        return;
-      }
-      this._hass.callService("scene", "turn_on", { entity_id: this._entityId });
       return;
     }
     if (action === "show-info") {
@@ -7709,6 +7670,21 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     });
 
+    const liveToggle = document.createElement("label");
+    liveToggle.className = "live-edit-toggle";
+    const liveLabel = document.createElement("span");
+    liveLabel.textContent = this._t(
+      "frontend.actions.live_preview",
+      "Live preview"
+    );
+    const liveSwitch = document.createElement("ha-switch");
+    liveSwitch.checked = Boolean(this._liveEdit);
+    liveSwitch.addEventListener("change", () => {
+      void this._setLiveEdit(Boolean(liveSwitch.checked));
+    });
+    liveToggle.append(liveLabel, liveSwitch);
+    this._liveEditSwitch = liveSwitch;
+
     const infoBtn = document.createElement("ha-icon-button");
     infoBtn.label = this._loc(
       "ui.panel.config.automation.picker.show_settings",
@@ -7744,6 +7720,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       onDismiss: () => {
         if (this._liveEditSidebarHandler === onLiveEditChange) {
           this._liveEditSidebarHandler = null;
+        }
+        if (this._liveEditSwitch === liveSwitch) {
+          this._liveEditSwitch = null;
         }
         this._sidebarUndoBtn = null;
         this._sidebarRedoBtn = null;
@@ -8162,7 +8141,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const redo = this._undoRedoButton("redo");
     undo.id = "sidebar-button-undo";
     redo.id = "sidebar-button-redo";
-    bar.append(activateBtn, undo, redo);
+    bar.append(liveToggle, activateBtn, undo, redo);
     footer.appendChild(bar);
     this._sidebarUndoBtn = undo;
     this._sidebarRedoBtn = redo;
