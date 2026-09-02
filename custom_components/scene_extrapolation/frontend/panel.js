@@ -12284,7 +12284,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._bindClockSunDrag(face, [this._clockSunHitEl, this._clockHandleHitEl]);
     // Enter once per editor visit (not on date/scene redraws). Cleared when
     // returning to the list so list → edit plays again.
-    if (this._clockEnterPlayed) {
+    // Optimistic paint from the list sun_path has no lights — do not consume
+    // the enter flag there; preview rebuild (with rings) should still animate.
+    const optimisticListCurve =
+      !ringLights.length ||
+      String(this._sunPathKey || "").startsWith("list-sun:");
+    if (this._clockEnterPlayed || optimisticListCurve) {
       this._applyClockSunAppearance(this._clockSunIdleSeconds());
     } else {
       this._clockEnterPlayed = true;
