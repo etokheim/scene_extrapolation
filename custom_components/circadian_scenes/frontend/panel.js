@@ -3353,28 +3353,25 @@ class CircadianScenesPanel extends HTMLElement {
           padding-bottom: 156px;
           box-sizing: border-box;
           position: relative;
-          /* Event chips sit near the face edge — do not clip them. */
+          /* Event chips sit near the face edge — do not clip them here; clip X
+             on the shell below so horizon bleed cannot widen the app-bar scroller. */
           overflow: visible;
           transition:
             margin-right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
             width ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
             padding-right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         }
-        /* Must follow .page.dial-wide { overflow: visible } — that shorthand
-           was overriding an earlier mobile overflow-x and letting
-           .clock-horizon-back widen ha-top-app-bar’s .ha-scrollbar.
-           Only clip the page shell / dial-wide — not stage/body/clock, or
-           overflow-x:clip promotes overflow-y to a scrollport and the huge
-           absolute horizon-back inflates scroll height below the light list. */
-        @media (max-width: 870px) {
-          .page-shell,
-          .page.dial-wide {
-            overflow-x: clip;
-          }
+        /* Clip X on the shell (all widths). .clock-horizon-back is sized to the
+           full panel and was widening ha-top-app-bar’s .ha-scrollbar. Do not
+           clip stage/body/clock — overflow-x:clip promotes overflow-y to a
+           scrollport and abspos horizon used to inflate scroll height; that
+           height is capped in _layoutClockHorizonBack. */
+        .page-shell,
+        .page.dial-wide {
+          overflow-x: clip;
         }
-        /* Sidebar open: let horizon/bloom paint under the drawer (desktop). */
-        :host([data-sidebar-docked]) .page-shell,
-        :host([data-sidebar-docked]) .page.dial-wide,
+        /* Sidebar open: keep path/face overflow visible for chips / underpaint;
+           leave page-shell x-clipped so the horizontal scrollbar stays gone. */
         :host([data-sidebar-docked]) .sun-path.dial-view,
         :host([data-sidebar-docked]) .sun-path-stage,
         :host([data-sidebar-docked]) .sun-path-body,
