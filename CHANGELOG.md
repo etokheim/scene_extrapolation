@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+## [4.0.0] - 2026-09-01
+
 ### 🚨 Breaking changes
 
-- 🚨 Renamed the product to **Circadian Scenes** (domain stays `circadian_scenes`; search either name in HACS)
+- 🚨 Renamed the product to **Circadian Scenes** (domain stayed `scene_extrapolation` in 4.0; search either name in HACS)
 - 🚨 Continuous “follow-up” preferences are now **Automatically update lights** (store migrates `continuous` / `follow_up` keys for you)
 - 🚨 Nightlights mode is gone — use a normal native scene + automation if you still need that pattern
 
