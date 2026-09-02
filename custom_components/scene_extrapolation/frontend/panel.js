@@ -3166,10 +3166,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 4;
           min-height: 0;
           margin: 0;
-          /* Landscape: sit in the dial face corner (was 16px inset). */
           padding: 8px 12px 8px 8px;
           pointer-events: none;
           color: var(--primary-text-color);
+        }
+        /* Landscape: body is grid column 2 (empty left rail centers the dial).
+           Shift the readout into that gutter so Now/Sun° meet the panel edge
+           like the date chips meet the right rail — not the dial column. */
+        .sun-path-stage.landscape-clock-scrub .sun-hover-readout {
+          left: calc(-1 * var(--scrub-rail-width));
+          top: 12px;
+          padding-left: 8px;
         }
         .sun-hover-time {
           font-weight: 500;
