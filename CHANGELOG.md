@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+## [5.0.0] - 2026-09-02
+
 ### 🚨 Breaking changes
 
 - 🚨 Integration domain is now **`circadian_scenes`** (was `scene_extrapolation`) — store, entity registry, and panel paths migrate automatically; search **Circadian Scenes** in HACS
