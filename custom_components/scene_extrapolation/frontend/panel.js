@@ -1098,10 +1098,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           animation: clock-sun-counter-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
         }
         /* Buttons live on the face (outside the SVG overlay). Spin this layer
-           around the dial center so they orbit with the path, not in place. */
+           around the dial center so they orbit with the path, not in place.
+           Anchors counter-rotate so the icon + label stay screen-level. */
         .sun-light-clock-face.clock-face-enter .clock-event-layer {
           transform-origin: center center;
           animation: clock-overlay-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
+        }
+        .sun-light-clock-face.clock-face-enter .clock-event-anchor {
+          animation: clock-event-counter-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
         }
         @keyframes clock-face-fade {
           from {
@@ -1133,6 +1137,14 @@ class SceneExtrapolationPanel extends HTMLElement {
           }
           to {
             transform: rotate(0deg);
+          }
+        }
+        @keyframes clock-event-counter-spin {
+          from {
+            transform: translate(-50%, -50%) rotate(12deg);
+          }
+          to {
+            transform: translate(-50%, -50%) rotate(0deg);
           }
         }
         /* Registered via CSS.registerProperty (document), not @property here —
