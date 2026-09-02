@@ -167,10 +167,10 @@
       "color_brightness": "Color brightness",
       "white_brightness": "White brightness",
       "graph_sub": "0–100% by solar event",
-      "add_entity": "Add entity",
-      "add_entity_title": "Add entity",
-      "add_entity_help": "Add a light from another area, or another entity (for example a cover), to every assigned native scene using its current state.",
-      "entity": "Entity"
+      "add_light": "Add light",
+      "add_light_title": "Add light",
+      "add_light_help": "Add a light from another area (or any light not yet in these scenes). Its current look is copied into every assigned native scene.",
+      "light": "Light"
     },
     "defaults": {
       "circadian_scene": "Circadian"

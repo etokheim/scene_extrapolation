@@ -5975,55 +5975,52 @@ class CircadianScenesPanel extends HTMLElement {
         this._adaptStateToLight(light.entity_id, typical, row.event);
     }
     this._syncPreviewOverlay();
-    this._sunPathKey = undefined;
-    this._ensureSunPath();
+    this._clearPreviewCache();
+    this._schedulePreview();
   }
 
-  _snapshotEntityForScene(entityId) {
+  _optimisticIncludeLight(entityId) {
+    if (!this._sunPath || !entityId?.startsWith("light.")) {
+      return;
+    }
     const state = this._hass?.states?.[entityId];
-    if (!state) {
-      return { state: "off" };
+    const areaId = this._formData.area || null;
+    const entityMeta = this._hass?.entities?.[entityId];
+    let inArea = null;
+    if (areaId && entityMeta) {
+      inArea =
+        entityMeta.area_id === areaId ||
+        (entityMeta.area_id == null &&
+          this._hass?.devices?.[entityMeta.device_id]?.area_id === areaId);
     }
-    if (entityId.startsWith("light.")) {
-      return this._snapshotLight(entityId);
+    const lights = [...(this._sunPath.lights || [])];
+    const index = lights.findIndex((light) => light.entity_id === entityId);
+    if (index >= 0) {
+      lights[index] = {
+        ...lights[index],
+        suggested: false,
+        in_area: inArea ?? lights[index].in_area,
+      };
+    } else {
+      lights.push({
+        entity_id: entityId,
+        name: state?.attributes?.friendly_name || state?.name || entityId,
+        samples: [],
+        gaps: [],
+        event_states: [],
+        suggested: false,
+        in_area: inArea === true,
+      });
     }
-    const attrs = state.attributes || {};
-    const payload = { state: state.state };
-    for (const key of [
-      "brightness",
-      "percentage",
-      "current_position",
-      "current_tilt_position",
-      "position",
-      "tilt_position",
-      "color_temp_kelvin",
-      "hs_color",
-      "rgb_color",
-      "effect",
-      "temperature",
-      "target_temp_high",
-      "target_temp_low",
-      "hvac_mode",
-      "preset_mode",
-      "fan_mode",
-      "swing_mode",
-      "volume_level",
-      "is_volume_muted",
-      "source",
-      "sound_mode",
-      "activity",
-      "message",
-    ]) {
-      if (attrs[key] != null && attrs[key] !== "none") {
-        payload[key] = attrs[key];
-      }
-    }
-    return payload;
+    this._sunPath = { ...this._sunPath, lights };
+    // Keep key cleared so the WS preview with overlay still replaces this stub.
+    this._sunPathKey = undefined;
+    this._drawSunPath();
   }
 
-  _addEntityToAssignedScenes(entityId) {
+  async _addLightToAssignedScenes(entityId) {
     const scenes = this._assignedSceneIds();
-    if (!entityId || !scenes.length) {
+    if (!entityId?.startsWith("light.") || !scenes.length) {
       return;
     }
     const listed = (this._sunPath?.lights || []).some(
@@ -6033,29 +6030,31 @@ class CircadianScenesPanel extends HTMLElement {
       return;
     }
     this._commitUndo();
-    const snapshot = this._snapshotEntityForScene(entityId);
+    const snapshot = this._snapshotLight(entityId);
     for (const sceneId of scenes) {
-      let state = snapshot;
-      if (entityId.startsWith("light.")) {
-        const eventId =
-          Object.entries(EVENT_SCENE_KEYS).find(
-            ([, key]) => this._formData[key] === sceneId
-          )?.[0] || "noon";
-        state = this._adaptStateToLight(entityId, snapshot, eventId);
-      }
-      this._ensureNativeDraft(sceneId).entities[entityId] = { ...state };
+      const eventId =
+        Object.entries(EVENT_SCENE_KEYS).find(
+          ([, key]) => this._formData[key] === sceneId
+        )?.[0] || "noon";
+      this._ensureNativeDraft(sceneId).entities[entityId] = this._adaptStateToLight(
+        entityId,
+        snapshot,
+        eventId
+      );
     }
     this._syncPreviewOverlay();
-    this._sunPathKey = undefined;
-    this._ensureSunPath();
+    // Show the row immediately; then refetch with overlay for real samples.
+    this._optimisticIncludeLight(entityId);
+    this._clearPreviewCache();
+    await this._ensureSunPath();
   }
 
-  _openAddEntityDialog() {
+  _openAddLightDialog() {
     const scenes = this._assignedSceneIds();
     if (!scenes.length) {
       return;
     }
-    this.shadowRoot.querySelector("ha-dialog.add-entity-dialog")?.remove();
+    this.shadowRoot.querySelector("ha-dialog.add-light-dialog")?.remove();
     const listed = new Set(
       (this._sunPath?.lights || [])
         .filter((light) => !light.suggested)
@@ -6063,23 +6062,29 @@ class CircadianScenesPanel extends HTMLElement {
     );
     let selected = null;
     const dialog = document.createElement("ha-dialog");
-    dialog.className = "add-entity-dialog";
+    dialog.className = "add-light-dialog";
     dialog.setAttribute(
       "header-title",
-      this._t("frontend.lights.add_entity_title", "Add entity")
+      this._t("frontend.lights.add_light_title", "Add light")
     );
     dialog.open = true;
     const note = document.createElement("p");
     note.className = "sidebar-note";
     note.textContent = this._t(
-      "frontend.lights.add_entity_help",
-      "Add a light from another area, or another entity (for example a cover), to every assigned native scene using its current state."
+      "frontend.lights.add_light_help",
+      "Add a light from another area (or any light not yet in these scenes). Its current look is copied into every assigned native scene."
     );
     dialog.appendChild(note);
     const picker = document.createElement("ha-selector");
     picker.hass = this._hass;
-    picker.label = this._t("frontend.lights.entity", "Entity");
-    picker.selector = { entity: {} };
+    picker.label = this._t("frontend.lights.light", "Light");
+    // Lights only — circadian blend is light-specific.
+    picker.selector = {
+      entity: {
+        domain: "light",
+        exclude_entities: [...listed],
+      },
+    };
     picker.addEventListener("value-changed", (ev) => {
       ev.stopPropagation();
       selected = ev.detail?.value || null;
@@ -6095,18 +6100,18 @@ class CircadianScenesPanel extends HTMLElement {
     cancel.textContent = this._loc("ui.common.cancel", "Cancel");
     const add = document.createElement("ha-button");
     add.slot = "primaryAction";
-    add.textContent = this._t("frontend.lights.add_entity", "Add entity");
+    add.textContent = this._t("frontend.lights.add_light", "Add light");
     const close = () => {
       dialog.open = false;
       dialog.remove();
     };
     cancel.addEventListener("click", close);
     add.addEventListener("click", () => {
-      if (!selected || listed.has(selected)) {
+      if (!selected || listed.has(selected) || !selected.startsWith("light.")) {
         close();
         return;
       }
-      this._addEntityToAssignedScenes(selected);
+      void this._addLightToAssignedScenes(selected);
       close();
     });
     footer.append(cancel, add);
@@ -6123,14 +6128,14 @@ class CircadianScenesPanel extends HTMLElement {
     wrap.className = "light-list-add";
     const btn = document.createElement("ha-button");
     btn.appearance = "plain";
-    btn.textContent = this._t("frontend.lights.add_entity", "Add entity");
+    btn.textContent = this._t("frontend.lights.add_light", "Add light");
     const icon = document.createElement("ha-icon");
     icon.slot = "start";
     icon.setAttribute("icon", "mdi:plus");
     btn.appendChild(icon);
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      this._openAddEntityDialog();
+      this._openAddLightDialog();
     });
     wrap.appendChild(btn);
     return wrap;
@@ -7026,11 +7031,7 @@ class CircadianScenesPanel extends HTMLElement {
 
   _clockRingLights(lights) {
     return (lights || []).filter(
-      (light) =>
-        !light.suggested &&
-        !light.non_light &&
-        String(light.entity_id || "").startsWith("light.") &&
-        !this._lightIsUnavailable(light.entity_id)
+      (light) => !light.suggested && !this._lightIsUnavailable(light.entity_id)
     );
   }
 
@@ -9505,10 +9506,10 @@ class CircadianScenesPanel extends HTMLElement {
           continue;
         }
         const cached = this._previewCache.get(key);
-        if (cached) {
-          if (listView || !this._previewOverlay) {
-            this._rememberPreview(key, cached);
-          }
+        // Overlay drafts must never reuse a no-overlay payload — membership
+        // (add light) would stay invisible until a full document reload.
+        if (cached && (listView || !this._previewOverlay)) {
+          this._rememberPreview(key, cached);
           this._commitSunPath(cached, key);
           continue;
         }
@@ -13333,10 +13334,6 @@ class CircadianScenesPanel extends HTMLElement {
         row.setAttribute("aria-label", `Edit ${light.name}`);
         const openClosest = (ev) => {
           ev.stopPropagation();
-          if (light.non_light || !String(light.entity_id || "").startsWith("light.")) {
-            this._showEntityMoreInfo(light.entity_id);
-            return;
-          }
           const seconds =
             this._clockSunDisplayedSeconds ??
             this._clockStickySeconds ??
@@ -13545,10 +13542,6 @@ class CircadianScenesPanel extends HTMLElement {
       hit.setAttribute("aria-label", `Edit ${light.name}`);
       const openClosest = (ev) => {
         ev.stopPropagation();
-        if (light.non_light || !String(light.entity_id || "").startsWith("light.")) {
-          this._showEntityMoreInfo(light.entity_id);
-          return;
-        }
         const seconds = this._secondsFromElementPointer(ev, bar);
         const closest = this._closestEvent(assigned, seconds);
         if (closest) {
