@@ -4967,10 +4967,26 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._setEditorActions();
     }
     if (this._sunPath) {
-      // Re-sample from event_states when switching dial ↔ table (scrub/knots
-      // only). Keep settled backend samples as-is.
-      this._sunPath = this._withClientLightSamples(this._sunPath);
-      this._drawSunPath();
+      // Scrub/knots only until settle. Keep settled HA samples as-is.
+      // Switching to table with sparse samples: refetch so bands use the same
+      // extrapolator grid as the dial (not a client RGB 5-minute densify).
+      const sparse =
+        this._view === "edit" &&
+        next === "table" &&
+        !this._yearScrubbing &&
+        !this._hasAuthoritativeLightSamples(this._sunPath.lights) &&
+        (this._sunPath.lights || []).some(
+          (light) => !light.suggested && (light.event_states || []).length
+        );
+      if (sparse) {
+        // Drop the in-memory scrub knots; reuse cached settled preview when
+        // present, otherwise fetch DOMAIN/preview for HA mid-segment samples.
+        this._sunPathKey = undefined;
+        this._ensureSunPath();
+      } else {
+        this._sunPath = this._withClientLightSamples(this._sunPath);
+        this._drawSunPath();
+      }
     } else {
       this._syncYearScrubLayout();
     }
@@ -8465,8 +8481,8 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   /**
    * Settled DOMAIN/preview includes mid-segment samples from HA extrapolators.
-   * Keep those. Mid-scrub / client sun days have empty or knot samples — dial
-   * uses knotsOnly; table densifies RGB from event_states for the polyline.
+   * Keep those for dial and table. Mid-scrub / client sun days stay knotsOnly
+   * — never RGB-densify a 5-minute grid (that disagrees with runtime HS-rim).
    */
   _withClientLightSamples(payload) {
     const lights = payload?.lights;
@@ -8483,13 +8499,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!hasKnots) {
       return payload;
     }
-    const dial =
-      this._view === "edit" && this._lightView === "dial";
     return {
       ...payload,
-      lights: resampleLightsForEvents(lights, events, draftRgb, dial
-        ? { knotsOnly: true }
-        : { stepMinutes: 5 }),
+      lights: resampleLightsForEvents(lights, events, draftRgb, {
+        knotsOnly: true,
+      }),
     };
   }
 
@@ -8510,19 +8524,18 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _morphSunPath(from, to, durationMs) {
     this._cancelSunPathMorph();
-    // Scrub knots → settled HA samples: lerpSampleSeries already samples
-    // sparse "from" at each "to" timestamp — do not RGB-densify (wrong path).
-    const fromDense = this._withDenseScrubLights(from);
-    this._sunPath = fromDense;
-    this._displayedSunPath = fromDense;
+    // Scrub knots → settled HA samples: lerpSampleSeries samples sparse
+    // "from" at each "to" timestamp — no RGB densify (wrong path).
+    this._sunPath = from;
+    this._displayedSunPath = from;
     if (this._lightView === "dial" && this._clockRingsHost) {
-      this._patchLightClock(fromDense, { morphing: true });
+      this._patchLightClock(from, { morphing: true });
     }
     const started = performance.now();
     const tick = (now) => {
       const u = Math.min(1, (now - started) / durationMs);
       const eased = easeOutCubic(u);
-      const frame = lerpSunPath(fromDense, to, eased);
+      const frame = lerpSunPath(from, to, eased);
       this._sunPath = frame;
       this._displayedSunPath = frame;
       const patched =
@@ -8547,35 +8560,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._patchLightClock(to, { morphing: false });
     };
     this._sunPathMorphRaf = window.requestAnimationFrame(tick);
-  }
-
-  /**
-   * Table morph only: expand knot scrub lights onto a 5-minute RGB grid.
-   * Dial morph keeps knots — target timestamps come from settled HA samples.
-   */
-  _withDenseScrubLights(payload) {
-    const lights = payload?.lights;
-    if (!lights?.length || !payload?.events?.length) {
-      return payload;
-    }
-    if (this._view === "edit" && this._lightView === "dial") {
-      return payload;
-    }
-    const sparse = lights.some(
-      (light) =>
-        !light.suggested &&
-        (light.samples?.length || 0) > 0 &&
-        (light.samples?.length || 0) < AUTHORITATIVE_SAMPLE_MIN
-    );
-    if (!sparse) {
-      return payload;
-    }
-    return {
-      ...payload,
-      lights: resampleLightsForEvents(lights, payload.events, draftRgb, {
-        stepMinutes: 5,
-      }),
-    };
   }
 
   async _ensureSunPath() {
