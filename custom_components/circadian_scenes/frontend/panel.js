@@ -2852,6 +2852,20 @@ class CircadianScenesPanel extends HTMLElement {
           justify-content: center;
           padding: 12px 8px 4px;
         }
+        .light-list-add ha-entity-picker {
+          width: min(280px, 100%);
+        }
+        .light-add-picker-host {
+          position: absolute;
+          left: 50%;
+          bottom: 8px;
+          width: min(280px, calc(100% - 16px));
+          transform: translateX(-50%);
+          /* Keep the field out of layout chrome; popover still anchors here. */
+          opacity: 0;
+          pointer-events: none;
+          z-index: 5;
+        }
         .light-list-add ha-button {
           --mdc-typography-button-text-transform: none;
         }
@@ -6049,96 +6063,104 @@ class CircadianScenesPanel extends HTMLElement {
     await this._ensureSunPath();
   }
 
-  _openAddLightDialog() {
-    const scenes = this._assignedSceneIds();
-    if (!scenes.length) {
-      return;
-    }
-    this.shadowRoot.querySelector("ha-dialog.add-light-dialog")?.remove();
-    const listed = new Set(
-      (this._sunPath?.lights || [])
-        .filter((light) => !light.suggested)
-        .map((light) => light.entity_id)
-    );
-    let selected = null;
-    const dialog = document.createElement("ha-dialog");
-    dialog.className = "add-light-dialog";
-    dialog.setAttribute(
-      "header-title",
-      this._t("frontend.lights.add_light_title", "Add light")
-    );
-    dialog.open = true;
-    const note = document.createElement("p");
-    note.className = "sidebar-note";
-    note.textContent = this._t(
-      "frontend.lights.add_light_help",
-      "Add a light from another area (or any light not yet in these scenes). Its current look is copied into every assigned native scene."
-    );
-    dialog.appendChild(note);
-    const picker = document.createElement("ha-selector");
-    picker.hass = this._hass;
-    picker.label = this._t("frontend.lights.light", "Light");
-    // Lights only — circadian blend is light-specific.
-    picker.selector = {
-      entity: {
-        domain: "light",
-        exclude_entities: [...listed],
-      },
-    };
-    picker.addEventListener("value-changed", (ev) => {
-      ev.stopPropagation();
-      selected = ev.detail?.value || null;
-    });
-    dialog.appendChild(picker);
-    const footer = customElements.get("ha-dialog-footer")
-      ? document.createElement("ha-dialog-footer")
-      : document.createElement("div");
-    footer.slot = "footer";
-    const cancel = document.createElement("ha-button");
-    cancel.slot = "secondaryAction";
-    cancel.appearance = "plain";
-    cancel.textContent = this._loc("ui.common.cancel", "Cancel");
-    const add = document.createElement("ha-button");
-    add.slot = "primaryAction";
-    add.textContent = this._t("frontend.lights.add_light", "Add light");
-    const close = () => {
-      dialog.open = false;
-      dialog.remove();
-    };
-    cancel.addEventListener("click", close);
-    add.addEventListener("click", () => {
-      if (!selected || listed.has(selected) || !selected.startsWith("light.")) {
-        close();
-        return;
-      }
-      void this._addLightToAssignedScenes(selected);
-      close();
-    });
-    footer.append(cancel, add);
-    dialog.appendChild(footer);
-    dialog.addEventListener("closed", () => dialog.remove());
-    this.shadowRoot.appendChild(dialog);
-  }
-
-  _lightListAddButton() {
+  _lightListAddControl() {
     if (this._view !== "edit" || !this._assignedSceneIds().length) {
       return null;
     }
     const wrap = document.createElement("div");
     wrap.className = "light-list-add";
+    const label = this._t("frontend.lights.add_light", "Add light");
+
+    // Prefer the native entity picker add-button — one tap opens the search
+    // list (no wrapping dialog + second click on ha-selector).
+    if (customElements.get("ha-entity-picker")) {
+      const picker = document.createElement("ha-entity-picker");
+      picker.addButton = true;
+      picker.addButtonLabel = label;
+      picker.includeDomains = ["light"];
+      picker.hideClearIcon = true;
+      picker.searchLabel = label;
+      const listed = () =>
+        (this._sunPath?.lights || [])
+          .filter((light) => !light.suggested)
+          .map((light) => light.entity_id);
+      picker.excludeEntities = listed();
+      picker.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        const entityId = ev.detail?.value;
+        // Clear so the control returns to the add-button chrome.
+        picker.value = undefined;
+        picker.excludeEntities = listed();
+        if (!entityId || !String(entityId).startsWith("light.")) {
+          return;
+        }
+        void this._addLightToAssignedScenes(entityId);
+      });
+      wrap.appendChild(picker);
+      return wrap;
+    }
+
     const btn = document.createElement("ha-button");
     btn.appearance = "plain";
-    btn.textContent = this._t("frontend.lights.add_light", "Add light");
+    btn.textContent = label;
     const icon = document.createElement("ha-icon");
     icon.slot = "start";
     icon.setAttribute("icon", "mdi:plus");
     btn.appendChild(icon);
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      this._openAddLightDialog();
+      void this._openAddLightPicker(btn);
     });
     wrap.appendChild(btn);
     return wrap;
+  }
+
+  async _openAddLightPicker(anchor) {
+    if (!customElements.get("ha-entity-picker")) {
+      return;
+    }
+    const listed = (this._sunPath?.lights || [])
+      .filter((light) => !light.suggested)
+      .map((light) => light.entity_id);
+    this.shadowRoot.querySelector(".light-add-picker-host")?.remove();
+    const host = document.createElement("div");
+    host.className = "light-add-picker-host";
+    const picker = document.createElement("ha-entity-picker");
+    picker.includeDomains = ["light"];
+    picker.excludeEntities = listed;
+    picker.hideClearIcon = true;
+    picker.searchLabel = this._t("frontend.lights.add_light", "Add light");
+    host.appendChild(picker);
+    // Anchor under the add control so the popover opens nearby.
+    if (anchor?.parentElement) {
+      anchor.parentElement.appendChild(host);
+    } else {
+      this.shadowRoot.appendChild(host);
+    }
+    const cleanup = () => {
+      picker.removeEventListener("value-changed", onValue);
+      picker.removeEventListener("picker-closed", onClosed);
+      host.remove();
+    };
+    const onValue = (ev) => {
+      ev.stopPropagation();
+      const entityId = ev.detail?.value;
+      cleanup();
+      if (!entityId || !String(entityId).startsWith("light.")) {
+        return;
+      }
+      void this._addLightToAssignedScenes(entityId);
+    };
+    const onClosed = () => {
+      // Dismiss without a selection — drop the temporary host.
+      if (!picker.value) {
+        cleanup();
+      }
+    };
+    picker.addEventListener("value-changed", onValue);
+    picker.addEventListener("picker-closed", onClosed);
+    await picker.updateComplete;
+    await picker.open();
   }
 
   async _flushNativeDrafts() {
@@ -13266,7 +13288,7 @@ class CircadianScenesPanel extends HTMLElement {
     for (const light of legendLights) {
       legend.appendChild(this._clockLegendRow(light, events));
     }
-    const addBtn = this._lightListAddButton();
+    const addBtn = this._lightListAddControl();
     if (addBtn) {
       legend.appendChild(addBtn);
     }
@@ -13469,7 +13491,7 @@ class CircadianScenesPanel extends HTMLElement {
     for (const light of this._legendLights(lights)) {
       wrap.appendChild(this._lightRow(light, xOf, events));
     }
-    const addBtn = this._lightListAddButton();
+    const addBtn = this._lightListAddControl();
     if (addBtn) {
       wrap.appendChild(addBtn);
     }
