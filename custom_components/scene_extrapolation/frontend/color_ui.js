@@ -999,7 +999,21 @@ function createLightBrightnessGraph({
   handlesLayer.setAttribute("class", "handles");
 
   svg.append(defs, frame, fillArea, curve, handlesLayer);
-  el.append(heading, svg);
+  // Plot wrapper: title keeps pan-y scroll; plot locks touch + HA sheet dismiss
+  // (ha-bottom-sheet SWIPE_LOCKED_CLASSES includes volume-slider-container).
+  const plot = document.createElement("div");
+  plot.className = "light-brightness-graph-plot volume-slider-container";
+  plot.appendChild(svg);
+  el.append(heading, plot);
+
+  const fireSheetSliderLock = (active) => {
+    el.dispatchEvent(
+      new CustomEvent(
+        active ? "slider-interaction-start" : "slider-interaction-stop",
+        { bubbles: true, composed: true }
+      )
+    );
+  };
 
   let drag = null;
   let dragNode = null;
@@ -1213,6 +1227,7 @@ function createLightBrightnessGraph({
     drag = null;
     dragNode = null;
     unbindWindowDrag();
+    fireSheetSliderLock(false);
     sub.textContent = defaultSubtitle;
     if (ev && node) {
       try {
@@ -1333,6 +1348,7 @@ function createLightBrightnessGraph({
             startY: ev.clientY,
             moved: false,
           };
+          fireSheetSliderLock(true);
           window.addEventListener("pointermove", onWindowPointerMove);
           window.addEventListener("pointerup", onWindowPointerUp);
           window.addEventListener("pointercancel", onWindowPointerUp);
@@ -1390,7 +1406,7 @@ function createSceneColorWheel({
   const stage = document.createElement("div");
   stage.className = "hue-wheel-stage";
   const canvasWrap = document.createElement("div");
-  canvasWrap.className = "hue-wheel-canvas";
+  canvasWrap.className = "hue-wheel-canvas volume-slider-container";
   const glow = document.createElement("canvas");
   glow.className = "hue-wheel-glow";
   glow.setAttribute("aria-hidden", "true");
@@ -1821,11 +1837,23 @@ function createSceneColorWheel({
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
+    stage.dispatchEvent(
+      new CustomEvent("slider-interaction-stop", {
+        bubbles: true,
+        composed: true,
+      })
+    );
     sync();
   };
 
   const startDrag = (ev, sceneId, grabX = 0, grabY = 0) => {
     drag = { sceneId, pointerId: ev.pointerId, grabX, grabY };
+    stage.dispatchEvent(
+      new CustomEvent("slider-interaction-start", {
+        bubbles: true,
+        composed: true,
+      })
+    );
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);

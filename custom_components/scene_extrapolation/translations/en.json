@@ -81,6 +81,12 @@
       "use_home_location": "Use home location",
       "reset_sun_now": "Reset sun to current time"
     },
+    "save_warn": {
+      "title": "Update external scenes?",
+      "text": "Saving will change these Home Assistant scenes that were not created by Scene Extrapolation: {scenes}.",
+      "dont_warn": "Don't warn again",
+      "save": "Save changes"
+    },
     "draft": {
       "title": "Picked up where you left off",
       "detail": "Unsaved changes from a previous session are restored."

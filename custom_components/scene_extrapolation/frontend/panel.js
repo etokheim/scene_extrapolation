@@ -129,6 +129,7 @@ const DRAFT_PERSIST_MS = 200;
 const LIGHT_VIEW_STORAGE_VERSION = 1;
 const LIVE_EDIT_STORAGE_VERSION = 1;
 const ROOM_PREVIEW_STORAGE_VERSION = 1;
+const EXTERNAL_SCENE_WARN_STORAGE_VERSION = 1;
 const CLOCK_FEATHER_PCT = 5.5;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
 const SETUP_AUTOMATIC = "automatic";
@@ -960,11 +961,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Flush under the app bar so horizon/bloom/ramp share one top edge
              (margin left a strip where only some bleed painted). */
           margin-top: 0;
-          /* Clip horizon bleed on X only. Do not use overflow-x: hidden with
-             overflow-y: visible — CSS computes that Y to auto and the dial
-             grows a second vertical scrollbar beside ha-top-app-bar. */
-          overflow-x: clip;
-          overflow-y: visible;
+          /* Do not clip X here — mobile face uses width 100%+48px / −24px
+             margin so ticks bleed past the column; page/dial-wide clips
+             horizon bleed instead (overflow-x:hidden+visible Y → auto). */
+          overflow: visible;
           /* Fallback until _syncDialHeightBudget measures: fill below the
              header, keep event-label pad + gap, leave ~32px of the first
              light row peeking. */
@@ -2287,16 +2287,23 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .light-scene-list {
           display: flex;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
           gap: 6px;
-          margin: 0 0 12px;
+          margin: 0 -24px 12px;
+          padding: 0 24px 4px;
+          overflow-x: auto;
+          overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: thin;
+          scroll-snap-type: x proximity;
         }
         .light-scene-list .sun-event {
-          flex: 1 1 calc(50% - 6px);
+          flex: 0 0 auto;
           min-width: 5.5rem;
-          max-width: none;
-          padding: 6px 8px;
+          max-width: 9rem;
+          padding: 6px 10px;
           gap: 1px;
+          scroll-snap-align: start;
         }
         .light-scene-list .sun-event ha-icon {
           --mdc-icon-size: 16px;
@@ -2600,7 +2607,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           width: 100%;
           margin: 0 0 12px;
           user-select: none;
-          touch-action: none;
+          /* Title/subtitle may start a page scroll; the plot locks pan. */
+          touch-action: pan-y;
         }
         .light-brightness-graph-heading {
           display: flex;
@@ -2619,11 +2627,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           line-height: 1.25;
           color: var(--secondary-text-color);
         }
+        .light-brightness-graph-plot {
+          touch-action: none;
+          user-select: none;
+          -webkit-user-select: none;
+        }
         .light-brightness-graph svg {
           display: block;
           width: 100%;
           height: 120px;
           overflow: visible;
+          touch-action: none;
         }
         .light-brightness-graph .bg-frame {
           fill: color-mix(
@@ -2779,35 +2793,38 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .scene-sidebar-footer {
           display: flex;
-          justify-content: flex-end;
+          justify-content: flex-start;
           align-items: center;
           gap: 12px;
           padding: 12px 16px 16px;
           flex-shrink: 0;
         }
-        .scene-sidebar-footer:has(.sidebar-note) {
+        .scene-sidebar-footer:has(.sidebar-actions-bar) {
           flex-direction: column;
+          justify-content: flex-start;
           align-items: stretch;
-          gap: 8px;
+          gap: 0;
+          padding: 0;
           border-top: 1px solid var(--divider-color);
           background: var(--card-background-color);
         }
-        .scene-sidebar-footer .activate-scene-btn {
-          align-self: stretch;
+        /* Beat ha-bottom-sheet ::slotted(footer) { justify-content: flex-end }. */
+        .scene-sidebar.mobile .scene-sidebar-footer:has(.sidebar-actions-bar) {
+          justify-content: flex-start;
+          align-items: stretch;
+          padding: 0;
         }
-        /* Narrow: undo/redo stay reachable while the sheet body scrolls. */
-        .sidebar-undo-sticky {
-          display: none;
-        }
-        .scene-sidebar.mobile .sidebar-undo-sticky {
+        /* Activate + undo/redo — left-aligned, sticky at the sheet bottom. */
+        .sidebar-actions-bar {
           display: flex;
           align-items: center;
-          justify-content: center;
+          justify-content: flex-start;
           gap: 4px;
-          margin: 4px -16px -16px;
-          padding: 4px 8px calc(8px + var(--safe-area-inset-bottom, 0px));
-          border-top: 1px solid var(--divider-color);
+          padding: 8px 12px calc(12px + var(--safe-area-inset-bottom, 0px));
           background: var(--card-background-color);
+        }
+        .sidebar-actions-bar .activate-scene-btn {
+          margin-inline-end: 4px;
         }
         .live-edit-toggle {
           display: inline-flex;
@@ -3300,8 +3317,7 @@ class SceneExtrapolationPanel extends HTMLElement {
            absolute horizon-back inflates scroll height below the light list. */
         @media (max-width: 870px) {
           .page-shell,
-          .page.dial-wide,
-          .sun-path.dial-view {
+          .page.dial-wide {
             overflow-x: clip;
           }
         }
@@ -3887,6 +3903,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._resetSession();
       this._draftRestore = pending ? null : this._restorePersistedDraft();
       this._draftBannerDismissed = false;
+      void this._refreshManagedScenes();
       this._render();
       if (!this._formData.area) {
         this._openAreaDialog({ context: "new" });
@@ -3933,10 +3950,13 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   async _loadItem(sceneId) {
     try {
-      const item = await this._hass.callWS({
-        type: `${DOMAIN}/get`,
-        scene_id: sceneId,
-      });
+      const [item] = await Promise.all([
+        this._hass.callWS({
+          type: `${DOMAIN}/get`,
+          scene_id: sceneId,
+        }),
+        this._refreshManagedScenes(),
+      ]);
       this._entityId = item.entity_id || null;
       this._formData = { ...emptyFormData(), ...(item.form || item) };
     } catch (err) {
@@ -3964,7 +3984,17 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   /** Panel/integration string from translations/<lang>.json (frontend.* / config.*). */
   _t(path, fallback, vars) {
-    return this._loc(`component.${DOMAIN}.${path}`, fallback, vars);
+    const value = this._loc(`component.${DOMAIN}.${path}`, fallback, vars);
+    if (!vars) {
+      return value;
+    }
+    // hass.localize may miss our key — still expand {name} in the fallback.
+    if (value === fallback || value === `component.${DOMAIN}.${path}`) {
+      return String(fallback).replace(/\{(\w+)\}/g, (match, key) =>
+        vars[key] != null ? String(vars[key]) : match
+      );
+    }
+    return value;
   }
 
   _fieldLabel(name) {
@@ -5067,6 +5097,142 @@ class SceneExtrapolationPanel extends HTMLElement {
     } catch (_err) {
       /* ignore */
     }
+  }
+
+  _externalSceneWarnStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `scene_extrapolation.externalSceneWarn.v${EXTERNAL_SCENE_WARN_STORAGE_VERSION}.${user}`;
+  }
+
+  _readSkipExternalSceneWarn() {
+    try {
+      return window.localStorage.getItem(this._externalSceneWarnStorageKey()) === "1";
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  _writeSkipExternalSceneWarn(skip) {
+    try {
+      window.localStorage.setItem(
+        this._externalSceneWarnStorageKey(),
+        skip ? "1" : "0"
+      );
+    } catch (_err) {
+      /* ignore */
+    }
+  }
+
+  async _refreshManagedScenes() {
+    try {
+      this._managedScenes = await this._hass.callWS({
+        type: `${DOMAIN}/list_managed_native_scenes`,
+      });
+    } catch (_err) {
+      /* keep prior list */
+    }
+  }
+
+  _isManagedNativeScene(entityId) {
+    if (!entityId) {
+      return false;
+    }
+    // Session-created drafts become managed on flush — treat as ours.
+    if (String(entityId).startsWith("scene.__se_draft")) {
+      return true;
+    }
+    return (this._managedScenes || []).some(
+      (row) => row.entity_id === entityId
+    );
+  }
+
+  /** Native scenes this save would rewrite that we did not create. */
+  _externalScenesTouchedByDrafts() {
+    const names = [];
+    const seen = new Set();
+    for (const [sceneId, draft] of Object.entries(this._nativeDrafts || {})) {
+      if (!draft || draft.created || this._isManagedNativeScene(sceneId)) {
+        continue;
+      }
+      const touches =
+        draft.deleted ||
+        Boolean(draft.name) ||
+        Object.keys(draft.entities || {}).length > 0;
+      if (!touches || seen.has(sceneId)) {
+        continue;
+      }
+      seen.add(sceneId);
+      names.push(this._sceneName(sceneId) || sceneId);
+    }
+    return names;
+  }
+
+  _confirmExternalSceneSave(sceneNames) {
+    return new Promise((resolve) => {
+      this.shadowRoot.querySelector("ha-dialog.external-scene-warn")?.remove();
+      const dialog = document.createElement("ha-dialog");
+      dialog.className = "external-scene-warn confirm-dialog";
+      dialog.setAttribute(
+        "header-title",
+        this._t("frontend.save_warn.title", "Update external scenes?")
+      );
+      dialog.open = true;
+      const body = document.createElement("div");
+      const text = document.createElement("p");
+      text.textContent = this._t(
+        "frontend.save_warn.text",
+        "Saving will change these Home Assistant scenes that were not created by Scene Extrapolation: {scenes}.",
+        { scenes: sceneNames.join(", ") }
+      );
+      const row = document.createElement("label");
+      row.className = "dialog-row";
+      const label = document.createElement("span");
+      label.textContent = this._t(
+        "frontend.save_warn.dont_warn",
+        "Don't warn again"
+      );
+      const check = document.createElement("ha-switch");
+      // Default on — one less tap when the user expects this often.
+      check.checked = true;
+      row.append(label, check);
+      body.append(text, row);
+      dialog.appendChild(body);
+      const footer = customElements.get("ha-dialog-footer")
+        ? document.createElement("ha-dialog-footer")
+        : document.createElement("div");
+      footer.slot = "footer";
+      const cancel = document.createElement("ha-button");
+      cancel.slot = "secondaryAction";
+      cancel.appearance = "plain";
+      cancel.textContent = this._t("frontend.common.cancel", "Cancel");
+      const save = document.createElement("ha-button");
+      save.slot = "primaryAction";
+      save.variant = "brand";
+      save.textContent = this._t("frontend.save_warn.save", "Save changes");
+      let settled = false;
+      const settle = (value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        dialog.open = false;
+        resolve(value);
+      };
+      cancel.addEventListener("click", () => settle(false));
+      save.addEventListener("click", () => {
+        if (check.checked) {
+          this._writeSkipExternalSceneWarn(true);
+        }
+        settle(true);
+      });
+      footer.append(cancel, save);
+      dialog.appendChild(footer);
+      dialog.addEventListener("closed", () => {
+        dialog.remove();
+        settle(false);
+      });
+      this.shadowRoot.appendChild(dialog);
+    });
   }
 
   _readLightView() {
@@ -7655,6 +7821,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       list.setAttribute("role", "listbox");
       list.setAttribute("aria-label", "Scene");
       const currentId = sceneEntityId();
+      let selectedBtn = null;
       for (const item of memberScenes) {
         const btn = document.createElement("button");
         btn.type = "button";
@@ -7662,6 +7829,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         btn.setAttribute("role", "option");
         if (item.sceneId === currentId) {
           btn.setAttribute("aria-current", "true");
+          selectedBtn = btn;
         }
         const icon = document.createElement("ha-icon");
         const entity = this._hass?.states?.[item.sceneId];
@@ -7678,6 +7846,15 @@ class SceneExtrapolationPanel extends HTMLElement {
         list.appendChild(btn);
       }
       chipsHost.appendChild(list);
+      if (selectedBtn) {
+        requestAnimationFrame(() => {
+          selectedBtn.scrollIntoView({
+            inline: "nearest",
+            block: "nearest",
+            behavior: "smooth",
+          });
+        });
+      }
     };
 
     const onWheelChange = async () => {
@@ -7971,29 +8148,17 @@ class SceneExtrapolationPanel extends HTMLElement {
       });
     }
 
-    const note = document.createElement("p");
-    note.className = "sidebar-note";
-    const noteIcon = document.createElement("ha-icon");
-    noteIcon.setAttribute("icon", "mdi:information-outline");
-    const noteText = document.createElement("span");
-    noteText.textContent =
-      "Edits here change this light in the related native scene. Graphs update immediately. Save the extrapolation scene to keep the changes.";
-    note.append(noteIcon, noteText);
-    footer.appendChild(activateBtn);
-    footer.appendChild(note);
-    if (this._narrow) {
-      const sticky = document.createElement("div");
-      sticky.className = "sidebar-undo-sticky";
-      const undo = this._undoRedoButton("undo");
-      const redo = this._undoRedoButton("redo");
-      undo.id = "sidebar-button-undo";
-      redo.id = "sidebar-button-redo";
-      sticky.append(undo, redo);
-      footer.appendChild(sticky);
-      this._sidebarUndoBtn = undo;
-      this._sidebarRedoBtn = redo;
-      this._syncUndoButtons();
-    }
+    const bar = document.createElement("div");
+    bar.className = "sidebar-actions-bar";
+    const undo = this._undoRedoButton("undo");
+    const redo = this._undoRedoButton("redo");
+    undo.id = "sidebar-button-undo";
+    redo.id = "sidebar-button-redo";
+    bar.append(activateBtn, undo, redo);
+    footer.appendChild(bar);
+    this._sidebarUndoBtn = undo;
+    this._sidebarRedoBtn = redo;
+    this._syncUndoButtons();
 
     host._switchLightEvent = async (next) => {
       await selectScene(next);
@@ -8211,6 +8376,16 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   async _save() {
+    if (!this._readSkipExternalSceneWarn()) {
+      await this._refreshManagedScenes();
+      const external = this._externalScenesTouchedByDrafts();
+      if (external.length) {
+        const ok = await this._confirmExternalSceneSave(external);
+        if (!ok) {
+          return;
+        }
+      }
+    }
     this._saving = true;
     this._error = null;
     try {
@@ -8228,6 +8403,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       // Saving creates the entity — do not treat #new → #edit/id as discard.
       this._leaveConfirmDone = true;
       this._editId = saved.id;
+      await this._refreshManagedScenes();
       this._go(`edit/${saved.id}`);
     } catch (err) {
       this._error = err.message || String(err);
