@@ -3982,6 +3982,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._liveEditSidebarHandler = null;
     this._cancelClockSunArc();
     this._cancelSunPathMorph();
+    this._forgetClockDom();
     this._form = undefined;
     // Drop dial preview state so the list chart uses the light sun_path API.
     if (this._sunPathKey && !String(this._sunPathKey).startsWith("list-sun:")) {
@@ -6262,6 +6263,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._contentEl.replaceChildren(error);
     } else {
       this._contentEl.replaceChildren();
+    }
+    // List chart lives in .sun-path, not .content. Rebuild the dial from the
+    // in-memory curve now so a detached clock from the last visit cannot be
+    // patched while the linear graph stays on screen.
+    if (this._sunPath?.curve?.length) {
+      this._forgetClockDom();
+      this._drawSunPath();
     }
   }
 
@@ -9558,7 +9566,11 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._lightView = this._readLightView();
     }
     const useClock = this._view === "edit" && this._lightView === "dial";
-    if (useClock && this._clockRingsHost && this._patchLightClock(this._sunPath)) {
+    if (
+      useClock &&
+      this._clockRingsHost?.isConnected &&
+      this._patchLightClock(this._sunPath)
+    ) {
       this._displayedSunPath = this._sunPath;
       if (this._dateToolbar) {
         if (this._yearScrubbing) {
@@ -11522,10 +11534,26 @@ class SceneExtrapolationPanel extends HTMLElement {
    * clones and horizon wedge rebuilds (those are translucent layers that stack
    * and flash under the dial when destroyed/recreated every frame).
    */
+  /**
+   * Year-scrub / date morph may patch rings in place. After the list replaces
+   * the body with the linear chart, those nodes are detached — patching them
+   * would succeed and skip rebuilding the visible dial.
+   */
+  _forgetClockDom() {
+    this._clockRingsHost = undefined;
+    this._clockOverlayEl = undefined;
+    this._clockGlowLayer = undefined;
+    this._layoutDialChromeFn = undefined;
+  }
+
   _patchLightClock(payload, { morphing = false } = {}) {
     const ringsHost = this._clockRingsHost;
     const overlay = this._clockOverlayEl;
-    if (!ringsHost || !overlay || !payload?.events) {
+    if (
+      !ringsHost?.isConnected ||
+      !overlay?.isConnected ||
+      !payload?.events
+    ) {
       return false;
     }
     const ringLights = this._clockRingLights(payload.lights || []);
