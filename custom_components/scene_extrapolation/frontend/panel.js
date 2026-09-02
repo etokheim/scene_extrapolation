@@ -109,7 +109,7 @@ const CLOCK_EVENT_GAP_FROM_PATH = 10;
 const CLOCK_OVERRIDE_R = CLOCK_TICK_OUTER;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
 const CLOCK_SUN_STROKE_MAX_PX = 10;
-const SIDEBAR_ANIMATION_MS = 200;
+const SIDEBAR_ANIMATION_MS = 400;
 const SIDEBAR_SWAP_MS = 160;
 /* Cubic ease-out: decelerates across more of the span than quintic. */
 const CLOCK_SUN_MOVE_MS = 1500;
