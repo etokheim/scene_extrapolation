@@ -1,0 +1,242 @@
+# Extra Stue lamps for editor-load profiling (many-light room).
+light:
+  - platform: virtual
+    name: "!Stue load 01"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 02"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 03"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 04"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 05"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 06"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 07"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 08"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 09"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 10"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 11"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 12"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 13"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 14"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 15"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 16"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 17"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 18"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 19"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 20"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 21"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 22"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 23"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 24"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 25"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 26"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 27"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 28"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 29"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false
+  - platform: virtual
+    name: "!Stue load 30"
+    initial_value: "off"
+    support_brightness: true
+    initial_brightness: 180
+    support_color_temp: true
+    initial_color_temp: 200
+    persistent: false

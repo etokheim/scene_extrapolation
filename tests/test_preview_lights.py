@@ -38,7 +38,7 @@ def test_unassigned_area_returns_suggested_lights(mock_lights, mock_native):
     mock_lights.return_value = ["light.ceiling", "light.lamp"]
     hass = _hass_with_names({"light.ceiling": "Ceiling", "light.lamp": "Lamp"})
 
-    lights, warnings = _light_series(
+    lights, warnings, _split = _light_series(
         hass,
         _events(),
         scene_ids={},
@@ -64,7 +64,7 @@ def test_unassigned_without_area_returns_empty(mock_lights, mock_native):
     mock_native.return_value = {}
     hass = MagicMock()
 
-    lights, warnings = _light_series(
+    lights, warnings, _split = _light_series(
         hass,
         _events(),
         scene_ids={},
@@ -93,7 +93,7 @@ def test_assigned_scenes_include_suggested_area_lights(mock_lights, mock_native)
     mock_lights.return_value = ["light.ceiling", "light.extra"]
     hass = _hass_with_names({"light.ceiling": "Ceiling", "light.extra": "Extra"})
 
-    lights, _warnings = _light_series(
+    lights, _warnings, _split = _light_series(
         hass,
         _events(),
         scene_ids={
