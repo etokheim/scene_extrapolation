@@ -2852,8 +2852,11 @@ class CircadianScenesPanel extends HTMLElement {
           justify-content: center;
           padding: 12px 8px 4px;
         }
+        /* Shrink-wrap to the add button — a fixed picker width left-aligns
+           the slotted ha-button inside ha-generic-picker’s full-width container. */
         .light-list-add ha-entity-picker {
-          width: min(280px, 100%);
+          width: fit-content;
+          max-width: 100%;
         }
         .light-add-picker-host {
           position: absolute;
