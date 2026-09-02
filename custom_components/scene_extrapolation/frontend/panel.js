@@ -2462,10 +2462,9 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .hue-wheel-chrome {
           position: relative;
-          display: flex;
-          flex-wrap: nowrap;
-          justify-content: space-between;
-          align-items: flex-end;
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr) auto;
+          align-items: center;
           gap: 8px;
           pointer-events: none;
           z-index: 3;
@@ -2476,6 +2475,19 @@ class SceneExtrapolationPanel extends HTMLElement {
         .hue-wheel-chrome > * {
           pointer-events: auto;
         }
+        .hue-wheel-readout {
+          min-width: 0;
+          padding: 0 4px;
+          text-align: center;
+          font-size: 0.8125rem;
+          font-variant-numeric: tabular-nums;
+          line-height: 1.2;
+          color: var(--secondary-text-color);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          pointer-events: none;
+        }
         .hue-mode-pill,
         .hue-presets {
           box-sizing: border-box;
@@ -2485,7 +2497,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           min-height: 40px;
           padding: 8px;
           gap: 8px;
-          margin-left: auto;
           min-width: 0;
           border-radius: 20px;
           box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
@@ -2498,7 +2509,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         .hue-presets {
           position: relative;
           justify-content: flex-start;
-          flex: 1 1 auto;
           overflow: hidden;
         }
         .hue-presets-track {
@@ -6953,10 +6963,20 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (stored.effect != null && stored.effect !== "none") {
       data.effect = stored.effect;
     }
-    // HA rejects two+ members of the Color descriptors exclusion group
-    // (e.g. hs_color + rgb_color). Drafts often store both; live entity
-    // snapshots do too — send exactly one.
-    if (stored.rgbww_color != null) {
+    // HA rejects two+ members of the Color descriptors exclusion group.
+    // Prefer color_mode when present (same as light/reproduce_state).
+    const mode = stored.color_mode;
+    if (mode === "color_temp" && stored.color_temp_kelvin != null) {
+      data.color_temp_kelvin = stored.color_temp_kelvin;
+    } else if (mode === "rgbww" && stored.rgbww_color != null) {
+      data.rgbww_color = stored.rgbww_color;
+    } else if (mode === "rgbw" && stored.rgbw_color != null) {
+      data.rgbw_color = stored.rgbw_color;
+    } else if ((mode === "hs" || mode === "xy") && stored.hs_color != null) {
+      data.hs_color = stored.hs_color;
+    } else if (mode === "rgb" && stored.rgb_color != null) {
+      data.rgb_color = stored.rgb_color;
+    } else if (stored.rgbww_color != null) {
       data.rgbww_color = stored.rgbww_color;
     } else if (stored.rgbw_color != null) {
       data.rgbw_color = stored.rgbw_color;
@@ -7135,9 +7155,15 @@ class SceneExtrapolationPanel extends HTMLElement {
         undoCommitted = true;
       }
       for (const [sceneId, entry] of dirty) {
-        this._ensureNativeDraft(sceneId).entities[light.entity_id] = {
-          ...entry.draft,
-        };
+        // Drop undefined keys so kelvin converts do not reintroduce rgb/hs
+        // as nullish fields in the session draft / WS payload.
+        const cleaned = {};
+        for (const [key, value] of Object.entries(entry.draft)) {
+          if (value !== undefined) {
+            cleaned[key] = value;
+          }
+        }
+        this._ensureNativeDraft(sceneId).entities[light.entity_id] = cleaned;
         entry.saved = lightDraftFingerprint(entry.draft);
       }
       this._syncPreviewOverlay();

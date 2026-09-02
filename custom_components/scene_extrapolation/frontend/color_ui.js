@@ -263,6 +263,20 @@ function pinForeground(rgb) {
 }
 
 function draftWheelMode(draft, hasColor, hasTemp) {
+  // Honor stored color_mode first (YAML / HA snapshots).
+  const mode = draft?.color_mode;
+  if (mode === "color_temp" && draft?.color_temp_kelvin != null) {
+    return hasTemp ? "temp" : "color";
+  }
+  if (
+    mode === "hs" ||
+    mode === "rgb" ||
+    mode === "rgbw" ||
+    mode === "rgbww" ||
+    mode === "xy"
+  ) {
+    return hasColor ? "color" : "temp";
+  }
   if (
     draft?.rgb_color ||
     draft?.hs_color ||
@@ -456,7 +470,6 @@ function draftRgb(draft) {
 }
 
 function applyColorToDraft(draft, rgb, hsv) {
-  draft.hs_color = [hsv[0], Math.round(hsv[1] * 100)];
   draft.color_temp_kelvin = undefined;
   draft.state = "on";
   if (draft.rgbww_color) {
@@ -473,6 +486,8 @@ function applyColorToDraft(draft, rgb, hsv) {
     ];
     draft.rgb_color = undefined;
     draft.rgbw_color = undefined;
+    draft.hs_color = undefined;
+    draft.color_mode = "rgbww";
     return;
   }
   if (draft.rgbw_color) {
@@ -483,15 +498,22 @@ function applyColorToDraft(draft, rgb, hsv) {
     draft.rgbw_color = [scaled[0], scaled[1], scaled[2], draft.rgbw_color[3]];
     draft.rgb_color = undefined;
     draft.rgbww_color = undefined;
+    draft.hs_color = undefined;
+    draft.color_mode = "rgbw";
     return;
   }
-  draft.rgb_color = rgb;
+  // HS only for chromatic scenes — matches light.turn_on exclusivity and
+  // avoids reopen as RGB when kelvin was intended after a later mode flip.
+  draft.hs_color = [hsv[0], Math.round(hsv[1] * 100)];
+  draft.rgb_color = undefined;
   draft.rgbw_color = undefined;
   draft.rgbww_color = undefined;
+  draft.color_mode = "hs";
 }
 
 function applyTempToDraft(draft, kelvin) {
-  draft.color_temp_kelvin = kelvin;
+  draft.color_temp_kelvin = Math.round(kelvin);
+  draft.color_mode = "color_temp";
   draft.rgb_color = undefined;
   draft.hs_color = undefined;
   draft.rgbw_color = undefined;
@@ -499,25 +521,87 @@ function applyTempToDraft(draft, kelvin) {
   draft.state = "on";
 }
 
+/** Nearest Helland kelvin in [min,max] to an RGB (for RGB→temp mode convert). */
+function approxKelvinFromRgb(rgb, tempMin, tempMax) {
+  const minK = Math.round(Number(tempMin) || 2000);
+  const maxK = Math.round(Number(tempMax) || 6500);
+  let best = Math.round((minK + maxK) / 2);
+  let bestDist = Infinity;
+  for (let kelvin = minK; kelvin <= maxK; kelvin += 25) {
+    const sample = kelvinToRgb(kelvin);
+    const dist =
+      (sample[0] - rgb[0]) ** 2 +
+      (sample[1] - rgb[1]) ** 2 +
+      (sample[2] - rgb[2]) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = kelvin;
+    }
+  }
+  return best;
+}
+
+function kelvinForTempConvert(draft, tempMin, tempMax) {
+  if (draft?.color_temp_kelvin != null) {
+    return Math.round(draft.color_temp_kelvin);
+  }
+  return approxKelvinFromRgb(draftRgb(draft), tempMin, tempMax);
+}
+
 function inferDraftColorKind(draft) {
-  if (draft?.rgbww_color) {
+  if (draft?.color_mode === "color_temp" && draft?.color_temp_kelvin != null) {
+    return "temp";
+  }
+  if (draft?.color_mode === "rgbww" || draft?.rgbww_color) {
     return "rgbww";
   }
-  if (draft?.rgbw_color) {
+  if (draft?.color_mode === "rgbw" || draft?.rgbw_color) {
     return "rgbw";
   }
-  // Prefer HS over RGB: applyColorToDraft writes both, and RGB channel lerp of
+  // Prefer HS over RGB: applyColorToDraft writes HS, and RGB channel lerp of
   // complements bows through white — not the rim path users expect.
-  if (draft?.hs_color) {
+  if (draft?.color_mode === "hs" || draft?.hs_color) {
     return "hs";
   }
-  if (draft?.rgb_color) {
+  if (draft?.color_mode === "rgb" || draft?.rgb_color) {
     return "rgb";
   }
   if (draft?.color_temp_kelvin != null) {
     return "temp";
   }
   return null;
+}
+
+/** Short active-draft readout for the wheel chrome. */
+function formatWheelReadout(draft, wheelMode) {
+  if (!draft || draft.state === "off") {
+    return "Off";
+  }
+  if (wheelMode === "temp") {
+    const kelvin = draft.color_temp_kelvin;
+    if (kelvin == null) {
+      return "Color temperature";
+    }
+    return `${Math.round(kelvin)} K`;
+  }
+  const kind = inferDraftColorKind(draft);
+  if (kind === "hs" && draft.hs_color) {
+    return `HS · ${Math.round(draft.hs_color[0])}°, ${Math.round(draft.hs_color[1])}%`;
+  }
+  if (kind === "rgb" && draft.rgb_color) {
+    const [r, g, b] = draft.rgb_color;
+    return `RGB · ${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}`;
+  }
+  if (kind === "rgbw") {
+    return "RGBW";
+  }
+  if (kind === "rgbww") {
+    return "RGBWW";
+  }
+  if (kind === "temp" && draft.color_temp_kelvin != null) {
+    return `${Math.round(draft.color_temp_kelvin)} K`;
+  }
+  return "Color";
 }
 
 /** HS for chromatic drafts (native hs, else from rgb). Null for temp / missing. */
@@ -1298,13 +1382,16 @@ function createSceneColorWheel({
   chrome.className = "hue-wheel-chrome";
   const pill = document.createElement("div");
   pill.className = "hue-mode-pill";
+  const readout = document.createElement("div");
+  readout.className = "hue-wheel-readout";
+  readout.setAttribute("aria-live", "polite");
   const presets = document.createElement("div");
   presets.className = "hue-presets";
   const presetTrack = document.createElement("div");
   presetTrack.className = "hue-presets-track";
   presetTrack.setAttribute("role", "list");
   presets.appendChild(presetTrack);
-  chrome.append(pill, presets);
+  chrome.append(pill, readout, presets);
   stage.append(canvasWrap, chrome);
 
   const markers = new Map();
@@ -1513,9 +1600,21 @@ function createSceneColorWheel({
           if (scene.id !== current) {
             onSelect(scene.id);
           }
+          // Stay on the visible wheel: convert off-mode drafts to this mode
+          // instead of flipping chrome back to RGB when placing on kelvin.
           const markerMode = draftWheelMode(item.draft, hasColor, hasTemp);
           if (markerMode !== mode) {
-            setMode(markerMode, { convertDraft: false });
+            if (mode === "color") {
+              const rgb = draftRgb(item.draft);
+              const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
+              applyColorToDraft(item.draft, rgb, hsv);
+            } else {
+              applyTempToDraft(
+                item.draft,
+                kelvinForTempConvert(item.draft, tempMin, tempMax)
+              );
+            }
+            onChange();
           }
           const pt = pointFromEvent(ev);
           startDrag(
@@ -1554,6 +1653,8 @@ function createSceneColorWheel({
     }
     syncPath();
     syncPresets();
+    const activeScene = scenes.find((item) => item.id === activeId);
+    readout.textContent = formatWheelReadout(activeScene?.draft, mode);
   };
 
   const syncPath = () => {
@@ -1720,20 +1821,28 @@ function createSceneColorWheel({
     if (next === "temp" && !hasTemp) {
       return;
     }
-    const { scenes, activeId } = getState();
-    const active = scenes.find((item) => item.id === activeId);
-    if (convertDraft && active && draftWheelMode(active.draft, hasColor, hasTemp) !== next) {
-      if (next === "color") {
-        const rgb = draftRgb(active.draft);
-        const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
-        applyColorToDraft(active.draft, rgb, hsv);
-      } else {
-        applyTempToDraft(
-          active.draft,
-          active.draft.color_temp_kelvin ?? Math.round((tempMin + tempMax) / 2)
-        );
+    const { scenes } = getState();
+    if (convertDraft) {
+      let changed = false;
+      for (const scene of scenes) {
+        if (draftWheelMode(scene.draft, hasColor, hasTemp) === next) {
+          continue;
+        }
+        if (next === "color") {
+          const rgb = draftRgb(scene.draft);
+          const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
+          applyColorToDraft(scene.draft, rgb, hsv);
+        } else {
+          applyTempToDraft(
+            scene.draft,
+            kelvinForTempConvert(scene.draft, tempMin, tempMax)
+          );
+        }
+        changed = true;
       }
-      onChange();
+      if (changed) {
+        onChange();
+      }
     }
     if (mode !== next) {
       mode = next;
@@ -1798,6 +1907,7 @@ function lightDraftFingerprint(draft) {
   return JSON.stringify({
     state: draft?.state || "off",
     brightness: draft?.brightness ?? null,
+    color_mode: draft?.color_mode ?? null,
     color_temp_kelvin: draft?.color_temp_kelvin ?? null,
     rgb_color: draft?.rgb_color ?? null,
     hs_color: draft?.hs_color ?? null,
@@ -1839,6 +1949,8 @@ export {
   draftRgb,
   applyColorToDraft,
   applyTempToDraft,
+  approxKelvinFromRgb,
+  formatWheelReadout,
   inferDraftColorKind,
   draftHs,
   collapseSceneCycle,
