@@ -7,11 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚨 Breaking changes
+
+- 🚨 Integration domain is now **`circadian_scenes`** (was `scene_extrapolation`) — store, entity registry, and panel paths migrate automatically; search **Circadian Scenes** in HACS
+
+### Summary:
+
+Domain rename for real, plus a much better light sidebar: add lights in one tap, effects, live color previews, and fewer dial layout glitches.
+
 ### Added
+
+- ⭐ **Add light** under the dial list — pick any light (including other areas); current look is copied into every assigned native scene
+- Effect picker in the light sidebar (`ha-control-select-menu`)
+- Save warning when a write would change native scenes Circadian Scenes did not create (with a “don’t warn again” option)
+- Live kelvin / color readout while dragging the color wheel handle
 
 ### Changed
 
+- Light sidebar: undo/redo first, clearer Preview / Live preview / Activate actions, smoother color-wheel live preview (~500ms throttle)
+- Dial paints rings from event knots then refines mid-segment colors after settle (faster first paint; truer colors)
+- Kelvin scene colors persist with exclusive attributes; table view uses settled HA samples
+- Dial chrome: vignette pinned to the panel host, longer sidebar open/close, enter animation orbits event buttons with a shorter sun sweep
+
 ### Fixed
+
+- Editor horizontal scrollbar from horizon background bleed (clip at all widths)
+- Add light control centering; new lights appear without a full page reload; one tap opens the native search list
+- Light-band selection kept when opening the sidebar; Now/Sun° readout alignment; assorted dial layout and bleed polish
 
 ## [4.0.0] - 2026-09-01
 
