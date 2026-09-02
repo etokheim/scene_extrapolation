@@ -4954,6 +4954,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._setEditorActions();
     }
     if (this._sunPath) {
+      // Re-sample from event_states when switching dial ↔ table.
+      this._sunPath = this._withClientLightSamples(this._sunPath);
       this._drawSunPath();
     } else {
       this._syncYearScrubLayout();
@@ -8419,15 +8421,42 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _commitSunPath(payload, key) {
+    const prepared = this._withClientLightSamples(payload);
     const from = this._displayedSunPath || this._sunPath;
-    const morphMs = this._takePathMorphMs(from, payload);
-    this._sunPath = payload;
+    const morphMs = this._takePathMorphMs(from, prepared);
+    this._sunPath = prepared;
     this._sunPathKey = key;
-    if (morphMs && from && from !== payload) {
-      this._morphSunPath(from, payload, morphMs);
+    if (morphMs && from && from !== prepared) {
+      this._morphSunPath(from, prepared, morphMs);
       return;
     }
     this._drawSunPath();
+  }
+
+  /**
+   * Preview returns event_states only (no 5-minute samples). Dial uses knot
+   * stops + CSS ramps (year-scrub path); table densifies in the browser.
+   */
+  _withClientLightSamples(payload) {
+    const lights = payload?.lights;
+    const events = payload?.events;
+    if (!lights?.length || !events?.length) {
+      return payload;
+    }
+    const hasKnots = lights.some(
+      (light) => !light.suggested && (light.event_states || []).length
+    );
+    if (!hasKnots) {
+      return payload;
+    }
+    const dial =
+      this._view === "edit" && this._lightView === "dial";
+    return {
+      ...payload,
+      lights: resampleLightsForEvents(lights, events, draftRgb, dial
+        ? { knotsOnly: true }
+        : { stepMinutes: 5 }),
+    };
   }
 
   _cancelSunPathMorph() {
@@ -8439,10 +8468,9 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _morphSunPath(from, to, durationMs) {
     this._cancelSunPathMorph();
-    // Scrub uses 5-event knots (CSS ramps between stops). Morphing that straight
-    // into Astral's dense samples flashes — especially the midnight wrap at the
-    // bottom of the dial. Densify the "from" lights onto a 5-minute grid first
-    // so frame 0 already matches how we paint rings during the morph.
+    // Scrub / settled dial both use knot samples. Morphing knot→knot is fine;
+    // densify sparse "from" onto a 5-minute grid only when needed so frame 0
+    // matches denser "to" samples (table or legacy cache).
     const fromDense = this._withDenseScrubLights(from);
     this._sunPath = fromDense;
     this._displayedSunPath = fromDense;

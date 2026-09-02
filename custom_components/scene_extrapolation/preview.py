@@ -8,20 +8,13 @@ import time
 from typing import Any
 
 from homeassistant.components.homeassistant.scene import HomeAssistantScene
-from homeassistant.components.light import (
-    ATTR_BRIGHTNESS,
-    ATTR_COLOR_MODE,
-    ColorMode,
-)
-from homeassistant.const import ATTR_STATE, STATE_OFF, STATE_ON, STATE_UNAVAILABLE
+from homeassistant.components.light import ColorMode
 from homeassistant.core import HomeAssistant
 
 from .color_math import (
-    DEFAULT_RGB,
     blend_entity_rgb,
     clamp_rgb,
     hs_to_rgb,
-    infer_color_mode,
     kelvin_to_rgb,
     normalize_color_mode,
     rgbw_to_rgb,
@@ -36,18 +29,14 @@ from .const import (
     SCENE_SUNSET,
 )
 from .extrapolation_math import (
-    current_sun_event_index,
-    extrapolate_brightness,
     extrapolate_hs,
     extrapolate_rgb,
     extrapolate_rgbw,
     extrapolate_rgbww,
-    extrapolate_state,
     extrapolate_temp_kelvin,
-    transition_progress_percent,
 )
 from .native_scene import lights_in_area, scene_entity_payload
-from .solar import CURVE_STEP_MINUTES, build_sun_path
+from .solar import build_sun_path
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -263,19 +252,18 @@ def _light_series(
         warnings_by_light.setdefault(warning["entity_id"], []).append(warning)
 
     lights = []
+    # Knots only — no 5-minute _sample_light grid. The panel paints dial rings
+    # from event_states (CSS ramps, same as year-scrub) and densifies in the
+    # browser for table view. That kept many-lamp rooms off the executor for
+    # ~1s of deepcopy/lerp work.
     t_samples = time.perf_counter()
     for entity_id in sorted(light_ids):
         state = hass.states.get(entity_id)
-        samples = []
-        for minute in range(0, 24 * 60 + 1, CURVE_STEP_MINUTES):
-            seconds = minute * 60
-            brightness_pct, rgb = _sample_light(bound, entity_id, seconds)
-            samples.append([seconds, brightness_pct, rgb[0], rgb[1], rgb[2]])
         lights.append(
             {
                 "entity_id": entity_id,
                 "name": state.name if state else entity_id,
-                "samples": samples,
+                "samples": [],
                 "gaps": warnings_by_light.get(entity_id, []),
                 "event_states": _event_states_for_light(bound, entity_id),
                 "suggested": False,
@@ -370,68 +358,6 @@ def _gap_warnings(
                 }
             )
     return warnings
-
-
-def _event_at(
-    bound: list[dict[str, Any]], seconds: int, offset: int = 0
-) -> dict[str, Any]:
-    starts = [event["seconds"] for event in bound]
-    index = current_sun_event_index(starts, seconds)
-    return bound[(index + offset) % len(bound)]
-
-
-def _sample_light(
-    bound: list[dict[str, Any]], entity_id: str, seconds: int
-) -> tuple[int, tuple[int, int, int]]:
-    current = _event_at(bound, seconds, 0)
-    nxt = _event_at(bound, seconds, 1)
-    percent = transition_progress_percent(current["seconds"], nxt["seconds"], seconds)
-    from_entity = copy.deepcopy(
-        current["scene"]["entities"].get(entity_id, {ATTR_STATE: STATE_OFF})
-    )
-    to_entity = copy.deepcopy(
-        nxt["scene"]["entities"].get(entity_id, {ATTR_STATE: STATE_OFF})
-    )
-    if (
-        from_entity.get(ATTR_STATE) == STATE_UNAVAILABLE
-        or to_entity.get(ATTR_STATE) == STATE_UNAVAILABLE
-    ):
-        return 0, DEFAULT_RGB
-
-    final_entity: dict[str, Any] = {"entity_id": entity_id}
-    if ATTR_STATE in from_entity and ATTR_STATE in to_entity:
-        final_entity[ATTR_STATE] = extrapolate_state(
-            from_entity, to_entity, final_entity, percent
-        )
-    else:
-        final_entity[ATTR_STATE] = from_entity.get(
-            ATTR_STATE, to_entity.get(ATTR_STATE, STATE_OFF)
-        )
-
-    if ATTR_COLOR_MODE not in from_entity and ATTR_COLOR_MODE in to_entity:
-        from_entity[ATTR_COLOR_MODE] = to_entity[ATTR_COLOR_MODE]
-    elif ATTR_COLOR_MODE not in to_entity and ATTR_COLOR_MODE in from_entity:
-        to_entity[ATTR_COLOR_MODE] = from_entity[ATTR_COLOR_MODE]
-
-    from_mode = from_entity.get(ATTR_COLOR_MODE) or infer_color_mode(from_entity)
-    to_mode = to_entity.get(ATTR_COLOR_MODE) or infer_color_mode(to_entity)
-
-    brightness = 0
-    if ATTR_BRIGHTNESS in from_entity or ATTR_BRIGHTNESS in to_entity:
-        brightness = extrapolate_brightness(
-            from_entity, to_entity, final_entity, percent, 0
-        )
-        final_entity[ATTR_BRIGHTNESS] = brightness
-    elif final_entity.get(ATTR_STATE) == STATE_ON:
-        brightness = 255
-        final_entity[ATTR_BRIGHTNESS] = brightness
-    rgb = _display_rgb(
-        from_entity, to_entity, final_entity, from_mode, to_mode, percent
-    )
-    pct = max(0, min(100, round(brightness * 100 / 255)))
-    if final_entity.get(ATTR_STATE) != STATE_ON and brightness <= 0:
-        pct = 0
-    return pct, rgb
 
 
 def _display_rgb(

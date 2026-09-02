@@ -110,6 +110,8 @@ def test_assigned_scenes_include_suggested_area_lights(mock_lights, mock_native)
     by_id = {row["entity_id"]: row for row in lights}
     assert set(by_id) == {"light.ceiling", "light.extra"}
     assert by_id["light.ceiling"]["suggested"] is False
-    assert by_id["light.ceiling"]["samples"]
+    # Knots only — panel densifies samples in the browser.
+    assert by_id["light.ceiling"]["samples"] == []
+    assert len(by_id["light.ceiling"]["event_states"]) == 5
     assert by_id["light.extra"]["suggested"] is True
     assert by_id["light.extra"]["samples"] == []
