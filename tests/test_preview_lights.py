@@ -110,8 +110,69 @@ def test_assigned_scenes_include_suggested_area_lights(mock_lights, mock_native)
     by_id = {row["entity_id"]: row for row in lights}
     assert set(by_id) == {"light.ceiling", "light.extra"}
     assert by_id["light.ceiling"]["suggested"] is False
-    # Knots only — panel densifies samples in the browser.
-    assert by_id["light.ceiling"]["samples"] == []
+    # Event endpoints + 5 intermediates × 5 segments + midnight ≈ 31 samples.
+    assert len(by_id["light.ceiling"]["samples"]) >= 9
     assert len(by_id["light.ceiling"]["event_states"]) == 5
     assert by_id["light.extra"]["suggested"] is True
     assert by_id["light.extra"]["samples"] == []
+
+
+@patch("custom_components.scene_extrapolation.preview.load_native_scenes")
+@patch("custom_components.scene_extrapolation.preview.lights_in_area")
+def test_rgb_segment_samples_follow_hs_rim(mock_lights, mock_native):
+    """Settled mid-segment RGB↔RGB samples stay on the hue rim (not RGB chord)."""
+    mock_native.return_value = {
+        "scene.red": {
+            "id": "red",
+            "name": "Red",
+            "entity_id": "scene.red",
+            "entities": {
+                "light.ceiling": {
+                    "state": "on",
+                    "brightness": 255,
+                    "color_mode": "rgb",
+                    "rgb_color": [255, 0, 0],
+                },
+            },
+        },
+        "scene.blue": {
+            "id": "blue",
+            "name": "Blue",
+            "entity_id": "scene.blue",
+            "entities": {
+                "light.ceiling": {
+                    "state": "on",
+                    "brightness": 255,
+                    "color_mode": "rgb",
+                    "rgb_color": [0, 0, 255],
+                },
+            },
+        },
+    }
+    mock_lights.return_value = ["light.ceiling"]
+    hass = _hass_with_names({"light.ceiling": "Ceiling"})
+
+    lights, _warnings, _split = _light_series(
+        hass,
+        _events(),
+        scene_ids={
+            "scene_dawn": "scene.red",
+            "scene_sunrise": "scene.blue",
+            "scene_noon": "scene.blue",
+            "scene_sunset": "scene.blue",
+            "scene_dusk": "scene.blue",
+        },
+        overlay=None,
+        area_id="stue",
+    )
+
+    samples = lights[0]["samples"]
+    dawn = 5 * 3600
+    sunrise = 6 * 3600
+    mids = [row for row in samples if dawn < row[0] < sunrise]
+    assert len(mids) == 5
+    # Straight RGB chord mid is ~[128,0,128]. Without hue wrap, HS-rim mid is
+    # green (hue 120°) at full saturation — matches runtime extrapolate_rgb.
+    mid = mids[len(mids) // 2]
+    assert mid[3] > 200  # green high on the rim
+    assert mid[2] < 40 and mid[4] < 40  # red+blue low (not purple chord)

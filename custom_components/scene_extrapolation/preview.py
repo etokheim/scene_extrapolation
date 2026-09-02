@@ -8,13 +8,20 @@ import time
 from typing import Any
 
 from homeassistant.components.homeassistant.scene import HomeAssistantScene
-from homeassistant.components.light import ColorMode
+from homeassistant.components.light import (
+    ATTR_BRIGHTNESS,
+    ATTR_COLOR_MODE,
+    ColorMode,
+)
+from homeassistant.const import ATTR_STATE, STATE_OFF, STATE_ON, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 
 from .color_math import (
+    DEFAULT_RGB,
     blend_entity_rgb,
     clamp_rgb,
     hs_to_rgb,
+    infer_color_mode,
     kelvin_to_rgb,
     normalize_color_mode,
     rgbw_to_rgb,
@@ -29,16 +36,24 @@ from .const import (
     SCENE_SUNSET,
 )
 from .extrapolation_math import (
+    current_sun_event_index,
+    extrapolate_brightness,
     extrapolate_hs,
     extrapolate_rgb,
     extrapolate_rgbw,
     extrapolate_rgbww,
+    extrapolate_state,
     extrapolate_temp_kelvin,
+    transition_progress_percent,
 )
 from .native_scene import lights_in_area, scene_entity_payload
-from .solar import build_sun_path
+from .solar import SECONDS_PER_DAY, build_sun_path
 
 _LOGGER = logging.getLogger(__name__)
+
+# Mid-segment stops between solar events for settled dial/table preview.
+# Matches runtime extrapolators without the old every-5-minute grid (~289).
+INTERMEDIATES_PER_SEGMENT = 5
 
 SCENE_KEYS = {
     "dawn": SCENE_DAWN,
@@ -94,7 +109,7 @@ def build_preview(
         hass, sun_path["events"], scene_ids, overlay, area_id
     )
     t_total = time.perf_counter() - t0
-    # Debug-only split so we can tell sun math vs YAML load vs 5-min samples.
+    # Debug-only split so we can tell sun math vs YAML load vs segment samples.
     _LOGGER.debug(
         "preview timings: total=%.0fms sun_path=%.0fms load_native=%.0fms "
         "samples=%.0fms lights=%s",
@@ -252,18 +267,22 @@ def _light_series(
         warnings_by_light.setdefault(warning["entity_id"], []).append(warning)
 
     lights = []
-    # Knots only — no 5-minute _sample_light grid. The panel paints dial rings
-    # from event_states (CSS ramps, same as year-scrub) and densifies in the
-    # browser for table view. That kept many-lamp rooms off the executor for
-    # ~1s of deepcopy/lerp work.
+    # Settled preview: event endpoints + INTERMEDIATES_PER_SEGMENT stops between
+    # each pair (incl. dusk→dawn), using the same extrapolators as activation.
+    # Mid-scrub stays client knotsOnly; pointer-up / editor open use this path.
     t_samples = time.perf_counter()
+    sample_seconds = _segment_sample_seconds(bound)
     for entity_id in sorted(light_ids):
         state = hass.states.get(entity_id)
+        samples = []
+        for seconds in sample_seconds:
+            brightness_pct, rgb = _sample_light(bound, entity_id, seconds)
+            samples.append([seconds, brightness_pct, rgb[0], rgb[1], rgb[2]])
         lights.append(
             {
                 "entity_id": entity_id,
                 "name": state.name if state else entity_id,
-                "samples": [],
+                "samples": samples,
                 "gaps": warnings_by_light.get(entity_id, []),
                 "event_states": _event_states_for_light(bound, entity_id),
                 "suggested": False,
@@ -296,6 +315,32 @@ def _light_series(
             "light_count": len(lights),
         },
     )
+
+
+def _seconds_at_progress(from_sec: int, to_sec: int, t: float) -> int:
+    """Wall time at fraction t along current→next (handles dusk→dawn wrap)."""
+    if to_sec > from_sec:
+        return int(round(from_sec + (to_sec - from_sec) * t))
+    span = SECONDS_PER_DAY - from_sec + to_sec
+    if span <= 0:
+        return from_sec
+    at = from_sec + span * t
+    if at >= SECONDS_PER_DAY:
+        at -= SECONDS_PER_DAY
+    return int(round(at))
+
+
+def _segment_sample_seconds(bound: list[dict[str, Any]]) -> list[int]:
+    """Event times + N intermediates per segment, plus midnight for the dial wrap."""
+    times: set[int] = {0}
+    count = len(bound)
+    for index, current in enumerate(bound):
+        nxt = bound[(index + 1) % count]
+        times.add(int(current["seconds"]))
+        for step in range(1, INTERMEDIATES_PER_SEGMENT + 1):
+            t = step / (INTERMEDIATES_PER_SEGMENT + 1)
+            times.add(_seconds_at_progress(current["seconds"], nxt["seconds"], t))
+    return sorted(times)
 
 
 def _event_states_for_light(
@@ -360,6 +405,68 @@ def _gap_warnings(
     return warnings
 
 
+def _event_at(
+    bound: list[dict[str, Any]], seconds: int, offset: int = 0
+) -> dict[str, Any]:
+    starts = [event["seconds"] for event in bound]
+    index = current_sun_event_index(starts, seconds)
+    return bound[(index + offset) % len(bound)]
+
+
+def _sample_light(
+    bound: list[dict[str, Any]], entity_id: str, seconds: int
+) -> tuple[int, tuple[int, int, int]]:
+    current = _event_at(bound, seconds, 0)
+    nxt = _event_at(bound, seconds, 1)
+    percent = transition_progress_percent(current["seconds"], nxt["seconds"], seconds)
+    from_entity = copy.deepcopy(
+        current["scene"]["entities"].get(entity_id, {ATTR_STATE: STATE_OFF})
+    )
+    to_entity = copy.deepcopy(
+        nxt["scene"]["entities"].get(entity_id, {ATTR_STATE: STATE_OFF})
+    )
+    if (
+        from_entity.get(ATTR_STATE) == STATE_UNAVAILABLE
+        or to_entity.get(ATTR_STATE) == STATE_UNAVAILABLE
+    ):
+        return 0, DEFAULT_RGB
+
+    final_entity: dict[str, Any] = {"entity_id": entity_id}
+    if ATTR_STATE in from_entity and ATTR_STATE in to_entity:
+        final_entity[ATTR_STATE] = extrapolate_state(
+            from_entity, to_entity, final_entity, percent
+        )
+    else:
+        final_entity[ATTR_STATE] = from_entity.get(
+            ATTR_STATE, to_entity.get(ATTR_STATE, STATE_OFF)
+        )
+
+    if ATTR_COLOR_MODE not in from_entity and ATTR_COLOR_MODE in to_entity:
+        from_entity[ATTR_COLOR_MODE] = to_entity[ATTR_COLOR_MODE]
+    elif ATTR_COLOR_MODE not in to_entity and ATTR_COLOR_MODE in from_entity:
+        to_entity[ATTR_COLOR_MODE] = from_entity[ATTR_COLOR_MODE]
+
+    from_mode = from_entity.get(ATTR_COLOR_MODE) or infer_color_mode(from_entity)
+    to_mode = to_entity.get(ATTR_COLOR_MODE) or infer_color_mode(to_entity)
+
+    brightness = 0
+    if ATTR_BRIGHTNESS in from_entity or ATTR_BRIGHTNESS in to_entity:
+        brightness = extrapolate_brightness(
+            from_entity, to_entity, final_entity, percent, 0
+        )
+        final_entity[ATTR_BRIGHTNESS] = brightness
+    elif final_entity.get(ATTR_STATE) == STATE_ON:
+        brightness = 255
+        final_entity[ATTR_BRIGHTNESS] = brightness
+    rgb = _display_rgb(
+        from_entity, to_entity, final_entity, from_mode, to_mode, percent
+    )
+    pct = max(0, min(100, round(brightness * 100 / 255)))
+    if final_entity.get(ATTR_STATE) != STATE_ON and brightness <= 0:
+        pct = 0
+    return pct, rgb
+
+
 def _display_rgb(
     from_entity: dict[str, Any],
     to_entity: dict[str, Any],
@@ -369,7 +476,7 @@ def _display_rgb(
     percent: float,
 ) -> tuple[int, int, int]:
     # Same mode: keep kelvin/HS/channel lerp (smoother whites than RGB-of-kelvin).
-    # Different modes: RGB-lerp endpoints so preview does not snap at 50%.
+    # Different modes: blend_entity_rgb (chromatic HS rim; else RGB-lerp).
     if same_color_mode(from_mode, to_mode):
         color_mode = normalize_color_mode(from_mode)
         try:

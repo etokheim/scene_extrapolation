@@ -115,8 +115,8 @@ const SIDEBAR_SWAP_MS = 160;
 const CLOCK_SUN_MOVE_MS = 1500;
 const DATE_MORPH_MS = 1500;
 const PREVIEW_REFINE_MS = 800;
-/** Mid-segment RGB/brightness stops between solar events after dial first paint. */
-const DIAL_INTERMEDIATES_PER_SEGMENT = 5;
+/** Settled preview samples are denser than scrub knots (≤8 incl. midnight). */
+const AUTHORITATIVE_SAMPLE_MIN = 9;
 const LIGHT_BAR_HEIGHT = 108;
 const LIGHT_FEATHER_PX = 36;
 const LIGHT_BAR_EDGE_HEIGHT = LIGHT_BAR_HEIGHT - LIGHT_FEATHER_PX;
@@ -422,7 +422,6 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._hoverRaf = undefined;
     }
     this._cancelSunPathMorph();
-    this._cancelLightSampleRefine();
   }
 
   async _build() {
@@ -3986,7 +3985,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._liveEditSidebarHandler = null;
     this._cancelClockSunArc();
     this._cancelSunPathMorph();
-    this._cancelLightSampleRefine();
     this._forgetClockDom();
     this._form = undefined;
     // Drop dial preview state so the list chart uses the light sun_path API.
@@ -4959,14 +4957,10 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._setEditorActions();
     }
     if (this._sunPath) {
-      // Re-sample from event_states when switching dial ↔ table.
+      // Re-sample from event_states when switching dial ↔ table (scrub/knots
+      // only). Keep settled backend samples as-is.
       this._sunPath = this._withClientLightSamples(this._sunPath);
       this._drawSunPath();
-      if (next === "dial") {
-        this._scheduleLightSampleRefine(this._sunPathKey);
-      } else {
-        this._cancelLightSampleRefine();
-      }
     } else {
       this._syncYearScrubLayout();
     }
@@ -8441,18 +8435,20 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     this._drawSunPath();
-    this._scheduleLightSampleRefine(key);
   }
 
   /**
-   * Preview returns event_states only (no 5-minute samples). Dial first paint
-   * uses knot stops + CSS ramps; idle refine adds mid-segment RGB stops.
-   * Table densifies to a 5-minute grid in the browser.
+   * Settled DOMAIN/preview includes mid-segment samples from HA extrapolators.
+   * Keep those. Mid-scrub / client sun days have empty or knot samples — dial
+   * uses knotsOnly; table densifies RGB from event_states for the polyline.
    */
   _withClientLightSamples(payload) {
     const lights = payload?.lights;
     const events = payload?.events;
     if (!lights?.length || !events?.length) {
+      return payload;
+    }
+    if (this._hasAuthoritativeLightSamples(lights)) {
       return payload;
     }
     const hasKnots = lights.some(
@@ -8471,6 +8467,14 @@ class SceneExtrapolationPanel extends HTMLElement {
     };
   }
 
+  _hasAuthoritativeLightSamples(lights) {
+    return (lights || []).some(
+      (light) =>
+        !light.suggested &&
+        (light.samples?.length || 0) >= AUTHORITATIVE_SAMPLE_MIN
+    );
+  }
+
   _cancelSunPathMorph() {
     if (this._sunPathMorphRaf) {
       window.cancelAnimationFrame(this._sunPathMorphRaf);
@@ -8478,89 +8482,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
   }
 
-  _cancelLightSampleRefine() {
-    if (this._lightSampleRefineIdle != null) {
-      if (typeof window.cancelIdleCallback === "function") {
-        window.cancelIdleCallback(this._lightSampleRefineIdle);
-      }
-      this._lightSampleRefineIdle = undefined;
-    }
-    if (this._lightSampleRefineRaf) {
-      window.cancelAnimationFrame(this._lightSampleRefineRaf);
-      this._lightSampleRefineRaf = undefined;
-    }
-  }
-
-  /**
-   * After dial knots paint, add intermediatesPerSegment stops so brightness×
-   * color midpoints match darkenedRgb(lerp) instead of CSS lerp of darkened
-   * endpoints. Still RGB-chord between events — not HA kelvin/HS channel math.
-   */
-  _scheduleLightSampleRefine(key) {
-    this._cancelLightSampleRefine();
-    if (
-      this._view !== "edit" ||
-      this._lightView !== "dial" ||
-      !key ||
-      !this._sunPath?.events?.length
-    ) {
-      return;
-    }
-    const run = () => {
-      this._lightSampleRefineIdle = undefined;
-      this._lightSampleRefineRaf = undefined;
-      if (
-        this._sunPathKey !== key ||
-        this._view !== "edit" ||
-        this._lightView !== "dial" ||
-        this._sunPathMorphRaf ||
-        !this._sunPath?.lights?.length ||
-        !this._sunPath?.events?.length
-      ) {
-        return;
-      }
-      const sparse = this._sunPath.lights.some(
-        (light) =>
-          !light.suggested &&
-          (light.event_states || []).length > 0 &&
-          (light.samples?.length || 0) > 0 &&
-          (light.samples?.length || 0) <= 8
-      );
-      if (!sparse) {
-        return;
-      }
-      const refined = {
-        ...this._sunPath,
-        lights: resampleLightsForEvents(
-          this._sunPath.lights,
-          this._sunPath.events,
-          draftRgb,
-          { intermediatesPerSegment: DIAL_INTERMEDIATES_PER_SEGMENT }
-        ),
-      };
-      this._sunPath = refined;
-      this._displayedSunPath = refined;
-      if (!this._patchLightClock(refined)) {
-        this._drawSunPath();
-      }
-    };
-    if (typeof window.requestIdleCallback === "function") {
-      this._lightSampleRefineIdle = window.requestIdleCallback(run, {
-        timeout: 400,
-      });
-      return;
-    }
-    this._lightSampleRefineRaf = window.requestAnimationFrame(() => {
-      this._lightSampleRefineRaf = window.requestAnimationFrame(run);
-    });
-  }
-
   _morphSunPath(from, to, durationMs) {
-    this._cancelLightSampleRefine();
     this._cancelSunPathMorph();
-    // Scrub / first-paint dial use knot samples. Morphing knot→knot is fine;
-    // densify sparse "from" only when needed so frame 0 matches denser "to"
-    // (table or post-refine dial).
+    // Scrub knots → settled HA samples: lerpSampleSeries already samples
+    // sparse "from" at each "to" timestamp — do not RGB-densify (wrong path).
     const fromDense = this._withDenseScrubLights(from);
     this._sunPath = fromDense;
     this._displayedSunPath = fromDense;
@@ -8582,7 +8507,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._cancelSunPathMorph();
         this._sunPath = to;
         this._displayedSunPath = to;
-        this._scheduleLightSampleRefine(this._sunPathKey);
         return;
       }
       if (u < 1) {
@@ -8595,36 +8519,36 @@ class SceneExtrapolationPanel extends HTMLElement {
       // Full paint once: bloom + horizon wedges (skipped mid-morph to avoid
       // stacked translucent flashes under the dial).
       this._patchLightClock(to, { morphing: false });
-      this._scheduleLightSampleRefine(this._sunPathKey);
     };
     this._sunPathMorphRaf = window.requestAnimationFrame(tick);
   }
 
   /**
-   * Expand knot-only scrub lights before refine morph when the other end is
-   * denser. Leaves already-refined dial / table payloads unchanged.
+   * Table morph only: expand knot scrub lights onto a 5-minute RGB grid.
+   * Dial morph keeps knots — target timestamps come from settled HA samples.
    */
   _withDenseScrubLights(payload) {
     const lights = payload?.lights;
     if (!lights?.length || !payload?.events?.length) {
       return payload;
     }
+    if (this._view === "edit" && this._lightView === "dial") {
+      return payload;
+    }
     const sparse = lights.some(
       (light) =>
         !light.suggested &&
         (light.samples?.length || 0) > 0 &&
-        (light.samples?.length || 0) <= 8
+        (light.samples?.length || 0) < AUTHORITATIVE_SAMPLE_MIN
     );
     if (!sparse) {
       return payload;
     }
-    const dial =
-      this._view === "edit" && this._lightView === "dial";
     return {
       ...payload,
-      lights: resampleLightsForEvents(lights, payload.events, draftRgb, dial
-        ? { intermediatesPerSegment: DIAL_INTERMEDIATES_PER_SEGMENT }
-        : { stepMinutes: 5 }),
+      lights: resampleLightsForEvents(lights, payload.events, draftRgb, {
+        stepMinutes: 5,
+      }),
     };
   }
 
@@ -8644,7 +8568,6 @@ class SceneExtrapolationPanel extends HTMLElement {
         const listView = this._view !== "edit";
         if (this._sunPath && this._sunPathKey === key) {
           this._drawSunPath();
-          this._scheduleLightSampleRefine(key);
           continue;
         }
         const cached = this._previewCache.get(key);
@@ -8834,7 +8757,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (!keepMorph) {
       this._cancelSunPathMorph();
     }
-    this._cancelLightSampleRefine();
     this._sunPath = {
       ...sunDay,
       lights,
