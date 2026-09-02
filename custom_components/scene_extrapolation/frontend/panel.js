@@ -714,7 +714,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           box-sizing: border-box;
           pointer-events: none;
           background: transparent;
-          padding: 8px 12px 0 8px;
+          padding: 8px 12px 0 12px;
         }
         .sun-path.dial-view .sun-toolbar:not(.toolbar-rail-only) > * {
           pointer-events: auto;
@@ -3176,7 +3176,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         .sun-path-stage.landscape-clock-scrub .sun-hover-readout {
           left: calc(-1 * var(--scrub-rail-width));
           top: 12px;
-          padding-left: 8px;
+          /* Match .page-banners margin-inline so Now/Sun° line up with the banner. */
+          padding-left: 12px;
         }
         .sun-hover-time {
           font-weight: 500;
