@@ -1,6 +1,6 @@
-# Agent notes (Scene Extrapolation)
+# Agent notes (Circadian Scenes)
 
-Custom Home Assistant integration in `custom_components/scene_extrapolation/`. This is **not** the live `/config` + Heim dashboard. Keep this file short; durable rationale lives in [`docs/DECISIONS.md`](docs/DECISIONS.md).
+Custom Home Assistant integration in `custom_components/circadian_scenes/`. This is **not** the live `/config` + Heim dashboard. Keep this file short; durable rationale lives in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 ## Must do
 
@@ -19,8 +19,8 @@ Custom Home Assistant integration in `custom_components/scene_extrapolation/`. T
 ## Local sandbox
 
 - Docker + starter YAML: [`DEVELOPMENT.md`](DEVELOPMENT.md). Python changes need `docker compose restart`.
-- Integration code: [`custom_components/scene_extrapolation/`](custom_components/scene_extrapolation/). Runtime files under `dev/config/` are gitignored except the committed starter YAML. Do not commit or rewrite `dev/config/scenes.yaml` unless the user explicitly asks.
+- Integration code: [`custom_components/circadian_scenes/`](custom_components/circadian_scenes/). Runtime files under `dev/config/` are gitignored except the committed starter YAML. Do not commit or rewrite `dev/config/scenes.yaml` unless the user explicitly asks.
 
 ## Git remote
 
-Public origin: [`etokheim/scene_extrapolation`](https://github.com/etokheim/scene_extrapolation). Workflow: [`docs/GIT.md`](docs/GIT.md).
+Public origin: [`etokheim/circadian_scenes`](https://github.com/etokheim/circadian_scenes). Workflow: [`docs/GIT.md`](docs/GIT.md).

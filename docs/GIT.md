@@ -1,4 +1,4 @@
-# Git workflow for Scene Extrapolation
+# Git workflow for Circadian Scenes
 
 ## Branches
 
@@ -20,7 +20,7 @@ After clone, check out `dev` before starting work (`git checkout dev`). GitHubâ€
 
 ## What is versioned
 
-- Integration: `custom_components/scene_extrapolation/`
+- Integration: `custom_components/circadian_scenes/`
 - Agent instructions: `AGENTS.md`, `.cursor/`, `docs/`
 - Local sandbox **starter** YAML: `dev/config/configuration.yaml`, `packages/`, `area_map.yaml`, `apply_area_map.py`, plus empty `automations.yaml` / `scripts.yaml`
 - Tooling: `docker-compose.yml`, `pyproject.toml`, `DEVELOPMENT.md`, CI under `.github/`
@@ -34,11 +34,11 @@ After clone, check out `dev` before starting work (`git checkout dev`). GitHubâ€
 
 ## Clone
 
-Public origin: [`etokheim/scene_extrapolation`](https://github.com/etokheim/scene_extrapolation).
+Public origin: [`etokheim/circadian_scenes`](https://github.com/etokheim/circadian_scenes).
 
 ```bash
-git clone git@github.com:etokheim/scene_extrapolation.git
-cd scene_extrapolation
+git clone git@github.com:etokheim/circadian_scenes.git
+cd circadian_scenes
 git checkout dev
 ```
 

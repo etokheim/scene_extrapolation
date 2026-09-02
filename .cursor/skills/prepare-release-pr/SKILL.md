@@ -1,7 +1,7 @@
 ---
 name: prepare-release-pr
 description: >-
-  Prepare a Scene Extrapolation release PR from dev to master: sync
+  Prepare a Circadian Scenes release PR from dev to master: sync
   translations, rewrite CHANGELOG Unreleased from the diff since the last
   release, then open the PR. Merging that PR runs the GitHub release workflow.
   Use when the user asks to release, ship, publish to HACS, cut a version, tag,
@@ -38,9 +38,9 @@ pass for **nb / nn / de / es**. How-to: [panel-translations](../panel-translatio
 1. Diff English (and panel/config copy) since `master`:
 
    ```bash
-   git diff origin/master -- custom_components/scene_extrapolation/translations/en.json \
-     custom_components/scene_extrapolation/frontend/panel.js \
-     custom_components/scene_extrapolation/translations/
+   git diff origin/master -- custom_components/circadian_scenes/translations/en.json \
+     custom_components/circadian_scenes/frontend/panel.js \
+     custom_components/circadian_scenes/translations/
    ```
 
 2. For every new or changed user-visible string: key already in `en.json` (add

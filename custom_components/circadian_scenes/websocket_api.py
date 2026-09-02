@@ -1,4 +1,4 @@
-"""WebSocket API for the Scene Extrapolation panel."""
+"""WebSocket API for the Circadian Scenes panel."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ from .native_scene import (
 from .preview import build_preview
 from .scene import async_create_or_update_entity, async_remove_entity
 from .solar import EVENT_ORDER, build_sun_path
-from .store import SceneExtrapolationStore, to_form_data
+from .store import CircadianScenesStore, to_form_data
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_set_automatically_update_lights)
 
 
-def _store(hass: HomeAssistant) -> SceneExtrapolationStore:
+def _store(hass: HomeAssistant) -> CircadianScenesStore:
     return hass.data[DOMAIN][DATA_STORE]
 
 

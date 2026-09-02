@@ -19,6 +19,7 @@ from .const import (
     DISPLAY_SCENES_COMBINED,
     DOMAIN,
     LABELS,
+    LEGACY_STORE_KEY,
     SCENE_DAWN,
     SCENE_DAWN_SUNRISE_SUNSET,
     SCENE_DUSK,
@@ -224,7 +225,7 @@ def to_form_data(item: dict[str, Any]) -> dict[str, Any]:
 
 
 class _ScenesStore(Store):
-    """HA Store that migrates scene_extrapolation.scenes between major versions."""
+    """HA Store that migrates circadian_scenes.scenes between major versions."""
 
     async def _async_migrate_func(
         self,
@@ -236,7 +237,7 @@ class _ScenesStore(Store):
         return _migrate_store(old_major_version, old_data)
 
 
-class SceneExtrapolationStore:
+class CircadianScenesStore:
     """Load and persist circadian scene configs."""
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -245,6 +246,7 @@ class SceneExtrapolationStore:
         # Subclass Store and override _async_migrate_func — Store.__init__ has
         # no migrate_func kwarg (that caused setup failure / Unknown command).
         self._store = _ScenesStore(hass, STORAGE_VERSION, STORE_KEY)
+        self._legacy_store = _ScenesStore(hass, STORAGE_VERSION, LEGACY_STORE_KEY)
         self.scenes: dict[str, dict[str, Any]] = {}
         self.settings: dict[str, Any] = dict(DEFAULT_SETTINGS)
         # YAML scene CONF_ID values created by this integration.
@@ -253,8 +255,18 @@ class SceneExtrapolationStore:
         self.pending_hide_sync = False
 
     async def async_load(self) -> None:
-        """Load scenes from disk."""
+        """Load scenes from disk (migrate from scene_extrapolation.scenes once)."""
         data = await self._store.async_load()
+        if not data:
+            legacy = await self._legacy_store.async_load()
+            if legacy:
+                _LOGGER.info(
+                    "Migrating store from %s to %s",
+                    LEGACY_STORE_KEY,
+                    STORE_KEY,
+                )
+                data = legacy
+                await self._store.async_save(legacy)
         raw = data or {}
         items = raw.get("scenes", [])
         self.scenes = {}

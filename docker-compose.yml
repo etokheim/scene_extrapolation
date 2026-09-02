@@ -1,8 +1,8 @@
-name: scene-extrapolation
+name: circadian-scenes
 
 services:
   homeassistant:
-    container_name: scene-extrapolation-ha
+    container_name: circadian-scenes-ha
     image: ghcr.io/home-assistant/home-assistant:stable
     restart: unless-stopped
     ports:
@@ -11,4 +11,4 @@ services:
       TZ: Europe/Oslo
     volumes:
       - ./dev/config:/config
-      - ./custom_components/scene_extrapolation:/config/custom_components/scene_extrapolation:ro
+      - ./custom_components/circadian_scenes:/config/custom_components/circadian_scenes:ro

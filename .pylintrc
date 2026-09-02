@@ -1,6 +1,6 @@
 [MASTER]
 jobs=0
-ignore-paths=custom_components/scene_extrapolation/frontend
+ignore-paths=custom_components/circadian_scenes/frontend
 
 [MESSAGES CONTROL]
 # HA is installed in CI; keep import-error disabled so local pylint without the

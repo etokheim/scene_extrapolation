@@ -92,12 +92,12 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add custom_components/scene_extrapolation/manifest.json \
-            custom_components/scene_extrapolation/panel.py \
+          git add custom_components/circadian_scenes/manifest.json \
+            custom_components/circadian_scenes/panel.py \
             CHANGELOG.md
           git commit -m "Release ${{ steps.plan.outputs.version }}: update version and changelog"
           git push origin master
-          git tag -a "${{ steps.plan.outputs.tag }}" -m "Scene Extrapolation ${{ steps.plan.outputs.version }}"
+          git tag -a "${{ steps.plan.outputs.tag }}" -m "Circadian Scenes ${{ steps.plan.outputs.version }}"
           git push origin "${{ steps.plan.outputs.tag }}"
 
       - name: Create GitHub release
@@ -106,7 +106,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ steps.plan.outputs.tag }}" \
-            --title "Scene Extrapolation ${{ steps.plan.outputs.version }}" \
+            --title "Circadian Scenes ${{ steps.plan.outputs.version }}" \
             --notes-file "${{ steps.plan.outputs.notes_file }}"
 
       - name: Comment on the merged PR
@@ -115,7 +115,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh pr comment "${{ github.event.pull_request.number }}" --body "$(cat <<EOF
-          Published **Scene Extrapolation ${{ steps.plan.outputs.version }}**.
+          Published **Circadian Scenes ${{ steps.plan.outputs.version }}**.
           ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ steps.plan.outputs.tag }}
           EOF
           )"

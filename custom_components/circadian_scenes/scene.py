@@ -90,7 +90,7 @@ async def async_setup_entry(
 
     to_add = []
     for item in store.list():
-        entity = ExtrapolationScene(hass, config_entry, item)
+        entity = CircadianScene(hass, config_entry, item)
         entities[item["id"]] = entity
         to_add.append(entity)
     if to_add:
@@ -104,13 +104,13 @@ async def async_create_or_update_entity(
     item: dict,
     async_add_entities: AddEntitiesCallback,
     entities: dict,
-) -> ExtrapolationScene:
+) -> CircadianScene:
     """Create or update a scene entity for a stored config."""
     existing = entities.get(item["id"])
     if existing:
         await existing.async_update_config(item)
         return existing
-    entity = ExtrapolationScene(hass, config_entry, item)
+    entity = CircadianScene(hass, config_entry, item)
     entities[item["id"]] = entity
     async_add_entities([entity])
     return entity
@@ -123,13 +123,13 @@ async def async_remove_entity(entities: dict, scene_id: str) -> None:
         await entity.async_remove(force_remove=True)
 
 
-class ExtrapolationScene(Scene):
-    """Representation the ExtrapolationScene."""
+class CircadianScene(Scene):
+    """Representation the CircadianScene."""
 
     def __init__(
         self, hass: HomeAssistant, config_entry: ConfigEntry, scene_config: dict
     ):
-        """Initialize an ExtrapolationScene."""
+        """Initialize an CircadianScene."""
         name = scene_config.get(SCENE_NAME) or DEFAULT_SCENE_NAME
         # Setting the entity_id to an already existing entity_id throws no errors. Instead a number is
         # appended to the expected entity_id. Ie. [entity_id]_2
@@ -142,7 +142,7 @@ class ExtrapolationScene(Scene):
         self._attr_icon = "mdi:auto-fix"
         self._attr_name = name
         self._attr_unique_id = scene_config["id"]
-        self._attr_integration = "scene_extrapolation"
+        self._attr_integration = "circadian_scenes"
         self._brightness_modifier = 0
         self._transition_percent_manual = False
         self._manual_transition_percent = None
@@ -586,7 +586,7 @@ class ExtrapolationScene(Scene):
             self._unsub_light_tracking()
             self._automatically_update_lights_armed = False
             # scene.turn_on already records via Scene._async_activate; this
-            # covers scene_extrapolation.turn_on. Auto-update ticks must not
+            # covers circadian_scenes.turn_on. Auto-update ticks must not
             # record or we would steal "last activated" from another scene.
             if hasattr(self, "_async_record_activation"):
                 self._async_record_activation()

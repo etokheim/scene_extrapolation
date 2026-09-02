@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from custom_components.scene_extrapolation.native_scene import scene_entity_payload
+from custom_components.circadian_scenes.native_scene import scene_entity_payload
 
 
 def test_color_mode_color_temp_drops_derived_rgb():

@@ -23,14 +23,14 @@ PANEL_VERSION = json.loads(
     (Path(__file__).parent / "manifest.json").read_text(encoding="utf-8")
 ).get("version", "0")
 # Increment when panel.js changes without a manifest version bump.
-PANEL_ASSET_REV = "58"
+PANEL_ASSET_REV = "1"
 
 
 async def async_setup_panel(hass: HomeAssistant) -> None:
     """Serve the panel JS and add a sidebar entry."""
     # Versioned path so HA's frontend module cache picks up panel.js after a restart.
     # Bump manifest.json version for releases; increment PANEL_ASSET_REV for WIP frontend.
-    static_url = f"/api/scene_extrapolation/assets/{PANEL_VERSION}-{PANEL_ASSET_REV}"
+    static_url = f"/api/circadian_scenes/assets/{PANEL_VERSION}-{PANEL_ASSET_REV}"
     try:
         await hass.http.async_register_static_paths(
             [
@@ -56,7 +56,7 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
         require_admin=True,
         config={
             "_panel_custom": {
-                "name": "scene-extrapolation-panel",
+                "name": "circadian-scenes-panel",
                 "module_url": f"{static_url}/panel.js",
                 # Native HA web components (ha-form, selectors) do not work in an iframe.
                 "embed_iframe": False,

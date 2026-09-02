@@ -85,7 +85,7 @@
     },
     "save_warn": {
       "title": "Update external scenes?",
-      "text": "Saving will change these Home Assistant scenes that were not created by Scene Extrapolation: {scenes}.",
+      "text": "Saving will change these Home Assistant scenes that were not created by Circadian Scenes: {scenes}.",
       "dont_warn": "Don't warn again",
       "save": "Save changes"
     },

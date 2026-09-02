@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from custom_components.scene_extrapolation.native_scene import (
+from custom_components.circadian_scenes.native_scene import (
     _scene_base_name,
     average_light_brightness,
     suggest_setup_assignments,

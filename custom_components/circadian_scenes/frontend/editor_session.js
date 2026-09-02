@@ -1,5 +1,5 @@
 /* Editor session helpers: form defaults, clock/date formatting, and ISO day math.
-   Draft localStorage load/save/persist still live as SceneExtrapolationPanel methods
+   Draft localStorage load/save/persist still live as CircadianScenesPanel methods
    in panel.js (key building + serialization are class-bound today). Revisit when
    those can be free functions without changing behavior. */
 

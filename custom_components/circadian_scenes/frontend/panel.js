@@ -42,7 +42,8 @@ import {
   lerpSunPath,
 } from "./dial_clock.js";
 
-const DOMAIN = "scene_extrapolation";
+const DOMAIN = "circadian_scenes";
+const LEGACY_DOMAIN = "scene_extrapolation";
 const SECONDS_PER_DAY = 24 * 3600;
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 200;
@@ -221,7 +222,7 @@ const HELPERS = {
     "Leave empty to create a native scene automatically for this event",
 };
 
-class SceneExtrapolationPanel extends HTMLElement {
+class CircadianScenesPanel extends HTMLElement {
   constructor() {
     super();
     this._hass = undefined;
@@ -4225,7 +4226,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (learnMore) {
       const link = document.createElement("a");
       link.className = "learn-more";
-      link.href = "https://github.com/etokheim/scene_extrapolation";
+      link.href = "https://github.com/etokheim/circadian_scenes";
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       link.textContent = this._t("frontend.empty.learn_more", "Learn more");
@@ -5016,35 +5017,84 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _draftStorageKey(sceneKey = this._editId || "new") {
     const user = this._hass?.user?.id || "anon";
-    return `scene_extrapolation.draft.v1.${user}.${sceneKey}`;
+    return `${DOMAIN}.draft.v1.${user}.${sceneKey}`;
+  }
+
+  _legacyDraftStorageKey(sceneKey = this._editId || "new") {
+    const user = this._hass?.user?.id || "anon";
+    return `${LEGACY_DOMAIN}.draft.v1.${user}.${sceneKey}`;
   }
 
   _lightViewStorageKey() {
     const user = this._hass?.user?.id || "anon";
-    return `scene_extrapolation.lightView.v${LIGHT_VIEW_STORAGE_VERSION}.${user}`;
+    return `${DOMAIN}.lightView.v${LIGHT_VIEW_STORAGE_VERSION}.${user}`;
+  }
+
+  _legacyLightViewStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${LEGACY_DOMAIN}.lightView.v${LIGHT_VIEW_STORAGE_VERSION}.${user}`;
   }
 
   _liveEditStorageKey() {
     const user = this._hass?.user?.id || "anon";
-    return `scene_extrapolation.liveEdit.v${LIVE_EDIT_STORAGE_VERSION}.${user}`;
+    return `${DOMAIN}.liveEdit.v${LIVE_EDIT_STORAGE_VERSION}.${user}`;
+  }
+
+  _legacyLiveEditStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${LEGACY_DOMAIN}.liveEdit.v${LIVE_EDIT_STORAGE_VERSION}.${user}`;
   }
 
   _roomPreviewStorageKey() {
     const user = this._hass?.user?.id || "anon";
-    return `scene_extrapolation.roomPreview.v${ROOM_PREVIEW_STORAGE_VERSION}.${user}`;
+    return `${DOMAIN}.roomPreview.v${ROOM_PREVIEW_STORAGE_VERSION}.${user}`;
+  }
+
+  _legacyRoomPreviewStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${LEGACY_DOMAIN}.roomPreview.v${ROOM_PREVIEW_STORAGE_VERSION}.${user}`;
+  }
+
+  _externalSceneWarnStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${DOMAIN}.externalSceneWarn.v${EXTERNAL_SCENE_WARN_STORAGE_VERSION}.${user}`;
+  }
+
+  _legacyExternalSceneWarnStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${LEGACY_DOMAIN}.externalSceneWarn.v${EXTERNAL_SCENE_WARN_STORAGE_VERSION}.${user}`;
+  }
+
+  _readLocalStorage(key, legacyKey) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw != null) {
+        return raw;
+      }
+      if (!legacyKey) {
+        return null;
+      }
+      const legacy = window.localStorage.getItem(legacyKey);
+      if (legacy == null) {
+        return null;
+      }
+      window.localStorage.setItem(key, legacy);
+      return legacy;
+    } catch (_err) {
+      return null;
+    }
   }
 
   _readLiveEditPref() {
-    try {
-      const raw = window.localStorage.getItem(this._liveEditStorageKey());
-      if (raw === "0" || raw === "false") {
-        return false;
-      }
-      // Default on when unset.
-      return true;
-    } catch (_err) {
-      return true;
+    const raw = this._readLocalStorage(
+      this._liveEditStorageKey(),
+      this._legacyLiveEditStorageKey()
+    );
+    if (raw === "0" || raw === "false") {
+      return false;
     }
+    // Default on when unset.
+    return true;
   }
 
   _writeLiveEditPref(on) {
@@ -5056,11 +5106,12 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _readRoomPreviewPref() {
-    try {
-      return window.localStorage.getItem(this._roomPreviewStorageKey()) === "1";
-    } catch (_err) {
-      return false;
-    }
+    return (
+      this._readLocalStorage(
+        this._roomPreviewStorageKey(),
+        this._legacyRoomPreviewStorageKey()
+      ) === "1"
+    );
   }
 
   _writeRoomPreviewPref(on) {
@@ -5071,17 +5122,13 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
   }
 
-  _externalSceneWarnStorageKey() {
-    const user = this._hass?.user?.id || "anon";
-    return `scene_extrapolation.externalSceneWarn.v${EXTERNAL_SCENE_WARN_STORAGE_VERSION}.${user}`;
-  }
-
   _readSkipExternalSceneWarn() {
-    try {
-      return window.localStorage.getItem(this._externalSceneWarnStorageKey()) === "1";
-    } catch (_err) {
-      return false;
-    }
+    return (
+      this._readLocalStorage(
+        this._externalSceneWarnStorageKey(),
+        this._legacyExternalSceneWarnStorageKey()
+      ) === "1"
+    );
   }
 
   _writeSkipExternalSceneWarn(skip) {
@@ -5153,7 +5200,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       const text = document.createElement("p");
       text.textContent = this._t(
         "frontend.save_warn.text",
-        "Saving will change these Home Assistant scenes that were not created by Scene Extrapolation: {scenes}.",
+        "Saving will change these Home Assistant scenes that were not created by Circadian Scenes: {scenes}.",
         { scenes: sceneNames.join(", ") }
       );
       const row = document.createElement("label");
@@ -5208,16 +5255,15 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _readLightView() {
-    try {
-      const raw = window.localStorage.getItem(this._lightViewStorageKey());
-      // Explicit table stays table; migrate legacy "clock" → dial.
-      if (raw === "table") {
-        return "table";
-      }
-      return "dial";
-    } catch (_err) {
-      return "dial";
+    const raw = this._readLocalStorage(
+      this._lightViewStorageKey(),
+      this._legacyLightViewStorageKey()
+    );
+    // Explicit table stays table; migrate legacy "clock" → dial.
+    if (raw === "table") {
+      return "table";
     }
+    return "dial";
   }
 
   _setLightView(view) {
@@ -5292,7 +5338,10 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _readPersistedDraft(sceneKey) {
     try {
-      const raw = window.localStorage.getItem(this._draftStorageKey(sceneKey));
+      let raw = this._readLocalStorage(
+        this._draftStorageKey(sceneKey),
+        this._legacyDraftStorageKey(sceneKey)
+      );
       if (!raw) {
         return null;
       }
@@ -13317,6 +13366,6 @@ function sameLocation(a, b) {
   );
 }
 
-if (!customElements.get("scene-extrapolation-panel")) {
-  customElements.define("scene-extrapolation-panel", SceneExtrapolationPanel);
+if (!customElements.get("circadian-scenes-panel")) {
+  customElements.define("circadian-scenes-panel", CircadianScenesPanel);
 }

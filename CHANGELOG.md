@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🚨 Breaking changes
 
-- 🚨 Renamed the product to **Circadian Scenes** (domain stays `scene_extrapolation`; search either name in HACS)
+- 🚨 Renamed the product to **Circadian Scenes** (domain stays `circadian_scenes`; search either name in HACS)
 - 🚨 Continuous “follow-up” preferences are now **Automatically update lights** (store migrates `continuous` / `follow_up` keys for you)
 - 🚨 Nightlights mode is gone — use a normal native scene + automation if you still need that pattern
 
@@ -43,7 +43,7 @@ Built-in sun-following updates, dial as the default editor, and a much calmer da
 ## [2.2.0] - 2026-08-30
 
 ### Added
-- Sidebar panel: add Scene Extrapolation once; rooms are created and edited there (legacy per-room config entries import automatically)
+- Sidebar panel: add Circadian Scenes once; rooms are created and edited there (legacy per-room config entries import automatically)
 - Solar dial view: concentric light rings, year scrub with client-side sun math, landscape timeline rail, soft ring glow, and dial chrome (ticks, event buttons, sticky scrub, enter animation)
 - Create-scene wizard: Automatic (Bright/Dimmed/Low lights) or Manual with config-flow-style guidance, native scene pickers (empty = create automatically), brightness-ranked defaults; block areas with no lights
 - List page: Extrapolation / Created scenes tabs (`ha-tab-group`), global settings sidebar (hide created scenes in the HA UI), row settings/delete on both lists, New FAB on both tabs
@@ -115,7 +115,7 @@ This release's focus is on improving the UX and minimize the time it takes to se
 - 🚨 Renamed all entity variables, meaning the only user (me), has to reconfigure all the integration entries - wohoo!
 - Simplify configuration by optionally combining dawn/dusk and sunrise/sunset scenes
 - New default scene name: Extrapolation scene -> Automatic Lighting
-- Updated integration name: Scene Extrapolation -> Scene Extrapolation (Circadian Rythm)
+- Updated integration name: Circadian Scenes -> Circadian Scenes (Circadian Rythm)
 - Make the nightlights boolean and nightlights scene optional
 - Mark required and optional fields
 - Move nightlights configuration into its own config step to make the config less overwhelming
@@ -134,11 +134,11 @@ This release's focus is on improving the UX and minimize the time it takes to se
 
 ### Added
 
-- First official release of Scene Extrapolation custom component
+- First official release of Circadian Scenes custom component
 - No more direct file access of scenes.yaml
 - New service! extrapolation_scene.turn_on: activates a extrapolation scene with a basic brightness modifier
 - New attribute: brightness_modifier - keeps track of the applied brightness_modifier
-- New attribute: integration=scene_extrapolation - makes extrapolation scenes easily identifiable in Home Assistant's templates
+- New attribute: integration=circadian_scenes - makes extrapolation scenes easily identifiable in Home Assistant's templates
 - Add support for RGBW
 - Add support for RGBWW
 
@@ -158,7 +158,7 @@ This release's focus is on improving the UX and minimize the time it takes to se
 
 ### Added
 
-- Initial implementation of Scene Extrapolation
+- Initial implementation of Circadian Scenes
 - Dynamic scenes with lighting is based on sun elevation
 - Configuration flow for Home Assistant
 - Support for multiple scenes

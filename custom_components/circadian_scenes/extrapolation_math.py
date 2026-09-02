@@ -98,7 +98,7 @@ def transition_progress_percent(
         raise HomeAssistantError(
             f"Invalid transition progress: {progress:.1f}% "
             f"(expected 0-100%). This is a calculation error. "
-            f"Please open an issue at https://github.com/etokheim/scene_extrapolation/issues "
+            f"Please open an issue at https://github.com/etokheim/circadian_scenes/issues "
             f"with the following details: current={current_start}s, next={next_start}s, "
             f"time={seconds}s"
         )
@@ -128,7 +128,7 @@ def day_transition_percent(
         raise HomeAssistantError(
             f"Invalid day transition percent: {percent:.1f}% "
             f"(expected 0-100%). This is a calculation error. "
-            f"Please open an issue at https://github.com/etokheim/scene_extrapolation/issues "
+            f"Please open an issue at https://github.com/etokheim/circadian_scenes/issues "
             f"with the following details: current={current_key}, next={next_key}, "
             f"intra={intra_progress}"
         )
@@ -144,7 +144,7 @@ def scene_keys_from_day_percent(percent: float) -> tuple[str, str, float]:
         raise HomeAssistantError(
             f"Invalid day transition percent: {percent:.1f}% (expected 0-100%). "
             f"This is a calculation error. "
-            f"Please open an issue at https://github.com/etokheim/scene_extrapolation/issues "
+            f"Please open an issue at https://github.com/etokheim/circadian_scenes/issues "
             f"with the following details: percent={percent}"
         )
     last = len(EVENT_ORDER) - 1

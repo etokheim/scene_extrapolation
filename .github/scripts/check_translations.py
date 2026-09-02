@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TRANS = ROOT / "custom_components/scene_extrapolation/translations"
+TRANS = ROOT / "custom_components/circadian_scenes/translations"
 LANGS = ("nb", "nn", "de", "es")
 PLACEHOLDER_RE = re.compile(r"\{[^{}]+\}")
 

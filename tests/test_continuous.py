@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 from homeassistant.const import STATE_UNAVAILABLE
 
-from custom_components.scene_extrapolation.continuous import (
+from custom_components.circadian_scenes.continuous import (
     classify_light_report,
     competing_scene_activated,
     entity_ids_from_service_event,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from custom_components.scene_extrapolation.preview import _light_series
+from custom_components.circadian_scenes.preview import _light_series
 
 
 def _events():
@@ -30,8 +30,8 @@ def _hass_with_names(names: dict[str, str]) -> MagicMock:
     return hass
 
 
-@patch("custom_components.scene_extrapolation.preview.load_native_scenes")
-@patch("custom_components.scene_extrapolation.preview.lights_in_area")
+@patch("custom_components.circadian_scenes.preview.load_native_scenes")
+@patch("custom_components.circadian_scenes.preview.lights_in_area")
 def test_unassigned_area_returns_suggested_lights(mock_lights, mock_native):
     """New scene with an area but no native scenes still lists area lights."""
     mock_native.return_value = {}
@@ -58,8 +58,8 @@ def test_unassigned_area_returns_suggested_lights(mock_lights, mock_native):
     mock_lights.assert_called_once_with(hass, "stue")
 
 
-@patch("custom_components.scene_extrapolation.preview.load_native_scenes")
-@patch("custom_components.scene_extrapolation.preview.lights_in_area")
+@patch("custom_components.circadian_scenes.preview.load_native_scenes")
+@patch("custom_components.circadian_scenes.preview.lights_in_area")
 def test_unassigned_without_area_returns_empty(mock_lights, mock_native):
     mock_native.return_value = {}
     hass = MagicMock()
@@ -77,8 +77,8 @@ def test_unassigned_without_area_returns_empty(mock_lights, mock_native):
     mock_lights.assert_not_called()
 
 
-@patch("custom_components.scene_extrapolation.preview.load_native_scenes")
-@patch("custom_components.scene_extrapolation.preview.lights_in_area")
+@patch("custom_components.circadian_scenes.preview.load_native_scenes")
+@patch("custom_components.circadian_scenes.preview.lights_in_area")
 def test_assigned_scenes_include_suggested_area_lights(mock_lights, mock_native):
     mock_native.return_value = {
         "scene.day": {
@@ -117,8 +117,8 @@ def test_assigned_scenes_include_suggested_area_lights(mock_lights, mock_native)
     assert by_id["light.extra"]["samples"] == []
 
 
-@patch("custom_components.scene_extrapolation.preview.load_native_scenes")
-@patch("custom_components.scene_extrapolation.preview.lights_in_area")
+@patch("custom_components.circadian_scenes.preview.load_native_scenes")
+@patch("custom_components.circadian_scenes.preview.lights_in_area")
 def test_rgb_segment_samples_follow_hs_rim(mock_lights, mock_native):
     """Settled mid-segment RGB↔RGB samples stay on the hue rim (not RGB chord)."""
     mock_native.return_value = {

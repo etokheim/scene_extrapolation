@@ -46,4 +46,4 @@ The sidebar/store move (single config entry, panel editor) is a **minor**. Users
 - `.github/scripts/cut_release.py` — version + changelog rewrite
 - `.github/scripts/check_translations.py` — en/nb/nn/de/es key parity
 - `CHANGELOG.md` — history
-- `custom_components/scene_extrapolation/manifest.json` — component version
+- `custom_components/circadian_scenes/manifest.json` — component version
