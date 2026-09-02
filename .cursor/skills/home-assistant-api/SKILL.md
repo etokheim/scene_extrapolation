@@ -10,7 +10,7 @@ description: >-
 
 # Home Assistant API (Docker sandbox)
 
-This repo talks to the **local Scene Extrapolation sandbox**, not the live home `/config`. Prefer the REST API for authoritative state over guessing from YAML alone.
+This repo talks to the **local Circadian Scenes sandbox**, not the live home `/config`. Prefer the REST API for authoritative state over guessing from YAML alone.
 
 ## Auth (required)
 
@@ -107,8 +107,8 @@ Official reference: [REST API](https://developers.home-assistant.io/docs/api/res
 |------|--------|
 | Current entity/device state, attributes, last_changed | REST API |
 | Fire a service / validate a template quickly | REST API |
-| Scene Extrapolation sidebar panel layout, CSS, chart | Browser on the **sandbox** (`http://localhost:8123`) |
-| How the integration is authored | `custom_components/scene_extrapolation/` |
+| Circadian Scenes sidebar panel layout, CSS, chart | Browser on the **sandbox** (`http://localhost:8123`) |
+| How the integration is authored | `custom_components/circadian_scenes/` |
 | How the sandbox home is authored | `dev/config/` starter YAML |
 
 ## Safety

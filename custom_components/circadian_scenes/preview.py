@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import logging
+import time
 from typing import Any
 
 from homeassistant.components.homeassistant.scene import HomeAssistantScene
@@ -45,7 +47,13 @@ from .extrapolation_math import (
     transition_progress_percent,
 )
 from .native_scene import lights_in_area, scene_entity_payload
-from .solar import CURVE_STEP_MINUTES, build_sun_path
+from .solar import SECONDS_PER_DAY, build_sun_path
+
+_LOGGER = logging.getLogger(__name__)
+
+# Mid-segment stops between solar events for settled dial/table preview.
+# Matches runtime extrapolators without the old every-5-minute grid (~289).
+INTERMEDIATES_PER_SEGMENT = 5
 
 SCENE_KEYS = {
     "dawn": SCENE_DAWN,
@@ -94,9 +102,22 @@ def build_preview(
     area_id: str | None = None,
 ) -> dict[str, Any]:
     """Sun path plus per-light brightness/color samples for the chosen date."""
+    t0 = time.perf_counter()
     sun_path = build_sun_path(hass, dusk_minimum, target_date, location)
-    lights, warnings = _light_series(
+    t_sun = time.perf_counter() - t0
+    lights, warnings, split = _light_series(
         hass, sun_path["events"], scene_ids, overlay, area_id
+    )
+    t_total = time.perf_counter() - t0
+    # Debug-only split so we can tell sun math vs YAML load vs segment samples.
+    _LOGGER.debug(
+        "preview timings: total=%.0fms sun_path=%.0fms load_native=%.0fms "
+        "samples=%.0fms lights=%s",
+        t_total * 1000,
+        t_sun * 1000,
+        split["load_native_ms"],
+        split["samples_ms"],
+        split["light_count"],
     )
     return {**sun_path, "lights": lights, "warnings": warnings}
 
@@ -183,8 +204,10 @@ def _light_series(
     scene_ids: dict[str, str | None],
     overlay: dict[str, Any] | list[dict[str, Any]] | None = None,
     area_id: str | None = None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, float | int]]:
+    t_load = time.perf_counter()
     native = _overlay_native_scenes(load_native_scenes(hass), overlay)
+    load_native_ms = (time.perf_counter() - t_load) * 1000
     bound: list[dict[str, Any]] = []
     for event in events:
         entity_id = scene_ids.get(SCENE_KEYS[event["id"]])
@@ -205,11 +228,16 @@ def _light_series(
         )
     assigned = [item for item in bound if item["scene"].get("entity_id")]
     area_lights = set(lights_in_area(hass, area_id)) if area_id else None
+    empty_split: dict[str, float | int] = {
+        "load_native_ms": load_native_ms,
+        "samples_ms": 0.0,
+        "light_count": 0,
+    }
     if not assigned:
         # New extrapolation scene: no native scenes yet — still list area
         # lights as suggested so dial/table/create-scene UI can render.
         if not area_lights:
-            return [], []
+            return [], [], empty_split
         lights = []
         for entity_id in sorted(area_lights):
             state = hass.states.get(entity_id)
@@ -224,7 +252,8 @@ def _light_series(
                     "in_area": True,
                 }
             )
-        return lights, []
+        empty_split["light_count"] = len(lights)
+        return lights, [], empty_split
 
     light_ids: set[str] = set()
     for item in assigned:
@@ -238,11 +267,15 @@ def _light_series(
         warnings_by_light.setdefault(warning["entity_id"], []).append(warning)
 
     lights = []
+    # Settled preview: event endpoints + INTERMEDIATES_PER_SEGMENT stops between
+    # each pair (incl. dusk→dawn), using the same extrapolators as activation.
+    # Mid-scrub stays client knotsOnly; pointer-up / editor open use this path.
+    t_samples = time.perf_counter()
+    sample_seconds = _segment_sample_seconds(bound)
     for entity_id in sorted(light_ids):
         state = hass.states.get(entity_id)
         samples = []
-        for minute in range(0, 24 * 60 + 1, CURVE_STEP_MINUTES):
-            seconds = minute * 60
+        for seconds in sample_seconds:
             brightness_pct, rgb = _sample_light(bound, entity_id, seconds)
             samples.append([seconds, brightness_pct, rgb[0], rgb[1], rgb[2]])
         lights.append(
@@ -258,6 +291,7 @@ def _light_series(
                 ),
             }
         )
+    samples_ms = (time.perf_counter() - t_samples) * 1000
     if area_lights is not None:
         for entity_id in sorted(area_lights - light_ids):
             state = hass.states.get(entity_id)
@@ -272,7 +306,41 @@ def _light_series(
                     "in_area": True,
                 }
             )
-    return lights, warnings
+    return (
+        lights,
+        warnings,
+        {
+            "load_native_ms": load_native_ms,
+            "samples_ms": samples_ms,
+            "light_count": len(lights),
+        },
+    )
+
+
+def _seconds_at_progress(from_sec: int, to_sec: int, t: float) -> int:
+    """Wall time at fraction t along current→next (handles dusk→dawn wrap)."""
+    if to_sec > from_sec:
+        return int(round(from_sec + (to_sec - from_sec) * t))
+    span = SECONDS_PER_DAY - from_sec + to_sec
+    if span <= 0:
+        return from_sec
+    at = from_sec + span * t
+    if at >= SECONDS_PER_DAY:
+        at -= SECONDS_PER_DAY
+    return int(round(at))
+
+
+def _segment_sample_seconds(bound: list[dict[str, Any]]) -> list[int]:
+    """Event times + N intermediates per segment, plus midnight for the dial wrap."""
+    times: set[int] = {0}
+    count = len(bound)
+    for index, current in enumerate(bound):
+        nxt = bound[(index + 1) % count]
+        times.add(int(current["seconds"]))
+        for step in range(1, INTERMEDIATES_PER_SEGMENT + 1):
+            t = step / (INTERMEDIATES_PER_SEGMENT + 1)
+            times.add(_seconds_at_progress(current["seconds"], nxt["seconds"], t))
+    return sorted(times)
 
 
 def _event_states_for_light(
@@ -408,7 +476,7 @@ def _display_rgb(
     percent: float,
 ) -> tuple[int, int, int]:
     # Same mode: keep kelvin/HS/channel lerp (smoother whites than RGB-of-kelvin).
-    # Different modes: RGB-lerp endpoints so preview does not snap at 50%.
+    # Different modes: blend_entity_rgb (chromatic HS rim; else RGB-lerp).
     if same_color_mode(from_mode, to_mode):
         color_mode = normalize_color_mode(from_mode)
         try:

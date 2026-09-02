@@ -1,6 +1,8 @@
-"""Constants for the Circadian Scenes integration (domain: scene_extrapolation)."""
+"""Constants for the Circadian Scenes integration."""
 
-DOMAIN = "scene_extrapolation"
+DOMAIN = "circadian_scenes"
+# Pre-rename domain — used to migrate Store + entity registry once.
+LEGACY_DOMAIN = "scene_extrapolation"
 AREA = "area"
 SCENE_NAME = "scene_name"
 DESCRIPTION = "description"
@@ -21,7 +23,7 @@ AUTOMATICALLY_UPDATE_LIGHTS = "automatically_update_lights"
 # Default friendly name when area is unknown; prefer "{area} Circadian" in the panel.
 DEFAULT_SCENE_NAME = "Circadian"
 
-PANEL_URL_PATH = "scene_extrapolation"
+PANEL_URL_PATH = "circadian_scenes"
 
 DATA_STORE = "store"
 DATA_ENTITIES = "entities"
@@ -29,6 +31,7 @@ DATA_ADD_ENTITIES = "add_entities"
 DATA_CONFIG_ENTRY = "config_entry"
 
 STORE_KEY = f"{DOMAIN}.scenes"
+LEGACY_STORE_KEY = f"{LEGACY_DOMAIN}.scenes"
 
 SCENE_KEYS = (
     SCENE_DAWN,

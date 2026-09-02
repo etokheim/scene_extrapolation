@@ -1,4 +1,4 @@
-"""The Circadian Scenes integration (domain: scene_extrapolation)."""
+"""The Circadian Scenes integration (domain: circadian_scenes)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 
 from .const import (
@@ -17,11 +18,12 @@ from .const import (
     DATA_ENTITIES,
     DATA_STORE,
     DOMAIN,
+    LEGACY_DOMAIN,
     SCENE_NAME,
 )
 from .native_scene import apply_managed_native_scene_visibility
 from .panel import async_setup_panel, async_unload_panel
-from .store import SceneExtrapolationStore
+from .store import CircadianScenesStore
 from .websocket_api import async_setup_websocket
 
 _LOGGER = logging.getLogger(__name__)
@@ -102,7 +104,7 @@ async def async_setup(hass, config):
                 vol.Required("entity_id"): selector.EntitySelector(
                     selector.EntitySelectorConfig(
                         domain="scene",
-                        integration="scene_extrapolation",
+                        integration="circadian_scenes",
                         multiple=True,
                     )
                 ),
@@ -157,28 +159,51 @@ def _is_legacy_entry(entry: ConfigEntry) -> bool:
     return SCENE_NAME in entry.data or AREA in entry.data or "unique_id" in entry.data
 
 
+def _purge_legacy_platform_entities(hass: HomeAssistant) -> int:
+    """Drop entity-registry rows from the old domain so unique_ids can reclaim ids."""
+    registry = er.async_get(hass)
+    removed = 0
+    for entry in list(registry.entities.values()):
+        if entry.platform != LEGACY_DOMAIN:
+            continue
+        registry.async_remove(entry.entity_id)
+        removed += 1
+    if removed:
+        _LOGGER.info(
+            "Removed %s entity registry entries from legacy platform %s",
+            removed,
+            LEGACY_DOMAIN,
+        )
+    return removed
+
+
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up Circadian Scenes from a config entry."""
     domain_data = hass.data.setdefault(
         DOMAIN,
         {
-            DATA_STORE: SceneExtrapolationStore(hass),
+            DATA_STORE: CircadianScenesStore(hass),
             DATA_ENTITIES: {},
             DATA_ADD_ENTITIES: None,
             DATA_CONFIG_ENTRY: None,
             "websocket_setup": False,
             "panel_setup": False,
             "store_loaded": False,
+            "legacy_entities_purged": False,
         },
     )
 
-    store: SceneExtrapolationStore = domain_data[DATA_STORE]
+    store: CircadianScenesStore = domain_data[DATA_STORE]
     if not domain_data["store_loaded"]:
         await store.async_load()
         domain_data["store_loaded"] = True
         if store.pending_hide_sync and store.settings.get("hide_managed_native_scenes"):
             apply_managed_native_scene_visibility(hass, hidden=True)
             store.pending_hide_sync = False
+
+    if not domain_data["legacy_entities_purged"]:
+        _purge_legacy_platform_entities(hass)
+        domain_data["legacy_entities_purged"] = True
 
     if _is_legacy_entry(config_entry):
         await store.async_import_legacy(

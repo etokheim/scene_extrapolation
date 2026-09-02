@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from custom_components.scene_extrapolation.color_math import (
+from custom_components.circadian_scenes.color_math import (
     blend_entity_rgb,
     entity_rgb,
     kelvin_to_rgb,
     rgbww_to_rgb,
     same_color_mode,
 )
-from custom_components.scene_extrapolation.preview import _display_rgb
+from custom_components.circadian_scenes.preview import _display_rgb
 
 
 def test_same_color_mode_aliases():

@@ -1,7 +1,7 @@
 ---
 name: prepare-release-pr
 description: >-
-  Prepare a Scene Extrapolation release PR from dev to master: sync
+  Prepare a Circadian Scenes release PR from dev to master: sync
   translations, rewrite CHANGELOG Unreleased from the diff since the last
   release, then open the PR. Merging that PR runs the GitHub release workflow.
   Use when the user asks to release, ship, publish to HACS, cut a version, tag,
@@ -38,9 +38,9 @@ pass for **nb / nn / de / es**. How-to: [panel-translations](../panel-translatio
 1. Diff English (and panel/config copy) since `master`:
 
    ```bash
-   git diff origin/master -- custom_components/scene_extrapolation/translations/en.json \
-     custom_components/scene_extrapolation/frontend/panel.js \
-     custom_components/scene_extrapolation/translations/
+   git diff origin/master -- custom_components/circadian_scenes/translations/en.json \
+     custom_components/circadian_scenes/frontend/panel.js \
+     custom_components/circadian_scenes/translations/
    ```
 
 2. For every new or changed user-visible string: key already in `en.json` (add
@@ -109,7 +109,26 @@ Commit:
 Update Unreleased changelog for the release PR.
 ```
 
-## 3. Open the PR
+## 3. Local CI (required before opening the PR)
+
+Do **not** open the PR until this exits 0. Matches `.github/workflows/ci.yml`
+`lint` (+ translations already checked in step 1). Prefer the repo `.venv`
+(Python 3.14) so tools match CI:
+
+```bash
+source .venv/bin/activate
+# Install once if missing: pip install pylint black isort pytest homeassistant
+pylint custom_components/circadian_scenes/
+PYTHONPATH=. pytest tests/ -q
+black --check custom_components/circadian_scenes/ tests/
+isort --check-only custom_components/circadian_scenes/ tests/
+```
+
+If black/isort fail: apply `black` / `isort` (no `--check`), commit the
+formatting, re-run the checks. Stop on pylint or pytest failures — fix and
+re-run; do not open a red PR and “let CI catch it.”
+
+## 4. Open the PR
 
 ```bash
 git push -u origin dev
@@ -130,7 +149,8 @@ gh pr create --base master --head dev --label "release:<patch|minor|major>" --ti
 - Changelog is under Unreleased; the merge workflow assigns the version.
 
 ## Test plan
-- [ ] CI green
+- [ ] Local CI green (pylint, pytest, black, isort) before open
+- [ ] CI green on the PR
 - [ ] Translation check (`check_translations.py`) passed locally
 EOF
 )"
@@ -145,6 +165,7 @@ ship.
 
 ## Do not
 
+- Open the PR with failing local lint/tests (translations-only is not enough).
 - Leave Unreleased empty and invent notes — read the diff.
 - Bump major because the UI moved if `__init__.py` still imports legacy entries.
 - Commit `.storage`, `dev/config/secrets.yaml`, or `release_notes.md`.

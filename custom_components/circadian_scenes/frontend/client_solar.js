@@ -616,17 +616,67 @@ function knotFromEventState(row, draftRgbFn) {
   return { brightness, rgb: [rgb[0], rgb[1], rgb[2]] };
 }
 
-/** Rebuild light.samples for dial scrub from event_states + day's event times.
+/** Wall time at fraction t along current→next (handles dusk→dawn wrap). */
+function secondsAtProgress(fromSec, toSec, t) {
+  if (toSec > fromSec) {
+    return Math.round(fromSec + (toSec - fromSec) * t);
+  }
+  const span = SECONDS_PER_DAY - fromSec + toSec;
+  if (!(span > 0)) {
+    return fromSec;
+  }
+  let at = fromSec + span * t;
+  if (at >= SECONDS_PER_DAY) {
+    at -= SECONDS_PER_DAY;
+  }
+  return Math.round(at);
+}
 
+function sampleRow(seconds, brightness, rgb) {
+  return [
+    seconds,
+    Math.round(brightness),
+    Math.round(rgb[0]),
+    Math.round(rgb[1]),
+    Math.round(rgb[2]),
+  ];
+}
+
+function lerpKnotSample(current, next, t, seconds) {
+  return sampleRow(
+    seconds,
+    current.brightness + (next.brightness - current.brightness) * t,
+    [
+      current.rgb[0] + (next.rgb[0] - current.rgb[0]) * t,
+      current.rgb[1] + (next.rgb[1] - current.rgb[1]) * t,
+      current.rgb[2] + (next.rgb[2] - current.rgb[2]) * t,
+    ]
+  );
+}
+
+/** Rebuild light.samples for dial scrub from event_states + day's event times.
+ *
  * options.stepMinutes — sample spacing. Omit for the usual 5-minute grid.
  * Pass 0 (or knotsOnly: true) to emit only the five solar-event knots so
- * CSS conic-gradient ramps between them (fast mid-scrub path).
+ * CSS conic-gradient ramps between them (fast mid-scrub / first-paint path).
+ * options.intermediatesPerSegment — N RGB/brightness stops between each pair
+ * of solar events (plus endpoints). Prefer this over a 5-minute grid when the
+ * dial only needs mid-segment fidelity of darkenedRgb (brightness×color), not
+ * HA kelvin/HS channel math. Wins over knotsOnly when brightness and color
+ * both change: CSS lerps darkened endpoints; explicit mids darken(lerp).
  */
 export function resampleLightsForEvents(lights, events, draftRgbFn, options = {}) {
-  const knotsOnly = options.knotsOnly === true || options.stepMinutes === 0;
-  const stepMinutes = knotsOnly
-    ? 0
-    : Math.max(1, Number(options.stepMinutes) || CURVE_STEP_MINUTES);
+  const intermediates = Math.max(
+    0,
+    Math.floor(Number(options.intermediatesPerSegment) || 0)
+  );
+  const knotsOnly =
+    intermediates === 0 &&
+    (options.knotsOnly === true || options.stepMinutes === 0);
+  const stepMinutes =
+    knotsOnly || intermediates > 0
+      ? 0
+      : Math.max(1, Number(options.stepMinutes) || CURVE_STEP_MINUTES);
   const starts = events.map((event) => event.seconds);
   return (lights || []).map((light) => {
     if (light.suggested || !(light.event_states || []).length) {
@@ -650,26 +700,39 @@ export function resampleLightsForEvents(lights, events, draftRgbFn, options = {}
       const samples = knots
         .slice()
         .sort((a, b) => a.seconds - b.seconds)
-        .map((knot) => [
-          knot.seconds,
-          knot.brightness,
-          knot.rgb[0],
-          knot.rgb[1],
-          knot.rgb[2],
-        ]);
+        .map((knot) =>
+          sampleRow(knot.seconds, knot.brightness, knot.rgb)
+        );
       if (dawn && dusk) {
         const t =
           transitionProgress(dusk.seconds, dawn.seconds, 0) / 100;
-        const midnight = [
-          0,
-          Math.round(dusk.brightness + (dawn.brightness - dusk.brightness) * t),
-          Math.round(dusk.rgb[0] + (dawn.rgb[0] - dusk.rgb[0]) * t),
-          Math.round(dusk.rgb[1] + (dawn.rgb[1] - dusk.rgb[1]) * t),
-          Math.round(dusk.rgb[2] + (dawn.rgb[2] - dusk.rgb[2]) * t),
-        ];
+        const midnight = lerpKnotSample(dusk, dawn, t, 0);
         const withoutZero = samples.filter((row) => row[0] > 0);
         return { ...light, samples: [midnight, ...withoutZero] };
       }
+      return { ...light, samples };
+    }
+    if (intermediates > 0) {
+      const samples = [];
+      for (let index = 0; index < knots.length; index += 1) {
+        const current = knots[index];
+        const next = knots[(index + 1) % knots.length];
+        samples.push(
+          sampleRow(current.seconds, current.brightness, current.rgb)
+        );
+        for (let step = 1; step <= intermediates; step += 1) {
+          const t = step / (intermediates + 1);
+          samples.push(
+            lerpKnotSample(
+              current,
+              next,
+              t,
+              secondsAtProgress(current.seconds, next.seconds, t)
+            )
+          );
+        }
+      }
+      samples.sort((a, b) => a[0] - b[0]);
       return { ...light, samples };
     }
     const samples = [];
@@ -680,13 +743,7 @@ export function resampleLightsForEvents(lights, events, draftRgbFn, options = {}
       const next = knots[(index + 1) % knots.length];
       const percent = transitionProgress(current.seconds, next.seconds, seconds);
       const t = percent / 100;
-      samples.push([
-        seconds,
-        Math.round(current.brightness + (next.brightness - current.brightness) * t),
-        Math.round(current.rgb[0] + (next.rgb[0] - current.rgb[0]) * t),
-        Math.round(current.rgb[1] + (next.rgb[1] - current.rgb[1]) * t),
-        Math.round(current.rgb[2] + (next.rgb[2] - current.rgb[2]) * t),
-      ]);
+      samples.push(lerpKnotSample(current, next, t, seconds));
     }
     return { ...light, samples };
   });

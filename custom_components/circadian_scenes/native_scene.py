@@ -26,10 +26,12 @@ from .solar import EVENT_META, EVENT_ORDER
 
 _LOGGER = logging.getLogger(__name__)
 
-# Same keys HA's scene editor writes. color_mode is live-only.
+# Keys a YAML scene may store for a light. Prefer color_mode + one color attr
+# (matches light.turn_on exclusivity and light/reproduce_state).
 SCENE_ENTITY_KEYS = (
     ATTR_STATE,
     "brightness",
+    "color_mode",
     "color_temp_kelvin",
     "hs_color",
     "rgb_color",
@@ -37,6 +39,34 @@ SCENE_ENTITY_KEYS = (
     "rgbww_color",
     "effect",
 )
+
+# Attr to keep for each color_mode (HA ColorMode values).
+_COLOR_ATTR_FOR_MODE = {
+    "color_temp": "color_temp_kelvin",
+    "hs": "hs_color",
+    "xy": "hs_color",
+    "rgb": "rgb_color",
+    "rgbw": "rgbw_color",
+    "rgbww": "rgbww_color",
+}
+
+# When color_mode is missing, keep exactly one — same priority as live apply
+# (chromatic first). Kelvin-only drafts still win when no chromatic keys remain.
+_COLOR_ATTR_PRIORITY = (
+    "rgbww_color",
+    "rgbw_color",
+    "hs_color",
+    "rgb_color",
+    "color_temp_kelvin",
+)
+
+_MODE_FOR_COLOR_ATTR = {
+    "color_temp_kelvin": "color_temp",
+    "hs_color": "hs",
+    "rgb_color": "rgb",
+    "rgbw_color": "rgbw",
+    "rgbww_color": "rgbww",
+}
 
 _WRITE_LOCK = asyncio.Lock()
 
@@ -66,19 +96,54 @@ def _jsonable(value: Any) -> Any:
 
 
 def scene_entity_payload(raw: dict[str, Any] | None) -> dict[str, Any]:
-    """Strip live-only attributes down to what a YAML scene stores."""
+    """Strip live-only attributes down to what a YAML scene should store.
+
+    Home Assistant's light reproduce path uses ``color_mode`` when present,
+    otherwise the first of hs / color_temp_kelvin / rgb / …. Storing several
+    color attrs without ``color_mode`` (common in live snapshots) made kelvin
+    scenes reopen as RGB in our wheel. Keep color_mode + exactly one color
+    attribute.
+    """
     if not raw:
         return {ATTR_STATE: "off"}
     payload: dict[str, Any] = {}
     state = raw.get(ATTR_STATE) or raw.get("state") or "off"
     payload[ATTR_STATE] = state
-    for key in SCENE_ENTITY_KEYS:
-        if key == ATTR_STATE:
-            continue
+    for key in ("brightness", "effect"):
         value = raw.get(key)
         if value is None or value == "none":
             continue
         payload[key] = _jsonable(value)
+
+    color_mode = raw.get("color_mode")
+    if isinstance(color_mode, str):
+        color_mode = color_mode.strip() or None
+    else:
+        color_mode = None
+
+    chosen_attr: str | None = None
+    if color_mode in _COLOR_ATTR_FOR_MODE:
+        attr = _COLOR_ATTR_FOR_MODE[color_mode]
+        value = raw.get(attr)
+        if value is not None and value != "none":
+            chosen_attr = attr
+            payload["color_mode"] = (
+                "hs" if color_mode == "xy" and attr == "hs_color" else color_mode
+            )
+
+    if chosen_attr is None:
+        for attr in _COLOR_ATTR_PRIORITY:
+            value = raw.get(attr)
+            if value is None or value == "none":
+                continue
+            chosen_attr = attr
+            mode = _MODE_FOR_COLOR_ATTR.get(attr)
+            if mode:
+                payload["color_mode"] = mode
+            break
+
+    if chosen_attr is not None:
+        payload[chosen_attr] = _jsonable(raw.get(chosen_attr))
     return payload
 
 
@@ -152,7 +217,11 @@ async def async_update_native_scene_entities(
                 f"{scene_entity_id} has no YAML id, so it cannot be edited here"
             )
         resolved.append(
-            (str(config_key), scene_entity_id, scene_entity_payload(entity_state))
+            (
+                str(config_key),
+                scene_entity_id,
+                scene_entity_payload(entity_state),
+            )
         )
 
     path = hass.config.path(SCENE_CONFIG_PATH)
@@ -674,7 +743,10 @@ async def async_apply_native_drafts(
         if key in delete_keys:
             continue
         entity_ops.setdefault(key, []).append(
-            (item["entity_id"], scene_entity_payload(item["entity_state"]))
+            (
+                item["entity_id"],
+                scene_entity_payload(item["entity_state"]),
+            )
         )
     for item in removes:
         key = yaml_key(item["scene_entity_id"])

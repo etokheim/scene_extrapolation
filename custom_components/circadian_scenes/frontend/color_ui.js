@@ -263,6 +263,20 @@ function pinForeground(rgb) {
 }
 
 function draftWheelMode(draft, hasColor, hasTemp) {
+  // Honor stored color_mode first (YAML / HA snapshots).
+  const mode = draft?.color_mode;
+  if (mode === "color_temp" && draft?.color_temp_kelvin != null) {
+    return hasTemp ? "temp" : "color";
+  }
+  if (
+    mode === "hs" ||
+    mode === "rgb" ||
+    mode === "rgbw" ||
+    mode === "rgbww" ||
+    mode === "xy"
+  ) {
+    return hasColor ? "color" : "temp";
+  }
   if (
     draft?.rgb_color ||
     draft?.hs_color ||
@@ -456,7 +470,6 @@ function draftRgb(draft) {
 }
 
 function applyColorToDraft(draft, rgb, hsv) {
-  draft.hs_color = [hsv[0], Math.round(hsv[1] * 100)];
   draft.color_temp_kelvin = undefined;
   draft.state = "on";
   if (draft.rgbww_color) {
@@ -473,6 +486,8 @@ function applyColorToDraft(draft, rgb, hsv) {
     ];
     draft.rgb_color = undefined;
     draft.rgbw_color = undefined;
+    draft.hs_color = undefined;
+    draft.color_mode = "rgbww";
     return;
   }
   if (draft.rgbw_color) {
@@ -483,15 +498,22 @@ function applyColorToDraft(draft, rgb, hsv) {
     draft.rgbw_color = [scaled[0], scaled[1], scaled[2], draft.rgbw_color[3]];
     draft.rgb_color = undefined;
     draft.rgbww_color = undefined;
+    draft.hs_color = undefined;
+    draft.color_mode = "rgbw";
     return;
   }
-  draft.rgb_color = rgb;
+  // HS only for chromatic scenes — matches light.turn_on exclusivity and
+  // avoids reopen as RGB when kelvin was intended after a later mode flip.
+  draft.hs_color = [hsv[0], Math.round(hsv[1] * 100)];
+  draft.rgb_color = undefined;
   draft.rgbw_color = undefined;
   draft.rgbww_color = undefined;
+  draft.color_mode = "hs";
 }
 
 function applyTempToDraft(draft, kelvin) {
-  draft.color_temp_kelvin = kelvin;
+  draft.color_temp_kelvin = Math.round(kelvin);
+  draft.color_mode = "color_temp";
   draft.rgb_color = undefined;
   draft.hs_color = undefined;
   draft.rgbw_color = undefined;
@@ -499,25 +521,87 @@ function applyTempToDraft(draft, kelvin) {
   draft.state = "on";
 }
 
+/** Nearest Helland kelvin in [min,max] to an RGB (for RGB→temp mode convert). */
+function approxKelvinFromRgb(rgb, tempMin, tempMax) {
+  const minK = Math.round(Number(tempMin) || 2000);
+  const maxK = Math.round(Number(tempMax) || 6500);
+  let best = Math.round((minK + maxK) / 2);
+  let bestDist = Infinity;
+  for (let kelvin = minK; kelvin <= maxK; kelvin += 25) {
+    const sample = kelvinToRgb(kelvin);
+    const dist =
+      (sample[0] - rgb[0]) ** 2 +
+      (sample[1] - rgb[1]) ** 2 +
+      (sample[2] - rgb[2]) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = kelvin;
+    }
+  }
+  return best;
+}
+
+function kelvinForTempConvert(draft, tempMin, tempMax) {
+  if (draft?.color_temp_kelvin != null) {
+    return Math.round(draft.color_temp_kelvin);
+  }
+  return approxKelvinFromRgb(draftRgb(draft), tempMin, tempMax);
+}
+
 function inferDraftColorKind(draft) {
-  if (draft?.rgbww_color) {
+  if (draft?.color_mode === "color_temp" && draft?.color_temp_kelvin != null) {
+    return "temp";
+  }
+  if (draft?.color_mode === "rgbww" || draft?.rgbww_color) {
     return "rgbww";
   }
-  if (draft?.rgbw_color) {
+  if (draft?.color_mode === "rgbw" || draft?.rgbw_color) {
     return "rgbw";
   }
-  // Prefer HS over RGB: applyColorToDraft writes both, and RGB channel lerp of
+  // Prefer HS over RGB: applyColorToDraft writes HS, and RGB channel lerp of
   // complements bows through white — not the rim path users expect.
-  if (draft?.hs_color) {
+  if (draft?.color_mode === "hs" || draft?.hs_color) {
     return "hs";
   }
-  if (draft?.rgb_color) {
+  if (draft?.color_mode === "rgb" || draft?.rgb_color) {
     return "rgb";
   }
   if (draft?.color_temp_kelvin != null) {
     return "temp";
   }
   return null;
+}
+
+/** Short active-draft readout for the wheel chrome. */
+function formatWheelReadout(draft, wheelMode) {
+  if (!draft || draft.state === "off") {
+    return "Off";
+  }
+  if (wheelMode === "temp") {
+    const kelvin = draft.color_temp_kelvin;
+    if (kelvin == null) {
+      return "Color temperature";
+    }
+    return `${Math.round(kelvin)} K`;
+  }
+  const kind = inferDraftColorKind(draft);
+  if (kind === "hs" && draft.hs_color) {
+    return `HS · ${Math.round(draft.hs_color[0])}°, ${Math.round(draft.hs_color[1])}%`;
+  }
+  if (kind === "rgb" && draft.rgb_color) {
+    const [r, g, b] = draft.rgb_color;
+    return `RGB · ${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}`;
+  }
+  if (kind === "rgbw") {
+    return "RGBW";
+  }
+  if (kind === "rgbww") {
+    return "RGBWW";
+  }
+  if (kind === "temp" && draft.color_temp_kelvin != null) {
+    return `${Math.round(draft.color_temp_kelvin)} K`;
+  }
+  return "Color";
 }
 
 /** HS for chromatic drafts (native hs, else from rgb). Null for temp / missing. */
@@ -855,6 +939,10 @@ function createLightBrightnessGraph({
   const LABEL_Y0 = HEIGHT - 4;
   const LABEL_Y1 = HEIGHT - 15;
   const LABEL_GAP = 3;
+  // Ignore small pointer jitter so a tap can select without writing brightness.
+  const DRAG_THRESHOLD_PX = 10;
+  // Mid-segment color stops between events (same lerp as the hue-wheel path).
+  const GRADIENT_STEPS_PER_SEGMENT = 8;
   let plotW = 300 - PAD_L - PAD_R;
   let viewW = 300;
 
@@ -870,7 +958,8 @@ function createLightBrightnessGraph({
   title.textContent = headingText;
   const sub = document.createElement("div");
   sub.className = "light-brightness-graph-sub";
-  sub.textContent = subtitle;
+  const defaultSubtitle = subtitle;
+  sub.textContent = defaultSubtitle;
   heading.append(title, sub);
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -910,7 +999,21 @@ function createLightBrightnessGraph({
   handlesLayer.setAttribute("class", "handles");
 
   svg.append(defs, frame, fillArea, curve, handlesLayer);
-  el.append(heading, svg);
+  // Plot wrapper: title keeps pan-y scroll; plot locks touch + HA sheet dismiss
+  // (ha-bottom-sheet SWIPE_LOCKED_CLASSES includes volume-slider-container).
+  const plot = document.createElement("div");
+  plot.className = "light-brightness-graph-plot volume-slider-container";
+  plot.appendChild(svg);
+  el.append(heading, plot);
+
+  const fireSheetSliderLock = (active) => {
+    el.dispatchEvent(
+      new CustomEvent(
+        active ? "slider-interaction-start" : "slider-interaction-stop",
+        { bubbles: true, composed: true }
+      )
+    );
+  };
 
   let drag = null;
   let dragNode = null;
@@ -987,11 +1090,35 @@ function createLightBrightnessGraph({
     if (!drag || drag.pointerId !== ev.pointerId) {
       return;
     }
-    onBrightness(drag.sceneId, brightnessFromY(ev.clientY));
+    const dx = ev.clientX - drag.startX;
+    const dy = ev.clientY - drag.startY;
+    if (!drag.moved) {
+      if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
+        return;
+      }
+      drag.moved = true;
+    }
+    const brightness = brightnessFromY(ev.clientY);
+    const pct = Math.round((brightness * 100) / 255);
+    sub.textContent = `${pct}%`;
+    onBrightness(drag.sceneId, brightness);
   };
 
   const onWindowPointerUp = (ev) => {
     endDrag(ev);
+  };
+
+  const appendGradientStop = (offsetPct, rgb) => {
+    const stop = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "stop"
+    );
+    stop.setAttribute("offset", `${offsetPct.toFixed(2)}%`);
+    stop.setAttribute(
+      "stop-color",
+      `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`
+    );
+    gradient.appendChild(stop);
   };
 
   const paintGeometry = (points) => {
@@ -1005,26 +1132,34 @@ function createLightBrightnessGraph({
     const minS = points[0].seconds;
     const maxS = points[points.length - 1].seconds;
     const span = Math.max(maxS - minS, 1);
-    for (const point of members) {
-      const stop = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "stop"
-      );
-      const offset = ((point.seconds - minS) / span) * 100;
-      const [r, g, b] = point.rgb;
-      stop.setAttribute("offset", `${offset.toFixed(2)}%`);
-      stop.setAttribute("stop-color", `rgb(${r},${g},${b})`);
-      gradient.appendChild(stop);
-    }
     if (members.length === 1) {
-      const [r, g, b] = members[0].rgb;
-      const end = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "stop"
-      );
-      end.setAttribute("offset", "100%");
-      end.setAttribute("stop-color", `rgb(${r},${g},${b})`);
-      gradient.appendChild(end);
+      appendGradientStop(0, members[0].rgb);
+      appendGradientStop(100, members[0].rgb);
+    } else if (members.length > 1) {
+      // Sample mid-segment colors like the wheel path (cheap: ~8 × segments).
+      for (let index = 0; index < members.length - 1; index += 1) {
+        const from = members[index];
+        const to = members[index + 1];
+        const fromOff = ((from.seconds - minS) / span) * 100;
+        const toOff = ((to.seconds - minS) / span) * 100;
+        for (let step = 0; step <= GRADIENT_STEPS_PER_SEGMENT; step += 1) {
+          if (index > 0 && step === 0) {
+            continue;
+          }
+          const t = step / GRADIENT_STEPS_PER_SEGMENT;
+          const sample =
+            from.draft && to.draft
+              ? interpolateDraftSample(from.draft, to.draft, t)
+              : {
+                  rgb: [
+                    Math.round(from.rgb[0] + (to.rgb[0] - from.rgb[0]) * t),
+                    Math.round(from.rgb[1] + (to.rgb[1] - from.rgb[1]) * t),
+                    Math.round(from.rgb[2] + (to.rgb[2] - from.rgb[2]) * t),
+                  ],
+                };
+          appendGradientStop(fromOff + (toOff - fromOff) * t, sample.rgb);
+        }
+      }
     }
     if (members.length) {
       const memberCoords = members.map((point) => ({
@@ -1088,9 +1223,12 @@ function createLightBrightnessGraph({
     }
     const node = dragNode;
     const pointerId = drag.pointerId;
+    const moved = drag.moved;
     drag = null;
     dragNode = null;
     unbindWindowDrag();
+    fireSheetSliderLock(false);
+    sub.textContent = defaultSubtitle;
     if (ev && node) {
       try {
         node.releasePointerCapture(pointerId);
@@ -1099,7 +1237,9 @@ function createLightBrightnessGraph({
       }
     }
     sync();
-    onDragEnd?.();
+    if (moved) {
+      onDragEnd?.();
+    }
   };
 
   const sync = () => {
@@ -1204,12 +1344,16 @@ function createLightBrightnessGraph({
             sceneId: c.point.sceneId,
             eventId: c.point.eventId,
             pointerId: ev.pointerId,
+            startX: ev.clientX,
+            startY: ev.clientY,
+            moved: false,
           };
+          fireSheetSliderLock(true);
           window.addEventListener("pointermove", onWindowPointerMove);
           window.addEventListener("pointerup", onWindowPointerUp);
           window.addEventListener("pointercancel", onWindowPointerUp);
           onSelect(c.point.eventId);
-          onBrightness(c.point.sceneId, brightnessFromY(ev.clientY));
+          // Do not write brightness until the pointer moves past the threshold.
         });
       }
       group.appendChild(label);
@@ -1262,7 +1406,7 @@ function createSceneColorWheel({
   const stage = document.createElement("div");
   stage.className = "hue-wheel-stage";
   const canvasWrap = document.createElement("div");
-  canvasWrap.className = "hue-wheel-canvas";
+  canvasWrap.className = "hue-wheel-canvas volume-slider-container";
   const glow = document.createElement("canvas");
   glow.className = "hue-wheel-glow";
   glow.setAttribute("aria-hidden", "true");
@@ -1294,6 +1438,11 @@ function createSceneColorWheel({
   pathLayer.setAttribute("class", "hue-wheel-paths");
   svg.appendChild(pathLayer);
   canvasWrap.append(glow, svg, bg);
+  const floatReadout = document.createElement("div");
+  floatReadout.className = "hue-wheel-float-readout";
+  floatReadout.hidden = true;
+  floatReadout.setAttribute("aria-live", "polite");
+  canvasWrap.appendChild(floatReadout);
   const chrome = document.createElement("div");
   chrome.className = "hue-wheel-chrome";
   const pill = document.createElement("div");
@@ -1304,12 +1453,32 @@ function createSceneColorWheel({
   presetTrack.className = "hue-presets-track";
   presetTrack.setAttribute("role", "list");
   presets.appendChild(presetTrack);
+  // Readout lives on the drag handle — not between mode pill and presets
+  // (that middle cell overlapped the swatches on narrow sidebars).
   chrome.append(pill, presets);
   stage.append(canvasWrap, chrome);
 
   const markers = new Map();
   let drag = null;
   let glideTimer;
+
+  const emitChange = (meta = {}) => {
+    onChange?.({
+      dragging: Boolean(drag),
+      ...meta,
+    });
+  };
+
+  const showFloatReadout = (draft, x, y) => {
+    floatReadout.hidden = false;
+    floatReadout.textContent = formatWheelReadout(draft, mode);
+    floatReadout.style.left = `${x}px`;
+    floatReadout.style.top = `${y}px`;
+  };
+
+  const hideFloatReadout = () => {
+    floatReadout.hidden = true;
+  };
 
   const radiusPx = () => canvasWrap.clientWidth / 2;
 
@@ -1396,6 +1565,7 @@ function createSceneColorWheel({
       btn.setAttribute("role", "listitem");
       if (mode === "color") {
         btn.style.backgroundColor = item;
+        btn.title = item.toUpperCase();
         const rgb = hexToRgb(item);
         const current = active ? draftRgb(active.draft) : null;
         if (
@@ -1418,12 +1588,13 @@ function createSceneColorWheel({
             clearTimeout(glideTimer);
             glideTimer = setTimeout(() => marker.g.classList.remove("glide"), 450);
           }
-          onChange();
+          emitChange({ dragging: false });
           sync();
         });
       } else {
         const rgb = hueTempToRgb(item);
         btn.style.backgroundColor = rgbCss(rgb);
+        btn.title = `${item} K`;
         if (active?.draft?.color_temp_kelvin === item) {
           btn.classList.add("active");
         }
@@ -1438,7 +1609,7 @@ function createSceneColorWheel({
             clearTimeout(glideTimer);
             glideTimer = setTimeout(() => marker.g.classList.remove("glide"), 450);
           }
-          onChange();
+          emitChange({ dragging: false });
           sync();
         });
       }
@@ -1513,9 +1684,21 @@ function createSceneColorWheel({
           if (scene.id !== current) {
             onSelect(scene.id);
           }
+          // Stay on the visible wheel: convert off-mode drafts to this mode
+          // instead of flipping chrome back to RGB when placing on kelvin.
           const markerMode = draftWheelMode(item.draft, hasColor, hasTemp);
           if (markerMode !== mode) {
-            setMode(markerMode, { convertDraft: false });
+            if (mode === "color") {
+              const rgb = draftRgb(item.draft);
+              const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
+              applyColorToDraft(item.draft, rgb, hsv);
+            } else {
+              applyTempToDraft(
+                item.draft,
+                kelvinForTempConvert(item.draft, tempMin, tempMax)
+              );
+            }
+            emitChange({ dragging: false });
           }
           const pt = pointFromEvent(ev);
           startDrag(
@@ -1554,6 +1737,9 @@ function createSceneColorWheel({
     }
     syncPath();
     syncPresets();
+    if (!drag) {
+      hideFloatReadout();
+    }
   };
 
   const syncPath = () => {
@@ -1660,8 +1846,9 @@ function createSceneColorWheel({
       marker.icon.style.fill = pinForeground(draftRgb(item.draft));
       placeMarker(marker, limited.x, limited.y, true);
     }
+    showFloatReadout(item.draft, limited.x, limited.y);
     syncPath();
-    onChange();
+    emitChange({ dragging: true });
   };
 
   const onPointerUp = (ev) => {
@@ -1673,14 +1860,29 @@ function createSceneColorWheel({
     marker?.g.classList.add("boing");
     setTimeout(() => marker?.g.classList.remove("boing"), 200);
     drag = null;
+    hideFloatReadout();
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("pointercancel", onPointerUp);
+    stage.dispatchEvent(
+      new CustomEvent("slider-interaction-stop", {
+        bubbles: true,
+        composed: true,
+      })
+    );
+    // Flush any throttled live preview with the final sample.
+    emitChange({ dragging: false, final: true });
     sync();
   };
 
   const startDrag = (ev, sceneId, grabX = 0, grabY = 0) => {
     drag = { sceneId, pointerId: ev.pointerId, grabX, grabY };
+    stage.dispatchEvent(
+      new CustomEvent("slider-interaction-start", {
+        bubbles: true,
+        composed: true,
+      })
+    );
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
@@ -1709,8 +1911,9 @@ function createSceneColorWheel({
     if (marker) {
       placeMarker(marker, limited.x, limited.y, true);
     }
+    showFloatReadout(item.draft, limited.x, limited.y);
     syncPath();
-    onChange();
+    emitChange({ dragging: true });
   });
 
   const setMode = (next, { convertDraft = false } = {}) => {
@@ -1720,20 +1923,28 @@ function createSceneColorWheel({
     if (next === "temp" && !hasTemp) {
       return;
     }
-    const { scenes, activeId } = getState();
-    const active = scenes.find((item) => item.id === activeId);
-    if (convertDraft && active && draftWheelMode(active.draft, hasColor, hasTemp) !== next) {
-      if (next === "color") {
-        const rgb = draftRgb(active.draft);
-        const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
-        applyColorToDraft(active.draft, rgb, hsv);
-      } else {
-        applyTempToDraft(
-          active.draft,
-          active.draft.color_temp_kelvin ?? Math.round((tempMin + tempMax) / 2)
-        );
+    const { scenes } = getState();
+    if (convertDraft) {
+      let changed = false;
+      for (const scene of scenes) {
+        if (draftWheelMode(scene.draft, hasColor, hasTemp) === next) {
+          continue;
+        }
+        if (next === "color") {
+          const rgb = draftRgb(scene.draft);
+          const hsv = rgb2hsv(rgb[0], rgb[1], rgb[2]);
+          applyColorToDraft(scene.draft, rgb, hsv);
+        } else {
+          applyTempToDraft(
+            scene.draft,
+            kelvinForTempConvert(scene.draft, tempMin, tempMax)
+          );
+        }
+        changed = true;
       }
-      onChange();
+      if (changed) {
+        emitChange({ dragging: false });
+      }
     }
     if (mode !== next) {
       mode = next;
@@ -1798,11 +2009,13 @@ function lightDraftFingerprint(draft) {
   return JSON.stringify({
     state: draft?.state || "off",
     brightness: draft?.brightness ?? null,
+    color_mode: draft?.color_mode ?? null,
     color_temp_kelvin: draft?.color_temp_kelvin ?? null,
     rgb_color: draft?.rgb_color ?? null,
     hs_color: draft?.hs_color ?? null,
     rgbw_color: draft?.rgbw_color ?? null,
     rgbww_color: draft?.rgbww_color ?? null,
+    effect: draft?.effect ?? null,
   });
 }
 
@@ -1839,6 +2052,8 @@ export {
   draftRgb,
   applyColorToDraft,
   applyTempToDraft,
+  approxKelvinFromRgb,
+  formatWheelReadout,
   inferDraftColorKind,
   draftHs,
   collapseSceneCycle,

@@ -27,7 +27,7 @@ jobs:
 
       - name: Run pylint
         run: |
-          pylint custom_components/scene_extrapolation/
+          pylint custom_components/circadian_scenes/
 
       - name: Run unit tests
         run: |
@@ -35,11 +35,11 @@ jobs:
 
       - name: Run black
         run: |
-          black --check custom_components/scene_extrapolation/ tests/
+          black --check custom_components/circadian_scenes/ tests/
 
       - name: Run isort
         run: |
-          isort --check-only custom_components/scene_extrapolation/ tests/
+          isort --check-only custom_components/circadian_scenes/ tests/
 
   validate-manifest:
     runs-on: ubuntu-latest
@@ -50,12 +50,12 @@ jobs:
       - name: Validate manifest.json
         run: |
           # Check if manifest.json is valid JSON
-          python -c "import json; json.load(open('custom_components/scene_extrapolation/manifest.json'))"
+          python -c "import json; json.load(open('custom_components/circadian_scenes/manifest.json'))"
 
           # Check required fields
           python -c "
           import json
-          manifest = json.load(open('custom_components/scene_extrapolation/manifest.json'))
+          manifest = json.load(open('custom_components/circadian_scenes/manifest.json'))
           required_fields = ['domain', 'name', 'version', 'config_flow']
           for field in required_fields:
               if field not in manifest:

@@ -1,4 +1,4 @@
-"""Config flow for Circadian Scenes (domain: scene_extrapolation)."""
+"""Config flow for Circadian Scenes (domain: circadian_scenes)."""
 
 from __future__ import annotations
 

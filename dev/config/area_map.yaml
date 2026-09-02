@@ -25,6 +25,36 @@ entities:
   light.stue_gulvlampe: stue
   light.stue_spotter: stue
   light.stue_vindu: stue
+  light.stue_load_01: stue
+  light.stue_load_02: stue
+  light.stue_load_03: stue
+  light.stue_load_04: stue
+  light.stue_load_05: stue
+  light.stue_load_06: stue
+  light.stue_load_07: stue
+  light.stue_load_08: stue
+  light.stue_load_09: stue
+  light.stue_load_10: stue
+  light.stue_load_11: stue
+  light.stue_load_12: stue
+  light.stue_load_13: stue
+  light.stue_load_14: stue
+  light.stue_load_15: stue
+  light.stue_load_16: stue
+  light.stue_load_17: stue
+  light.stue_load_18: stue
+  light.stue_load_19: stue
+  light.stue_load_20: stue
+  light.stue_load_21: stue
+  light.stue_load_22: stue
+  light.stue_load_23: stue
+  light.stue_load_24: stue
+  light.stue_load_25: stue
+  light.stue_load_26: stue
+  light.stue_load_27: stue
+  light.stue_load_28: stue
+  light.stue_load_29: stue
+  light.stue_load_30: stue
   light.kjokken_benkelys: kjokken
   light.kjokken_overoy: kjokken
   light.soverom_tak: soverom

@@ -1,7 +1,7 @@
 ---
 name: panel-translations
 description: >-
-  Scene Extrapolation panel and config i18n (en/nb/nn/de/es): file layout,
+  Circadian Scenes panel and config i18n (en/nb/nn/de/es): file layout,
   keys, and checks. During development, update en.json only. Sync the other
   languages in the prepare-release-pr pass, not in each feature change set.
   Use when adding UI copy, editing translation JSON, or running the release
@@ -12,7 +12,7 @@ description: >-
 
 ## Languages
 
-Files under `custom_components/scene_extrapolation/translations/`:
+Files under `custom_components/circadian_scenes/translations/`:
 
 | Code | Language |
 |------|----------|
@@ -31,7 +31,7 @@ Do **not** use `strings.json` or Lokalise placeholders — custom integrations s
 
 Keys are nested JSON; the panel resolves them as:
 
-`component.scene_extrapolation.<path>` via `_t("frontend.tabs.extrapolation", "…")`.
+`component.circadian_scenes.<path>` via `_t("frontend.tabs.extrapolation", "…")`.
 
 ## During development
 

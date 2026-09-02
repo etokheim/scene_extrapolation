@@ -73,11 +73,21 @@
     },
     "actions": {
       "live_edit": "Direkte redigering",
+      "live_preview": "Direkte forhåndsvisning",
+      "room_preview": "Forhåndsvis rom",
+      "scene_preview": "Forhåndsvis scene",
+      "activate_scene": "Aktiver scene",
       "table_view": "Tabellvisning",
       "dial_view": "Urvisning",
       "preview_location": "Forhåndsvis et annet sted",
       "use_home_location": "Bruk hjemsted",
       "reset_sun_now": "Tilbakestill sol til nå"
+    },
+    "save_warn": {
+      "title": "Oppdatere eksterne scener?",
+      "text": "Lagring endrer disse Home Assistant-scenene som ikke ble opprettet av Circadian Scenes: {scenes}.",
+      "dont_warn": "Ikke advar igjen",
+      "save": "Lagre endringer"
     },
     "draft": {
       "title": "Fortsetter der du slapp",
@@ -156,7 +166,11 @@
       "brightness": "Lysstyrke",
       "color_brightness": "Fargelysstyrke",
       "white_brightness": "Hvitlysstyrke",
-      "graph_sub": "0–100 % per solhendelse"
+      "graph_sub": "0–100 % per solhendelse",
+      "add_light": "Legg til lys",
+      "add_light_title": "Legg til lys",
+      "add_light_help": "Legg til et lys fra et annet område (eller et lys som ennå ikke er i disse scenene). Dagens utseende kopieres inn i alle tilordnede native scener.",
+      "light": "Lys"
     },
     "defaults": {
       "circadian_scene": "Circadian"

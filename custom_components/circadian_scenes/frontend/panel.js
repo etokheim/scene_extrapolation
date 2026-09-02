@@ -42,7 +42,8 @@ import {
   lerpSunPath,
 } from "./dial_clock.js";
 
-const DOMAIN = "scene_extrapolation";
+const DOMAIN = "circadian_scenes";
+const LEGACY_DOMAIN = "scene_extrapolation";
 const SECONDS_PER_DAY = 24 * 3600;
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 200;
@@ -109,12 +110,14 @@ const CLOCK_EVENT_GAP_FROM_PATH = 10;
 const CLOCK_OVERRIDE_R = CLOCK_TICK_OUTER;
 const CLOCK_SUN_STROKE_MIN_PX = 0.2;
 const CLOCK_SUN_STROKE_MAX_PX = 10;
-const SIDEBAR_ANIMATION_MS = 200;
+const SIDEBAR_ANIMATION_MS = 400;
 const SIDEBAR_SWAP_MS = 160;
 /* Cubic ease-out: decelerates across more of the span than quintic. */
 const CLOCK_SUN_MOVE_MS = 1500;
 const DATE_MORPH_MS = 1500;
 const PREVIEW_REFINE_MS = 800;
+/** Settled preview samples are denser than scrub knots (≤8 incl. midnight). */
+const AUTHORITATIVE_SAMPLE_MIN = 9;
 const LIGHT_BAR_HEIGHT = 108;
 const LIGHT_FEATHER_PX = 36;
 const LIGHT_BAR_EDGE_HEIGHT = LIGHT_BAR_HEIGHT - LIGHT_FEATHER_PX;
@@ -125,6 +128,9 @@ const UNDO_STACK_LIMIT = 75;
 const DRAFT_STORAGE_VERSION = 1;
 const DRAFT_PERSIST_MS = 200;
 const LIGHT_VIEW_STORAGE_VERSION = 1;
+const LIVE_EDIT_STORAGE_VERSION = 1;
+const ROOM_PREVIEW_STORAGE_VERSION = 1;
+const EXTERNAL_SCENE_WARN_STORAGE_VERSION = 1;
 const CLOCK_FEATHER_PCT = 5.5;
 const LINKED_EVENTS = ["dawn", "sunrise", "sunset"];
 const SETUP_AUTOMATIC = "automatic";
@@ -216,7 +222,7 @@ const HELPERS = {
     "Leave empty to create a native scene automatically for this event",
 };
 
-class SceneExtrapolationPanel extends HTMLElement {
+class CircadianScenesPanel extends HTMLElement {
   constructor() {
     super();
     this._hass = undefined;
@@ -261,8 +267,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._aulResumeInterval = 300;
     this._hashConfirming = false;
     this._lightView = "dial";
-    this._liveEdit = false;
+    this._liveEdit = true;
     this._liveEditSidebarHandler = null;
+    this._roomPreview = false;
+    this._roomPreviewSnapshots = null;
     this._onHashChange = () => this._syncHash();
     this._onEditorKeydown = (ev) => this._handleEditorShortcut(ev);
     this._onPageHide = (ev) => {
@@ -419,6 +427,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       window.cancelAnimationFrame(this._hoverRaf);
       this._hoverRaf = undefined;
     }
+    this._cancelSunPathMorph();
   }
 
   async _build() {
@@ -450,33 +459,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           --clock-night-outer: ${CLOCK_NIGHT_OUTER_DARK};
           --clock-night-deep: ${CLOCK_NIGHT_DEEP_DARK};
         }
-        /* ha-panel-custom often computes to 0 height, so 100% on the app bar
-           collapses. Fill the viewport, then stretch the bar to this host. */
-        ha-top-app-bar-fixed {
-          height: 100% !important;
-        }
-        .sun-path {
-          /* No HA card chrome — clock/plots sit on the panel surface. */
-          background: transparent;
-          border: none;
-          border-radius: 0;
-          margin-top: var(--ha-space-3);
-          overflow: visible;
-          position: relative;
-        }
-        /* Surface vignette on L/T/R (max 50% opacity) so date chips, Now
-           readout, and event labels read over horizon bleed in light + dark.
-           Long multi-stops ≈ soft blur (hard 88/160 edges read as a hard cut).
-           Extend under --scene-sidebar-gutter like .clock-horizon-back so the
-           right fade does not hard-cut at the drawer. */
-        .sun-path.dial-view::before {
+        /* Dial L/T/R surface vignette — fixed to the panel host (full width /
+           height), not .sun-path. Tying it to --scene-sidebar-gutter made the
+           gradient box resize with the drawer and artifact mid-transition. */
+        :host([data-dial-view])::before {
           content: "";
           position: absolute;
           inset: 0;
-          /* Reach the same top as .clock-horizon-back (host), including under
-             draft/location banners — measured as --dial-banner-h. */
-          top: calc(-1 * var(--dial-banner-h, 0px));
-          right: calc(-1 * var(--scene-sidebar-gutter));
           z-index: 2;
           pointer-events: none;
           background:
@@ -501,6 +490,20 @@ class SceneExtrapolationPanel extends HTMLElement {
               color-mix(in srgb, var(--primary-background-color) 10%, transparent) 220px,
               transparent 360px
             );
+        }
+        /* ha-panel-custom often computes to 0 height, so 100% on the app bar
+           collapses. Fill the viewport, then stretch the bar to this host. */
+        ha-top-app-bar-fixed {
+          height: 100% !important;
+        }
+        .sun-path {
+          /* No HA card chrome — clock/plots sit on the panel surface. */
+          background: transparent;
+          border: none;
+          border-radius: 0;
+          margin-top: var(--ha-space-3);
+          overflow: visible;
+          position: relative;
         }
         .sun-path[hidden] {
           display: none;
@@ -698,13 +701,15 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         /* Portrait dial: toolbar is in-flow so the year scrub pushes the dial
            down (ticks stay clear). Horizon glow still bleeds behind it
-           (_layoutClockHorizonBack covers the host). */
+           (_layoutClockHorizonBack covers the host). Flush left so Now/Sun°
+           meet the page edge like chips (no shared 16px inset). */
         .sun-path.dial-view .sun-toolbar:not(.toolbar-rail-only) {
           position: relative;
           z-index: 6;
           box-sizing: border-box;
           pointer-events: none;
           background: transparent;
+          padding: 8px 12px 0 16px;
         }
         .sun-path.dial-view .sun-toolbar:not(.toolbar-rail-only) > * {
           pointer-events: auto;
@@ -951,11 +956,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           /* Flush under the app bar so horizon/bloom/ramp share one top edge
              (margin left a strip where only some bleed painted). */
           margin-top: 0;
-          /* Clip horizon bleed on X only. Do not use overflow-x: hidden with
-             overflow-y: visible — CSS computes that Y to auto and the dial
-             grows a second vertical scrollbar beside ha-top-app-bar. */
-          overflow-x: clip;
-          overflow-y: visible;
+          /* Do not clip X here — mobile face uses width 100%+48px / −24px
+             margin so ticks bleed past the column; page/dial-wide clips
+             horizon bleed instead (overflow-x:hidden+visible Y → auto). */
+          overflow: visible;
           /* Fallback until _syncDialHeightBudget measures: fill below the
              header, keep event-label pad + gap, leave ~32px of the first
              light row peeking. */
@@ -1097,8 +1101,15 @@ class SceneExtrapolationPanel extends HTMLElement {
           transform-origin: center;
           animation: clock-sun-counter-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
         }
+        /* Buttons live on the face (outside the SVG overlay). Spin this layer
+           around the dial center so they orbit with the path, not in place.
+           Anchors counter-rotate so the icon + label stay screen-level. */
+        .sun-light-clock-face.clock-face-enter .clock-event-layer {
+          transform-origin: center center;
+          animation: clock-overlay-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
+        }
         .sun-light-clock-face.clock-face-enter .clock-event-anchor {
-          animation: clock-event-spin 2250ms cubic-bezier(0.2, 0, 0, 1) both;
+          animation: clock-event-counter-spin 1500ms cubic-bezier(0.2, 0, 0, 1) both;
         }
         @keyframes clock-face-fade {
           from {
@@ -1132,9 +1143,9 @@ class SceneExtrapolationPanel extends HTMLElement {
             transform: rotate(0deg);
           }
         }
-        @keyframes clock-event-spin {
+        @keyframes clock-event-counter-spin {
           from {
-            transform: translate(-50%, -50%) rotate(-12deg);
+            transform: translate(-50%, -50%) rotate(12deg);
           }
           to {
             transform: translate(-50%, -50%) rotate(0deg);
@@ -1629,6 +1640,12 @@ class SceneExtrapolationPanel extends HTMLElement {
           .clock-hour-label {
             font-size: 32px;
           }
+        }
+        .clock-event-layer {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 6;
         }
         .clock-event-anchor {
           position: absolute;
@@ -2265,16 +2282,23 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .light-scene-list {
           display: flex;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
           gap: 6px;
-          margin: 0 0 12px;
+          margin: 0 -24px 12px;
+          padding: 0 24px 4px;
+          overflow-x: auto;
+          overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: thin;
+          scroll-snap-type: x proximity;
         }
         .light-scene-list .sun-event {
-          flex: 1 1 calc(50% - 6px);
+          flex: 0 0 auto;
           min-width: 5.5rem;
-          max-width: none;
-          padding: 6px 8px;
+          max-width: 9rem;
+          padding: 6px 10px;
           gap: 1px;
+          scroll-snap-align: start;
         }
         .light-scene-list .sun-event ha-icon {
           --mdc-icon-size: 16px;
@@ -2448,8 +2472,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           position: relative;
           display: flex;
           flex-wrap: nowrap;
+          align-items: center;
           justify-content: space-between;
-          align-items: flex-end;
           gap: 8px;
           pointer-events: none;
           z-index: 3;
@@ -2460,6 +2484,28 @@ class SceneExtrapolationPanel extends HTMLElement {
         .hue-wheel-chrome > * {
           pointer-events: auto;
         }
+        .hue-wheel-float-readout {
+          position: absolute;
+          z-index: 4;
+          transform: translate(-50%, calc(-100% - 14px));
+          padding: 4px 8px;
+          border-radius: 8px;
+          background: color-mix(
+            in srgb,
+            var(--card-background-color, #1c1c1c) 92%,
+            transparent
+          );
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+          font-size: 0.75rem;
+          font-variant-numeric: tabular-nums;
+          line-height: 1.2;
+          color: var(--primary-text-color);
+          white-space: nowrap;
+          pointer-events: none;
+        }
+        .hue-wheel-float-readout[hidden] {
+          display: none !important;
+        }
         .hue-mode-pill,
         .hue-presets {
           box-sizing: border-box;
@@ -2469,7 +2515,6 @@ class SceneExtrapolationPanel extends HTMLElement {
           min-height: 40px;
           padding: 8px;
           gap: 8px;
-          margin-left: auto;
           min-width: 0;
           border-radius: 20px;
           box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
@@ -2481,8 +2526,8 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .hue-presets {
           position: relative;
-          justify-content: flex-start;
           flex: 1 1 auto;
+          justify-content: flex-start;
           overflow: hidden;
         }
         .hue-presets-track {
@@ -2568,7 +2613,8 @@ class SceneExtrapolationPanel extends HTMLElement {
           width: 100%;
           margin: 0 0 12px;
           user-select: none;
-          touch-action: none;
+          /* Title/subtitle may start a page scroll; the plot locks pan. */
+          touch-action: pan-y;
         }
         .light-brightness-graph-heading {
           display: flex;
@@ -2587,11 +2633,17 @@ class SceneExtrapolationPanel extends HTMLElement {
           line-height: 1.25;
           color: var(--secondary-text-color);
         }
+        .light-brightness-graph-plot {
+          touch-action: none;
+          user-select: none;
+          -webkit-user-select: none;
+        }
         .light-brightness-graph svg {
           display: block;
           width: 100%;
           height: 120px;
           overflow: visible;
+          touch-action: none;
         }
         .light-brightness-graph .bg-frame {
           fill: color-mix(
@@ -2651,6 +2703,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           fill: var(--secondary-text-color);
           font-size: 10px;
           text-anchor: middle;
+          pointer-events: none;
         }
         .light-dialog ha-selector,
         .light-dialog ha-switch,
@@ -2746,18 +2799,78 @@ class SceneExtrapolationPanel extends HTMLElement {
         }
         .scene-sidebar-footer {
           display: flex;
-          justify-content: flex-end;
+          justify-content: flex-start;
           align-items: center;
           gap: 12px;
           padding: 12px 16px 16px;
           flex-shrink: 0;
         }
-        .scene-sidebar-footer:has(.sidebar-note) {
+        .scene-sidebar-footer:has(.sidebar-actions-bar) {
           flex-direction: column;
+          justify-content: flex-start;
           align-items: stretch;
-          gap: 8px;
+          gap: 0;
+          padding: 0;
           border-top: 1px solid var(--divider-color);
           background: var(--card-background-color);
+        }
+        /* Beat ha-bottom-sheet ::slotted(footer) { justify-content: flex-end }. */
+        .scene-sidebar.mobile .scene-sidebar-footer:has(.sidebar-actions-bar) {
+          justify-content: flex-start;
+          align-items: stretch;
+          padding: 0;
+        }
+        /* Undo/redo first, then live preview + activate — left-aligned. */
+        .sidebar-actions-bar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: flex-start;
+          gap: 4px 8px;
+          padding: 8px 12px calc(12px + var(--safe-area-inset-bottom, 0px));
+          background: var(--card-background-color);
+        }
+        .sidebar-actions-bar .live-edit-toggle {
+          margin-inline-start: 4px;
+        }
+        .sidebar-actions-bar .activate-scene-btn {
+          margin-inline-end: 4px;
+        }
+        .light-effect-row {
+          display: flex;
+          justify-content: center;
+          margin: 16px 0 4px;
+        }
+        .light-effect-row ha-control-select-menu,
+        .light-effect-row ha-more-info-control-select-container {
+          min-width: 160px;
+          max-width: 220px;
+          width: 100%;
+        }
+        .light-list-add {
+          display: flex;
+          justify-content: center;
+          padding: 12px 8px 4px;
+        }
+        /* Shrink-wrap to the add button — a fixed picker width left-aligns
+           the slotted ha-button inside ha-generic-picker’s full-width container. */
+        .light-list-add ha-entity-picker {
+          width: fit-content;
+          max-width: 100%;
+        }
+        .light-add-picker-host {
+          position: absolute;
+          left: 50%;
+          bottom: 8px;
+          width: min(280px, calc(100% - 16px));
+          transform: translateX(-50%);
+          /* Keep the field out of layout chrome; popover still anchors here. */
+          opacity: 0;
+          pointer-events: none;
+          z-index: 5;
+        }
+        .light-list-add ha-button {
+          --mdc-typography-button-text-transform: none;
         }
         .live-edit-toggle {
           display: inline-flex;
@@ -3099,9 +3212,18 @@ class SceneExtrapolationPanel extends HTMLElement {
           z-index: 4;
           min-height: 0;
           margin: 0;
-          padding: 8px 16px;
+          padding: 8px 12px 8px 8px;
           pointer-events: none;
           color: var(--primary-text-color);
+        }
+        /* Landscape: body is grid column 2 (empty left rail centers the dial).
+           Shift the readout into that gutter so Now/Sun° meet the panel edge
+           like the date chips meet the right rail — not the dial column. */
+        .sun-path-stage.landscape-clock-scrub .sun-hover-readout {
+          left: calc(-1 * var(--scrub-rail-width));
+          top: 12px;
+          /* Match .page-banners margin-inline so Now/Sun° line up with the banner. */
+          padding-left: 16px;
         }
         .sun-hover-time {
           font-weight: 500;
@@ -3234,29 +3356,25 @@ class SceneExtrapolationPanel extends HTMLElement {
           padding-bottom: 156px;
           box-sizing: border-box;
           position: relative;
-          /* Event chips sit near the face edge — do not clip them. */
+          /* Event chips sit near the face edge — do not clip them here; clip X
+             on the shell below so horizon bleed cannot widen the app-bar scroller. */
           overflow: visible;
           transition:
             margin-right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
             width ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
             padding-right ${SIDEBAR_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         }
-        /* Must follow .page.dial-wide { overflow: visible } — that shorthand
-           was overriding an earlier mobile overflow-x and letting
-           .clock-horizon-back widen ha-top-app-bar’s .ha-scrollbar.
-           Only clip the page shell / dial-wide — not stage/body/clock, or
-           overflow-x:clip promotes overflow-y to a scrollport and the huge
-           absolute horizon-back inflates scroll height below the light list. */
-        @media (max-width: 870px) {
-          .page-shell,
-          .page.dial-wide,
-          .sun-path.dial-view {
-            overflow-x: clip;
-          }
+        /* Clip X on the shell (all widths). .clock-horizon-back is sized to the
+           full panel and was widening ha-top-app-bar’s .ha-scrollbar. Do not
+           clip stage/body/clock — overflow-x:clip promotes overflow-y to a
+           scrollport and abspos horizon used to inflate scroll height; that
+           height is capped in _layoutClockHorizonBack. */
+        .page-shell,
+        .page.dial-wide {
+          overflow-x: clip;
         }
-        /* Sidebar open: let horizon/bloom paint under the drawer (desktop). */
-        :host([data-sidebar-docked]) .page-shell,
-        :host([data-sidebar-docked]) .page.dial-wide,
+        /* Sidebar open: keep path/face overflow visible for chips / underpaint;
+           leave page-shell x-clipped so the horizontal scrollbar stays gone. */
         :host([data-sidebar-docked]) .sun-path.dial-view,
         :host([data-sidebar-docked]) .sun-path-stage,
         :host([data-sidebar-docked]) .sun-path-body,
@@ -3271,7 +3389,7 @@ class SceneExtrapolationPanel extends HTMLElement {
           flex-direction: column;
           gap: 8px;
           margin-top: var(--ha-space-3);
-          margin-inline: 12px;
+          margin-inline: 16px;
         }
         .page-banners[hidden] {
           display: none;
@@ -3836,6 +3954,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._resetSession();
       this._draftRestore = pending ? null : this._restorePersistedDraft();
       this._draftBannerDismissed = false;
+      void this._refreshManagedScenes();
       this._render();
       if (!this._formData.area) {
         this._openAreaDialog({ context: "new" });
@@ -3853,6 +3972,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._view = "list";
     this._editId = null;
     this._entityId = null;
+    void this._stopRoomPreview({ restore: true });
     this._loadList();
   }
 
@@ -3881,10 +4001,13 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   async _loadItem(sceneId) {
     try {
-      const item = await this._hass.callWS({
-        type: `${DOMAIN}/get`,
-        scene_id: sceneId,
-      });
+      const [item] = await Promise.all([
+        this._hass.callWS({
+          type: `${DOMAIN}/get`,
+          scene_id: sceneId,
+        }),
+        this._refreshManagedScenes(),
+      ]);
       this._entityId = item.entity_id || null;
       this._formData = { ...emptyFormData(), ...(item.form || item) };
     } catch (err) {
@@ -3912,7 +4035,17 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   /** Panel/integration string from translations/<lang>.json (frontend.* / config.*). */
   _t(path, fallback, vars) {
-    return this._loc(`component.${DOMAIN}.${path}`, fallback, vars);
+    const value = this._loc(`component.${DOMAIN}.${path}`, fallback, vars);
+    if (!vars) {
+      return value;
+    }
+    // hass.localize may miss our key — still expand {name} in the fallback.
+    if (value === fallback || value === `component.${DOMAIN}.${path}`) {
+      return String(fallback).replace(/\{(\w+)\}/g, (match, key) =>
+        vars[key] != null ? String(vars[key]) : match
+      );
+    }
+    return value;
   }
 
   _fieldLabel(name) {
@@ -3965,10 +4098,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     // Allow clock enter again the next time an editor opens.
     this._clockEnterPlayed = false;
     this._clockStickySeconds = undefined;
-    this._liveEdit = false;
     this._liveEditSidebarHandler = null;
+    this._stopRoomPreview({ restore: true });
     this._cancelClockSunArc();
     this._cancelSunPathMorph();
+    this._forgetClockDom();
     this._form = undefined;
     // Drop dial preview state so the list chart uses the light sun_path API.
     if (this._sunPathKey && !String(this._sunPathKey).startsWith("list-sun:")) {
@@ -4136,7 +4270,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (learnMore) {
       const link = document.createElement("a");
       link.className = "learn-more";
-      link.href = "https://github.com/etokheim/scene_extrapolation";
+      link.href = "https://github.com/etokheim/circadian_scenes";
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       link.textContent = this._t("frontend.empty.learn_more", "Learn more");
@@ -4706,65 +4840,92 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _setEditorActions() {
     this._lightView = this._readLightView();
-    const liveToggle = document.createElement("label");
-    liveToggle.className = "live-edit-toggle";
-    const liveLabel = document.createElement("span");
-    liveLabel.textContent = this._t("frontend.actions.live_edit", "Live edit");
-    const liveSwitch = document.createElement("ha-switch");
-    liveSwitch.checked = Boolean(this._liveEdit);
-    liveSwitch.addEventListener("change", () => {
-      this._setLiveEdit(Boolean(liveSwitch.checked));
+    this._liveEdit = this._readLiveEditPref();
+    // Live preview lives in the light sidebar — clear any stale app-bar switch.
+    this._liveEditSwitch = null;
+
+    const previewToggle = document.createElement("label");
+    previewToggle.className = "live-edit-toggle room-preview-toggle";
+    const previewLabel = document.createElement("span");
+    previewLabel.textContent = this._t(
+      "frontend.actions.scene_preview",
+      "Preview scene"
+    );
+    const previewSwitch = document.createElement("ha-switch");
+    previewSwitch.checked = Boolean(this._roomPreview);
+    previewSwitch.addEventListener("change", () => {
+      this._setRoomPreview(Boolean(previewSwitch.checked));
     });
-    liveToggle.append(liveLabel, liveSwitch);
-    this._liveEditSwitch = liveSwitch;
+    previewToggle.append(previewLabel, previewSwitch);
+    this._roomPreviewSwitch = previewSwitch;
+
+    // Location + dial/table view always live in the overflow menu.
+    this._locationBtn = null;
+    this._lightViewToggleBtn = null;
 
     if (this._narrow) {
-      // Location + view live in the overflow menu on narrow (with undo/redo).
-      this._locationBtn = null;
-      this._lightViewToggleBtn = null;
-      this._setActionItems(liveToggle, this._overflowMenu());
+      this._setActionItems(previewToggle, this._overflowMenu());
       this._syncLocationToolbar();
+      this._maybeResumeRoomPreview();
       return;
     }
-
-    const locationBtn = document.createElement("ha-icon-button");
-    locationBtn.className = "sun-location-btn";
-    locationBtn.label = "Preview another location";
-    const locationIcon = document.createElement("ha-icon");
-    locationIcon.setAttribute("icon", "mdi:map-marker-outline");
-    locationBtn.appendChild(locationIcon);
-    locationBtn.addEventListener("click", () => this._openLocationDialog());
-    this._locationBtn = locationBtn;
-
-    const viewBtn = document.createElement("ha-button");
-    viewBtn.className = "light-view-toggle-btn";
-    viewBtn.appearance = "plain";
-    viewBtn.addEventListener("click", () => {
-      this._setLightView(this._lightView === "dial" ? "table" : "dial");
-    });
-    this._lightViewToggleBtn = viewBtn;
-    this._syncLightViewButtons();
 
     const undo = this._undoRedoButton("undo");
     const redo = this._undoRedoButton("redo");
     this._undoBtn = undo;
     this._redoBtn = redo;
-    this._setActionItems(
-      liveToggle,
-      locationBtn,
-      viewBtn,
-      undo,
-      redo,
-      this._overflowMenu()
-    );
+    this._setActionItems(undo, redo, previewToggle, this._overflowMenu());
     this._syncUndoButtons();
     this._syncLocationToolbar();
+    this._maybeResumeRoomPreview();
   }
 
   _syncLiveEditControl() {
     if (this._liveEditSwitch) {
       this._liveEditSwitch.checked = Boolean(this._liveEdit);
     }
+  }
+
+  _syncRoomPreviewControl() {
+    if (!this._roomPreviewSwitch) {
+      return;
+    }
+    const sidebarOpen = Boolean(this._sidebarLightId || this._sidebarEventId);
+    this._roomPreviewSwitch.disabled = sidebarOpen;
+    // While a sidebar pauses preview, keep the switch reflecting the saved pref.
+    this._roomPreviewSwitch.checked = sidebarOpen
+      ? this._readRoomPreviewPref()
+      : Boolean(this._roomPreview);
+  }
+
+  _maybeResumeRoomPreview() {
+    if (
+      this._view !== "edit" ||
+      this._sidebarLightId ||
+      this._sidebarEventId ||
+      !this._readRoomPreviewPref()
+    ) {
+      this._syncRoomPreviewControl();
+      return;
+    }
+    void this._resumeRoomPreviewIfPreferred();
+  }
+
+  async _resumeRoomPreviewIfPreferred() {
+    if (
+      this._view !== "edit" ||
+      this._sidebarLightId ||
+      this._sidebarEventId ||
+      !this._readRoomPreviewPref()
+    ) {
+      return;
+    }
+    if (!this._roomPreview) {
+      await this._startRoomPreview();
+      this._syncRoomPreviewControl();
+      return;
+    }
+    await this._applyRoomPreviewAtClock();
   }
 
   async _setLiveEdit(on) {
@@ -4774,6 +4935,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       return;
     }
     this._liveEdit = next;
+    this._writeLiveEditPref(next);
     this._syncLiveEditControl();
     if (typeof this._liveEditSidebarHandler === "function") {
       await this._liveEditSidebarHandler(next);
@@ -4899,25 +5061,253 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _draftStorageKey(sceneKey = this._editId || "new") {
     const user = this._hass?.user?.id || "anon";
-    return `scene_extrapolation.draft.v1.${user}.${sceneKey}`;
+    return `${DOMAIN}.draft.v1.${user}.${sceneKey}`;
+  }
+
+  _legacyDraftStorageKey(sceneKey = this._editId || "new") {
+    const user = this._hass?.user?.id || "anon";
+    return `${LEGACY_DOMAIN}.draft.v1.${user}.${sceneKey}`;
   }
 
   _lightViewStorageKey() {
     const user = this._hass?.user?.id || "anon";
-    return `scene_extrapolation.lightView.v${LIGHT_VIEW_STORAGE_VERSION}.${user}`;
+    return `${DOMAIN}.lightView.v${LIGHT_VIEW_STORAGE_VERSION}.${user}`;
+  }
+
+  _legacyLightViewStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${LEGACY_DOMAIN}.lightView.v${LIGHT_VIEW_STORAGE_VERSION}.${user}`;
+  }
+
+  _liveEditStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${DOMAIN}.liveEdit.v${LIVE_EDIT_STORAGE_VERSION}.${user}`;
+  }
+
+  _legacyLiveEditStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${LEGACY_DOMAIN}.liveEdit.v${LIVE_EDIT_STORAGE_VERSION}.${user}`;
+  }
+
+  _roomPreviewStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${DOMAIN}.roomPreview.v${ROOM_PREVIEW_STORAGE_VERSION}.${user}`;
+  }
+
+  _legacyRoomPreviewStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${LEGACY_DOMAIN}.roomPreview.v${ROOM_PREVIEW_STORAGE_VERSION}.${user}`;
+  }
+
+  _externalSceneWarnStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${DOMAIN}.externalSceneWarn.v${EXTERNAL_SCENE_WARN_STORAGE_VERSION}.${user}`;
+  }
+
+  _legacyExternalSceneWarnStorageKey() {
+    const user = this._hass?.user?.id || "anon";
+    return `${LEGACY_DOMAIN}.externalSceneWarn.v${EXTERNAL_SCENE_WARN_STORAGE_VERSION}.${user}`;
+  }
+
+  _readLocalStorage(key, legacyKey) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw != null) {
+        return raw;
+      }
+      if (!legacyKey) {
+        return null;
+      }
+      const legacy = window.localStorage.getItem(legacyKey);
+      if (legacy == null) {
+        return null;
+      }
+      window.localStorage.setItem(key, legacy);
+      return legacy;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  _readLiveEditPref() {
+    const raw = this._readLocalStorage(
+      this._liveEditStorageKey(),
+      this._legacyLiveEditStorageKey()
+    );
+    if (raw === "0" || raw === "false") {
+      return false;
+    }
+    // Default on when unset.
+    return true;
+  }
+
+  _writeLiveEditPref(on) {
+    try {
+      window.localStorage.setItem(this._liveEditStorageKey(), on ? "1" : "0");
+    } catch (_err) {
+      /* ignore */
+    }
+  }
+
+  _readRoomPreviewPref() {
+    return (
+      this._readLocalStorage(
+        this._roomPreviewStorageKey(),
+        this._legacyRoomPreviewStorageKey()
+      ) === "1"
+    );
+  }
+
+  _writeRoomPreviewPref(on) {
+    try {
+      window.localStorage.setItem(this._roomPreviewStorageKey(), on ? "1" : "0");
+    } catch (_err) {
+      /* ignore */
+    }
+  }
+
+  _readSkipExternalSceneWarn() {
+    return (
+      this._readLocalStorage(
+        this._externalSceneWarnStorageKey(),
+        this._legacyExternalSceneWarnStorageKey()
+      ) === "1"
+    );
+  }
+
+  _writeSkipExternalSceneWarn(skip) {
+    try {
+      window.localStorage.setItem(
+        this._externalSceneWarnStorageKey(),
+        skip ? "1" : "0"
+      );
+    } catch (_err) {
+      /* ignore */
+    }
+  }
+
+  async _refreshManagedScenes() {
+    try {
+      this._managedScenes = await this._hass.callWS({
+        type: `${DOMAIN}/list_managed_native_scenes`,
+      });
+    } catch (_err) {
+      /* keep prior list */
+    }
+  }
+
+  _isManagedNativeScene(entityId) {
+    if (!entityId) {
+      return false;
+    }
+    // Session-created drafts become managed on flush — treat as ours.
+    if (String(entityId).startsWith("scene.__se_draft")) {
+      return true;
+    }
+    return (this._managedScenes || []).some(
+      (row) => row.entity_id === entityId
+    );
+  }
+
+  /** Native scenes this save would rewrite that we did not create. */
+  _externalScenesTouchedByDrafts() {
+    const names = [];
+    const seen = new Set();
+    for (const [sceneId, draft] of Object.entries(this._nativeDrafts || {})) {
+      if (!draft || draft.created || this._isManagedNativeScene(sceneId)) {
+        continue;
+      }
+      const touches =
+        draft.deleted ||
+        Boolean(draft.name) ||
+        Object.keys(draft.entities || {}).length > 0;
+      if (!touches || seen.has(sceneId)) {
+        continue;
+      }
+      seen.add(sceneId);
+      names.push(this._sceneName(sceneId) || sceneId);
+    }
+    return names;
+  }
+
+  _confirmExternalSceneSave(sceneNames) {
+    return new Promise((resolve) => {
+      this.shadowRoot.querySelector("ha-dialog.external-scene-warn")?.remove();
+      const dialog = document.createElement("ha-dialog");
+      dialog.className = "external-scene-warn confirm-dialog";
+      dialog.setAttribute(
+        "header-title",
+        this._t("frontend.save_warn.title", "Update external scenes?")
+      );
+      dialog.open = true;
+      const body = document.createElement("div");
+      const text = document.createElement("p");
+      text.textContent = this._t(
+        "frontend.save_warn.text",
+        "Saving will change these Home Assistant scenes that were not created by Circadian Scenes: {scenes}.",
+        { scenes: sceneNames.join(", ") }
+      );
+      const row = document.createElement("label");
+      row.className = "dialog-row";
+      const label = document.createElement("span");
+      label.textContent = this._t(
+        "frontend.save_warn.dont_warn",
+        "Don't warn again"
+      );
+      const check = document.createElement("ha-switch");
+      // Default on — one less tap when the user expects this often.
+      check.checked = true;
+      row.append(label, check);
+      body.append(text, row);
+      dialog.appendChild(body);
+      const footer = customElements.get("ha-dialog-footer")
+        ? document.createElement("ha-dialog-footer")
+        : document.createElement("div");
+      footer.slot = "footer";
+      const cancel = document.createElement("ha-button");
+      cancel.slot = "secondaryAction";
+      cancel.appearance = "plain";
+      cancel.textContent = this._t("frontend.common.cancel", "Cancel");
+      const save = document.createElement("ha-button");
+      save.slot = "primaryAction";
+      save.variant = "brand";
+      save.textContent = this._t("frontend.save_warn.save", "Save changes");
+      let settled = false;
+      const settle = (value) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        dialog.open = false;
+        resolve(value);
+      };
+      cancel.addEventListener("click", () => settle(false));
+      save.addEventListener("click", () => {
+        if (check.checked) {
+          this._writeSkipExternalSceneWarn(true);
+        }
+        settle(true);
+      });
+      footer.append(cancel, save);
+      dialog.appendChild(footer);
+      dialog.addEventListener("closed", () => {
+        dialog.remove();
+        settle(false);
+      });
+      this.shadowRoot.appendChild(dialog);
+    });
   }
 
   _readLightView() {
-    try {
-      const raw = window.localStorage.getItem(this._lightViewStorageKey());
-      // Explicit table stays table; migrate legacy "clock" → dial.
-      if (raw === "table") {
-        return "table";
-      }
-      return "dial";
-    } catch (_err) {
-      return "dial";
+    const raw = this._readLocalStorage(
+      this._lightViewStorageKey(),
+      this._legacyLightViewStorageKey()
+    );
+    // Explicit table stays table; migrate legacy "clock" → dial.
+    if (raw === "table") {
+      return "table";
     }
+    return "dial";
   }
 
   _setLightView(view) {
@@ -4936,11 +5326,31 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._syncLightViewButtons();
     this._syncEditorChrome();
     // Narrow: view label lives in the overflow menu — rebuild so it updates.
-    if (this._narrow && this._view === "edit") {
+    // Wide too: location + view are overflow-only now.
+    if (this._view === "edit") {
       this._setEditorActions();
     }
     if (this._sunPath) {
-      this._drawSunPath();
+      // Scrub/knots only until settle. Keep settled HA samples as-is.
+      // Switching to table with sparse samples: refetch so bands use the same
+      // extrapolator grid as the dial (not a client RGB 5-minute densify).
+      const sparse =
+        this._view === "edit" &&
+        next === "table" &&
+        !this._yearScrubbing &&
+        !this._hasAuthoritativeLightSamples(this._sunPath.lights) &&
+        (this._sunPath.lights || []).some(
+          (light) => !light.suggested && (light.event_states || []).length
+        );
+      if (sparse) {
+        // Drop the in-memory scrub knots; reuse cached settled preview when
+        // present, otherwise fetch DOMAIN/preview for HA mid-segment samples.
+        this._sunPathKey = undefined;
+        this._ensureSunPath();
+      } else {
+        this._sunPath = this._withClientLightSamples(this._sunPath);
+        this._drawSunPath();
+      }
     } else {
       this._syncYearScrubLayout();
     }
@@ -4951,6 +5361,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._view === "edit" && this._lightView === "dial";
     this.shadowRoot?.querySelector(".page")?.classList.toggle("dial-wide", dial);
     this._sunPathEl?.classList.toggle("dial-view", dial);
+    // Host-level vignette (not .sun-path) — must not track sidebar gutter.
+    this.toggleAttribute("data-dial-view", dial);
   }
 
   _syncLightViewButtons() {
@@ -4970,7 +5382,10 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _readPersistedDraft(sceneKey) {
     try {
-      const raw = window.localStorage.getItem(this._draftStorageKey(sceneKey));
+      let raw = this._readLocalStorage(
+        this._draftStorageKey(sceneKey),
+        this._legacyDraftStorageKey(sceneKey)
+      );
       if (!raw) {
         return null;
       }
@@ -5166,8 +5581,11 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
   }
 
-  _commitUndo() {
-    this._undoStack.push(this._snapshotSession());
+  _commitUndo(focus = null) {
+    this._undoStack.push({
+      session: this._snapshotSession(),
+      focus: focus || null,
+    });
     if (this._undoStack.length > UNDO_STACK_LIMIT) {
       this._undoStack.shift();
     }
@@ -5179,7 +5597,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
   }
 
-  _applySession(snapshot) {
+  _applySession(snapshot, { focus = null } = {}) {
     this._forceCloseSceneSidebar();
     this._formData = structuredClone(snapshot.form);
     this._nativeDrafts = structuredClone(snapshot.nativeDrafts);
@@ -5190,23 +5608,43 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._syncUndoButtons();
     this._persistDraftSoon();
     this._syncSaveFab();
-    this._ensureSunPath();
+    this._ensureSunPath().then(() => {
+      if (focus?.type === "light" && focus.lightId) {
+        const light = (this._sunPath?.lights || []).find(
+          (row) => row.entity_id === focus.lightId
+        );
+        const event =
+          (this._sunPath?.events || []).find((row) => row.id === focus.eventId) ||
+          (this._sunPath?.events || [])[0];
+        if (light && event) {
+          this._openLightEditDialog(light, event);
+        }
+      }
+    });
   }
 
   _undo() {
     if (!this._undoStack.length) {
       return;
     }
-    this._redoStack.push(this._snapshotSession());
-    this._applySession(this._undoStack.pop());
+    const entry = this._undoStack.pop();
+    this._redoStack.push({
+      session: this._snapshotSession(),
+      focus: entry.focus || null,
+    });
+    this._applySession(entry.session, { focus: entry.focus || null });
   }
 
   _redo() {
     if (!this._redoStack.length) {
       return;
     }
-    this._undoStack.push(this._snapshotSession());
-    this._applySession(this._redoStack.pop());
+    const entry = this._redoStack.pop();
+    this._undoStack.push({
+      session: this._snapshotSession(),
+      focus: entry.focus || null,
+    });
+    this._applySession(entry.session, { focus: entry.focus || null });
   }
 
   _syncUndoButtons() {
@@ -5215,6 +5653,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (this._redoBtn) {
       this._redoBtn.disabled = !this._redoStack.length;
+    }
+    if (this._sidebarUndoBtn) {
+      this._sidebarUndoBtn.disabled = !this._undoStack.length;
+    }
+    if (this._sidebarRedoBtn) {
+      this._sidebarRedoBtn.disabled = !this._redoStack.length;
     }
   }
 
@@ -5545,8 +5989,178 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._adaptStateToLight(light.entity_id, typical, row.event);
     }
     this._syncPreviewOverlay();
+    this._clearPreviewCache();
+    this._schedulePreview();
+  }
+
+  _optimisticIncludeLight(entityId) {
+    if (!this._sunPath || !entityId?.startsWith("light.")) {
+      return;
+    }
+    const state = this._hass?.states?.[entityId];
+    const areaId = this._formData.area || null;
+    const entityMeta = this._hass?.entities?.[entityId];
+    let inArea = null;
+    if (areaId && entityMeta) {
+      inArea =
+        entityMeta.area_id === areaId ||
+        (entityMeta.area_id == null &&
+          this._hass?.devices?.[entityMeta.device_id]?.area_id === areaId);
+    }
+    const lights = [...(this._sunPath.lights || [])];
+    const index = lights.findIndex((light) => light.entity_id === entityId);
+    if (index >= 0) {
+      lights[index] = {
+        ...lights[index],
+        suggested: false,
+        in_area: inArea ?? lights[index].in_area,
+      };
+    } else {
+      lights.push({
+        entity_id: entityId,
+        name: state?.attributes?.friendly_name || state?.name || entityId,
+        samples: [],
+        gaps: [],
+        event_states: [],
+        suggested: false,
+        in_area: inArea === true,
+      });
+    }
+    this._sunPath = { ...this._sunPath, lights };
+    // Keep key cleared so the WS preview with overlay still replaces this stub.
     this._sunPathKey = undefined;
-    this._ensureSunPath();
+    this._drawSunPath();
+  }
+
+  async _addLightToAssignedScenes(entityId) {
+    const scenes = this._assignedSceneIds();
+    if (!entityId?.startsWith("light.") || !scenes.length) {
+      return;
+    }
+    const listed = (this._sunPath?.lights || []).some(
+      (light) => light.entity_id === entityId && !light.suggested
+    );
+    if (listed) {
+      return;
+    }
+    this._commitUndo();
+    const snapshot = this._snapshotLight(entityId);
+    for (const sceneId of scenes) {
+      const eventId =
+        Object.entries(EVENT_SCENE_KEYS).find(
+          ([, key]) => this._formData[key] === sceneId
+        )?.[0] || "noon";
+      this._ensureNativeDraft(sceneId).entities[entityId] = this._adaptStateToLight(
+        entityId,
+        snapshot,
+        eventId
+      );
+    }
+    this._syncPreviewOverlay();
+    // Show the row immediately; then refetch with overlay for real samples.
+    this._optimisticIncludeLight(entityId);
+    this._clearPreviewCache();
+    await this._ensureSunPath();
+  }
+
+  _lightListAddControl() {
+    if (this._view !== "edit" || !this._assignedSceneIds().length) {
+      return null;
+    }
+    const wrap = document.createElement("div");
+    wrap.className = "light-list-add";
+    const label = this._t("frontend.lights.add_light", "Add light");
+
+    // Prefer the native entity picker add-button — one tap opens the search
+    // list (no wrapping dialog + second click on ha-selector).
+    if (customElements.get("ha-entity-picker")) {
+      const picker = document.createElement("ha-entity-picker");
+      picker.addButton = true;
+      picker.addButtonLabel = label;
+      picker.includeDomains = ["light"];
+      picker.hideClearIcon = true;
+      picker.searchLabel = label;
+      const listed = () =>
+        (this._sunPath?.lights || [])
+          .filter((light) => !light.suggested)
+          .map((light) => light.entity_id);
+      picker.excludeEntities = listed();
+      picker.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        const entityId = ev.detail?.value;
+        // Clear so the control returns to the add-button chrome.
+        picker.value = undefined;
+        picker.excludeEntities = listed();
+        if (!entityId || !String(entityId).startsWith("light.")) {
+          return;
+        }
+        void this._addLightToAssignedScenes(entityId);
+      });
+      wrap.appendChild(picker);
+      return wrap;
+    }
+
+    const btn = document.createElement("ha-button");
+    btn.appearance = "plain";
+    btn.textContent = label;
+    const icon = document.createElement("ha-icon");
+    icon.slot = "start";
+    icon.setAttribute("icon", "mdi:plus");
+    btn.appendChild(icon);
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      void this._openAddLightPicker(btn);
+    });
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
+  async _openAddLightPicker(anchor) {
+    if (!customElements.get("ha-entity-picker")) {
+      return;
+    }
+    const listed = (this._sunPath?.lights || [])
+      .filter((light) => !light.suggested)
+      .map((light) => light.entity_id);
+    this.shadowRoot.querySelector(".light-add-picker-host")?.remove();
+    const host = document.createElement("div");
+    host.className = "light-add-picker-host";
+    const picker = document.createElement("ha-entity-picker");
+    picker.includeDomains = ["light"];
+    picker.excludeEntities = listed;
+    picker.hideClearIcon = true;
+    picker.searchLabel = this._t("frontend.lights.add_light", "Add light");
+    host.appendChild(picker);
+    // Anchor under the add control so the popover opens nearby.
+    if (anchor?.parentElement) {
+      anchor.parentElement.appendChild(host);
+    } else {
+      this.shadowRoot.appendChild(host);
+    }
+    const cleanup = () => {
+      picker.removeEventListener("value-changed", onValue);
+      picker.removeEventListener("picker-closed", onClosed);
+      host.remove();
+    };
+    const onValue = (ev) => {
+      ev.stopPropagation();
+      const entityId = ev.detail?.value;
+      cleanup();
+      if (!entityId || !String(entityId).startsWith("light.")) {
+        return;
+      }
+      void this._addLightToAssignedScenes(entityId);
+    };
+    const onClosed = () => {
+      // Dismiss without a selection — drop the temporary host.
+      if (!picker.value) {
+        cleanup();
+      }
+    };
+    picker.addEventListener("value-changed", onValue);
+    picker.addEventListener("picker-closed", onClosed);
+    await picker.updateComplete;
+    await picker.open();
   }
 
   async _flushNativeDrafts() {
@@ -5668,24 +6282,21 @@ class SceneExtrapolationPanel extends HTMLElement {
         "mdi:redo",
         { disabled: !this._redoStack.length }
       );
-      addItem(
-        "preview-location",
-        "Preview location",
-        "mdi:map-marker-outline",
-        // Banner Change covers this while an override is active.
-        { disabled: Boolean(this._previewLocation) }
-      );
-      addItem(
-        "toggle-view",
-        this._lightView === "dial" ? "Table view" : "Dial view",
-        this._lightView === "dial" ? "mdi:table" : "mdi:clock-outline"
-      );
     }
+    // Location + table/dial: always in overflow (Preview scene replaces Activate).
     addItem(
-      "apply",
-      this._loc("ui.panel.config.scene.picker.apply", "Activate"),
-      "mdi:play",
-      { disabled: !hasEntity }
+      "preview-location",
+      this._t("frontend.actions.preview_location", "Preview another location"),
+      "mdi:map-marker-outline",
+      // Banner Change covers this while an override is active.
+      { disabled: Boolean(this._previewLocation) }
+    );
+    addItem(
+      "toggle-view",
+      this._lightView === "dial"
+        ? this._t("frontend.actions.table_view", "Table view")
+        : this._t("frontend.actions.dial_view", "Dial view"),
+      this._lightView === "dial" ? "mdi:table" : "mdi:clock-outline"
     );
     addItem(
       "show-info",
@@ -5755,13 +6366,6 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
     if (action === "toggle-view") {
       this._setLightView(this._lightView === "dial" ? "table" : "dial");
-      return;
-    }
-    if (action === "apply") {
-      if (!this._entityId) {
-        return;
-      }
-      this._hass.callService("scene", "turn_on", { entity_id: this._entityId });
       return;
     }
     if (action === "show-info") {
@@ -6040,10 +6644,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     }
   }
 
-  _closeSceneSidebar({ animate = false } = {}) {
-    this._setSidebarEvent(null);
-    this._setSidebarLight(null);
-    this._clearClockRingHover();
+  _closeSceneSidebar({ animate = false, clearSelection = true } = {}) {
+    // Opening a replacement sidebar passes clearSelection:false — otherwise the
+    // pre-await ring highlight (_setSidebarLight before _openSceneSidebar) is
+    // wiped and the band looks deselected until a second click.
+    if (clearSelection) {
+      this._setSidebarEvent(null);
+      this._setSidebarLight(null);
+      this._clearClockRingHover();
+    }
     const el = this.shadowRoot?.querySelector(".scene-sidebar");
     if (!el) {
       this._setSidebarDocked(false);
@@ -6161,7 +6770,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         return null;
       }
     }
-    this._closeSceneSidebar();
+    this._closeSceneSidebar({ clearSelection: false });
     const host = useSheet
       ? document.createElement("ha-bottom-sheet")
       : document.createElement("div");
@@ -6249,6 +6858,13 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._contentEl.replaceChildren(error);
     } else {
       this._contentEl.replaceChildren();
+    }
+    // List chart lives in .sun-path, not .content. Rebuild the dial from the
+    // in-memory curve now so a detached clock from the last visit cannot be
+    // patched while the linear graph stays on screen.
+    if (this._sunPath?.curve?.length) {
+      this._forgetClockDom();
+      this._drawSunPath();
     }
   }
 
@@ -6517,15 +7133,30 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
       this._setEventScene(event.id, data.scene, canLink ? data.linked : false);
     };
+    const roomPreviewWasOn = this._roomPreview;
+    if (roomPreviewWasOn) {
+      await this._stopRoomPreview({ restore: true });
+      this._syncRoomPreviewControl();
+    }
     const opened = await this._openSceneSidebar({
       title: event.name,
       className: "event-dialog",
+      onDismiss: () => {
+        if (this._readRoomPreviewPref()) {
+          void this._setRoomPreview(true);
+        }
+        this._syncRoomPreviewControl();
+      },
     });
     if (!opened) {
+      if (this._readRoomPreviewPref()) {
+        await this._setRoomPreview(true);
+      }
       return;
     }
     this._setSidebarEvent(event.id);
     this._setSidebarLight(null);
+    this._syncRoomPreviewControl();
     const { host, body, footer } = opened;
 
     const note = document.createElement("p");
@@ -6926,10 +7557,20 @@ class SceneExtrapolationPanel extends HTMLElement {
     if (stored.effect != null && stored.effect !== "none") {
       data.effect = stored.effect;
     }
-    // HA rejects two+ members of the Color descriptors exclusion group
-    // (e.g. hs_color + rgb_color). Drafts often store both; live entity
-    // snapshots do too — send exactly one.
-    if (stored.rgbww_color != null) {
+    // HA rejects two+ members of the Color descriptors exclusion group.
+    // Prefer color_mode when present (same as light/reproduce_state).
+    const mode = stored.color_mode;
+    if (mode === "color_temp" && stored.color_temp_kelvin != null) {
+      data.color_temp_kelvin = stored.color_temp_kelvin;
+    } else if (mode === "rgbww" && stored.rgbww_color != null) {
+      data.rgbww_color = stored.rgbww_color;
+    } else if (mode === "rgbw" && stored.rgbw_color != null) {
+      data.rgbw_color = stored.rgbw_color;
+    } else if ((mode === "hs" || mode === "xy") && stored.hs_color != null) {
+      data.hs_color = stored.hs_color;
+    } else if (mode === "rgb" && stored.rgb_color != null) {
+      data.rgb_color = stored.rgb_color;
+    } else if (stored.rgbww_color != null) {
       data.rgbww_color = stored.rgbww_color;
     } else if (stored.rgbw_color != null) {
       data.rgbw_color = stored.rgbw_color;
@@ -6943,9 +7584,149 @@ class SceneExtrapolationPanel extends HTMLElement {
     return { service: "turn_on", data };
   }
 
-  async _applyLightState(entityId, stored) {
+  async _applyLightState(entityId, stored, { transition } = {}) {
     const payload = this._lightServicePayload(entityId, stored);
+    if (transition != null && Number(transition) > 0) {
+      payload.data.transition = Number(transition);
+    }
     await this._hass.callService("light", payload.service, payload.data);
+  }
+
+  _sampleToStoredState(sample) {
+    if (!sample || !(sample.brightness > 0)) {
+      return { state: "off" };
+    }
+    // Preview samples store brightness 0–100; light.turn_on wants 0–255.
+    return {
+      state: "on",
+      brightness: Math.max(
+        1,
+        Math.min(255, Math.round((sample.brightness * 255) / 100))
+      ),
+      rgb_color: sample.rgb,
+    };
+  }
+
+  async _setRoomPreview(on) {
+    const next = Boolean(on);
+    if (next && (this._sidebarLightId || this._sidebarEventId)) {
+      this._syncRoomPreviewControl();
+      return;
+    }
+    this._writeRoomPreviewPref(next);
+    if (this._roomPreview === next) {
+      this._syncRoomPreviewControl();
+      if (next) {
+        await this._applyRoomPreviewAtClock();
+      }
+      return;
+    }
+    if (next) {
+      await this._startRoomPreview();
+    } else {
+      await this._stopRoomPreview({ restore: true });
+    }
+    this._syncRoomPreviewControl();
+  }
+
+  async _startRoomPreview() {
+    if (this._view !== "edit" || !this._sunPath?.lights?.length) {
+      return;
+    }
+    if (!this._roomPreviewSnapshots) {
+      const snaps = {};
+      for (const light of this._sunPath.lights) {
+        if (light.suggested || !light.entity_id) {
+          continue;
+        }
+        snaps[light.entity_id] = this._snapshotLight(light.entity_id);
+      }
+      this._roomPreviewSnapshots = snaps;
+    }
+    this._roomPreview = true;
+    await this._applyRoomPreviewAtClock();
+  }
+
+  async _stopRoomPreview({ restore = false } = {}) {
+    const wasOn = this._roomPreview;
+    this._roomPreview = false;
+    if (restore && wasOn && this._roomPreviewSnapshots) {
+      const snaps = this._roomPreviewSnapshots;
+      this._roomPreviewSnapshots = null;
+      await Promise.all(
+        Object.entries(snaps).map(([entityId, stored]) =>
+          this._applyLightState(entityId, stored)
+        )
+      );
+      return;
+    }
+    if (!this._roomPreview) {
+      this._roomPreviewSnapshots = null;
+    }
+  }
+
+  async _applyRoomPreviewAtClock() {
+    if (
+      !this._roomPreview ||
+      this._sidebarLightId ||
+      this._sidebarEventId ||
+      !this._sunPath?.lights?.length
+    ) {
+      return;
+    }
+    const seconds = this._clockSunIdleSeconds();
+    const jobs = [];
+    for (const light of this._sunPath.lights) {
+      if (light.suggested || !light.entity_id) {
+        continue;
+      }
+      const sample = interpolateLightSample(light.samples || [], seconds);
+      jobs.push(
+        this._applyLightState(light.entity_id, this._sampleToStoredState(sample))
+      );
+    }
+    await Promise.all(jobs);
+  }
+
+  async _activateNativeSceneWithDrafts(sceneEntityId) {
+    if (!sceneEntityId || String(sceneEntityId).startsWith("scene.__se_draft")) {
+      return;
+    }
+    const draftScene = this._nativeDrafts[sceneEntityId];
+    const toApply = new Map();
+    for (const light of this._sunPath?.lights || []) {
+      if (!light.entity_id || light.suggested) {
+        continue;
+      }
+      const row = (light.event_states || []).find(
+        (item) => item.scene_entity_id === sceneEntityId && item.present
+      );
+      if (row?.state) {
+        toApply.set(light.entity_id, { ...row.state });
+      }
+    }
+    for (const [entityId, state] of Object.entries(draftScene?.entities || {})) {
+      if (!entityId.startsWith("light.")) {
+        continue;
+      }
+      if (state == null) {
+        toApply.delete(entityId);
+      } else {
+        toApply.set(entityId, { ...state });
+      }
+    }
+    if (!toApply.size) {
+      // No draft overlay knowledge — fall back to HA scene activate.
+      await this._hass.callService("scene", "turn_on", {
+        entity_id: sceneEntityId,
+      });
+      return;
+    }
+    await Promise.all(
+      [...toApply.entries()].map(([entityId, stored]) =>
+        this._applyLightState(entityId, stored)
+      )
+    );
   }
 
   _snapshotLight(entityId) {
@@ -7104,13 +7885,23 @@ class SceneExtrapolationPanel extends HTMLElement {
         return;
       }
       if (!undoCommitted) {
-        this._commitUndo();
+        this._commitUndo({
+          type: "light",
+          lightId: light.entity_id,
+          eventId: currentEvent.id,
+        });
         undoCommitted = true;
       }
       for (const [sceneId, entry] of dirty) {
-        this._ensureNativeDraft(sceneId).entities[light.entity_id] = {
-          ...entry.draft,
-        };
+        // Drop undefined keys so kelvin converts do not reintroduce rgb/hs
+        // as nullish fields in the session draft / WS payload.
+        const cleaned = {};
+        for (const [key, value] of Object.entries(entry.draft)) {
+          if (value !== undefined) {
+            cleaned[key] = value;
+          }
+        }
+        this._ensureNativeDraft(sceneId).entities[light.entity_id] = cleaned;
         entry.saved = lightDraftFingerprint(entry.draft);
       }
       this._syncPreviewOverlay();
@@ -7122,13 +7913,84 @@ class SceneExtrapolationPanel extends HTMLElement {
         liveApplied = false;
       }
     };
-    const applyLive = async () => {
+    // Dragging floods pointermove → service calls. Cap live updates and match
+    // HA transition length so the lamp blends between samples (same pattern as
+    // continuous auto-update ticks).
+    const LIVE_PREVIEW_MS = 500;
+    let liveLastSent = 0;
+    let liveTimer = null;
+    let livePending = false;
+    const flushLive = async ({ transitionSec = 0 } = {}) => {
       if (!this._liveEdit) {
         return;
       }
+      livePending = false;
+      liveLastSent = performance.now();
       liveApplied = true;
-      await this._applyLightState(light.entity_id, currentDraft());
+      await this._applyLightState(light.entity_id, currentDraft(), {
+        transition: transitionSec,
+      });
     };
+    const scheduleLive = async ({ dragging = false } = {}) => {
+      if (!this._liveEdit) {
+        return;
+      }
+      if (!dragging) {
+        if (liveTimer) {
+          clearTimeout(liveTimer);
+          liveTimer = null;
+        }
+        await flushLive({ transitionSec: 0 });
+        return;
+      }
+      const now = performance.now();
+      const elapsed = now - liveLastSent;
+      if (elapsed >= LIVE_PREVIEW_MS) {
+        await flushLive({ transitionSec: LIVE_PREVIEW_MS / 1000 });
+        return;
+      }
+      livePending = true;
+      if (!liveTimer) {
+        liveTimer = setTimeout(() => {
+          liveTimer = null;
+          if (livePending) {
+            void flushLive({ transitionSec: LIVE_PREVIEW_MS / 1000 });
+          }
+        }, LIVE_PREVIEW_MS - elapsed);
+      }
+    };
+    const applyLive = async () => scheduleLive({ dragging: false });
+
+    const activateBtn = document.createElement("ha-button");
+    activateBtn.className = "activate-scene-btn";
+    activateBtn.appearance = "filled";
+    activateBtn.textContent = this._t(
+      "frontend.actions.activate_scene",
+      "Activate scene"
+    );
+    activateBtn.addEventListener("click", async () => {
+      activateBtn.disabled = true;
+      try {
+        await this._activateNativeSceneWithDrafts(sceneEntityId());
+      } finally {
+        activateBtn.disabled = false;
+      }
+    });
+
+    const liveToggle = document.createElement("label");
+    liveToggle.className = "live-edit-toggle";
+    const liveLabel = document.createElement("span");
+    liveLabel.textContent = this._t(
+      "frontend.actions.live_preview",
+      "Live preview"
+    );
+    const liveSwitch = document.createElement("ha-switch");
+    liveSwitch.checked = Boolean(this._liveEdit);
+    liveSwitch.addEventListener("change", () => {
+      void this._setLiveEdit(Boolean(liveSwitch.checked));
+    });
+    liveToggle.append(liveLabel, liveSwitch);
+    this._liveEditSwitch = liveSwitch;
 
     const infoBtn = document.createElement("ha-icon-button");
     infoBtn.label = this._loc(
@@ -7151,6 +8013,12 @@ class SceneExtrapolationPanel extends HTMLElement {
       }
     };
 
+    const roomPreviewWasOn = this._roomPreview;
+    if (roomPreviewWasOn) {
+      await this._stopRoomPreview({ restore: true });
+      this._syncRoomPreviewControl();
+    }
+
     const opened = await this._openSceneSidebar({
       title: light.name,
       subtitle: this._sceneName(sceneEntityId()),
@@ -7160,9 +8028,23 @@ class SceneExtrapolationPanel extends HTMLElement {
         if (this._liveEditSidebarHandler === onLiveEditChange) {
           this._liveEditSidebarHandler = null;
         }
+        if (this._liveEditSwitch === liveSwitch) {
+          this._liveEditSwitch = null;
+        }
+        this._sidebarUndoBtn = null;
+        this._sidebarRedoBtn = null;
         this._syncPreviewOverlay();
         this._sunPathKey = undefined;
-        this._ensureSunPath();
+        this._ensureSunPath().then(async () => {
+          if (this._readRoomPreviewPref()) {
+            await this._setRoomPreview(true);
+          }
+          this._syncRoomPreviewControl();
+        });
+        if (liveTimer) {
+          clearTimeout(liveTimer);
+          liveTimer = null;
+        }
         restoreLive();
         brightnessGraphCtl?.disconnect();
         colorBriGraphCtl?.disconnect();
@@ -7172,9 +8054,15 @@ class SceneExtrapolationPanel extends HTMLElement {
     });
     if (!opened) {
       this._setSidebarLight(previousLightId);
+      if (this._readRoomPreviewPref()) {
+        await this._setRoomPreview(true);
+      }
       return;
     }
     this._liveEditSidebarHandler = onLiveEditChange;
+    // Re-assert: _openSceneSidebar may close a prior host whose `closed`
+    // handler clears a matching _sidebarLightId.
+    this._setSidebarLight(light.entity_id);
     this._setSidebarEvent(event.id);
     const { host, header, body, footer } = opened;
     host._lightEntityId = light.entity_id;
@@ -7184,13 +8072,109 @@ class SceneExtrapolationPanel extends HTMLElement {
     const colorBriMount = document.createElement("div");
     const whiteBriMount = document.createElement("div");
     const wheelMount = document.createElement("div");
+    const effectMount = document.createElement("div");
+    effectMount.className = "light-effect-row";
     body.append(
       chipsHost,
       brightnessGraphMount,
       colorBriMount,
       whiteBriMount,
-      wheelMount
+      wheelMount,
+      effectMount
     );
+
+    let effectMenu = null;
+    const effectList = Array.isArray(attrs.effect_list) ? attrs.effect_list : [];
+    const formatEffect = (effect) => {
+      try {
+        if (typeof this._hass?.formatEntityAttributeValue === "function") {
+          return this._hass.formatEntityAttributeValue(
+            this._hass.states[light.entity_id],
+            "effect",
+            effect
+          );
+        }
+      } catch (_err) {
+        /* fall through */
+      }
+      return effect;
+    };
+    const syncEffectControl = () => {
+      if (!effectMenu) {
+        return;
+      }
+      const draft = currentDraft();
+      const value =
+        draft?.effect && draft.effect !== "none" ? draft.effect : undefined;
+      effectMenu.value = value;
+      effectMenu.disabled = !draft || draft.state === "off";
+    };
+    if (effectList.length && customElements.get("ha-control-select-menu")) {
+      const menu = document.createElement("ha-control-select-menu");
+      menu.label = this._loc("ui.card.light.effect", "Effect");
+      menu.options = effectList.map((effect) => ({
+        value: effect,
+        label: formatEffect(effect),
+        icon: "mdi:creation",
+      }));
+      const icon = document.createElement("ha-icon");
+      icon.slot = "icon";
+      icon.setAttribute("icon", "mdi:creation");
+      menu.appendChild(icon);
+      menu.addEventListener("select", (ev) => {
+        const next = ev.detail?.item?.value;
+        const draft = currentDraft();
+        if (!draft || !next || draft.effect === next) {
+          return;
+        }
+        draft.effect = next;
+        draft.state = "on";
+        applyToSession();
+        syncEffectControl();
+        void applyLive();
+      });
+      effectMenu = menu;
+      if (customElements.get("ha-more-info-control-select-container")) {
+        const wrap = document.createElement("ha-more-info-control-select-container");
+        wrap.appendChild(menu);
+        effectMount.appendChild(wrap);
+      } else {
+        effectMount.appendChild(menu);
+      }
+      syncEffectControl();
+    } else if (effectList.length) {
+      // Fallback when more-info controls are not registered yet.
+      const sel = document.createElement("ha-selector");
+      sel.hass = this._hass;
+      sel.label = this._loc("ui.card.light.effect", "Effect");
+      sel.selector = {
+        select: {
+          mode: "dropdown",
+          options: effectList.map((effect) => ({
+            value: effect,
+            label: formatEffect(effect),
+          })),
+        },
+      };
+      sel.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        const next = ev.detail?.value;
+        const draft = currentDraft();
+        if (!draft || !next || draft.effect === next) {
+          return;
+        }
+        draft.effect = next;
+        draft.state = "on";
+        applyToSession();
+        sel.value = next;
+        void applyLive();
+      });
+      effectMenu = sel;
+      effectMount.appendChild(sel);
+      syncEffectControl();
+    } else {
+      effectMount.hidden = true;
+    }
 
     const selectScene = async (next, { fromWheel = false } = {}) => {
       const nextId = this._eventSceneId(next.id);
@@ -7216,6 +8200,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         wheelCtl?.setMode(mode, { convertDraft: false });
       }
       wheelCtl?.sync();
+      syncEffectControl();
       if (this._liveEdit) {
         await applyLive();
       }
@@ -7234,6 +8219,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       list.setAttribute("role", "listbox");
       list.setAttribute("aria-label", "Scene");
       const currentId = sceneEntityId();
+      let selectedBtn = null;
       for (const item of memberScenes) {
         const btn = document.createElement("button");
         btn.type = "button";
@@ -7241,6 +8227,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         btn.setAttribute("role", "option");
         if (item.sceneId === currentId) {
           btn.setAttribute("aria-current", "true");
+          selectedBtn = btn;
         }
         const icon = document.createElement("ha-icon");
         const entity = this._hass?.states?.[item.sceneId];
@@ -7257,15 +8244,25 @@ class SceneExtrapolationPanel extends HTMLElement {
         list.appendChild(btn);
       }
       chipsHost.appendChild(list);
+      if (selectedBtn) {
+        requestAnimationFrame(() => {
+          selectedBtn.scrollIntoView({
+            inline: "nearest",
+            block: "nearest",
+            behavior: "smooth",
+          });
+        });
+      }
     };
 
-    const onWheelChange = async () => {
+    const onWheelChange = async (meta = {}) => {
       applyToSession();
       wheelCtl?.syncPresets();
       brightnessGraphCtl?.sync();
       colorBriGraphCtl?.sync();
       whiteBriGraphCtl?.sync();
-      await applyLive();
+      syncEffectControl();
+      await scheduleLive({ dragging: Boolean(meta.dragging) });
     };
 
     brightnessGraphCtl = createLightBrightnessGraph({
@@ -7333,6 +8330,7 @@ class SceneExtrapolationPanel extends HTMLElement {
               member,
               brightness,
               rgb: member ? draftRgb(draft) : [128, 128, 128],
+              draft: member ? draft : null,
               active: member && sceneId === activeId,
             };
           })
@@ -7436,6 +8434,7 @@ class SceneExtrapolationPanel extends HTMLElement {
               member,
               brightness: member ? valueOf(draft) : 0,
               rgb: member ? draftRgb(draft) : [128, 128, 128],
+              draft: member ? draft : null,
               active: member && sceneId === activeId,
             };
           })
@@ -7548,15 +8547,17 @@ class SceneExtrapolationPanel extends HTMLElement {
       });
     }
 
-    const note = document.createElement("p");
-    note.className = "sidebar-note";
-    const noteIcon = document.createElement("ha-icon");
-    noteIcon.setAttribute("icon", "mdi:information-outline");
-    const noteText = document.createElement("span");
-    noteText.textContent =
-      "Edits here change this light in the related native scene. Graphs update immediately. Save the extrapolation scene to keep the changes.";
-    note.append(noteIcon, noteText);
-    footer.appendChild(note);
+    const bar = document.createElement("div");
+    bar.className = "sidebar-actions-bar";
+    const undo = this._undoRedoButton("undo");
+    const redo = this._undoRedoButton("redo");
+    undo.id = "sidebar-button-undo";
+    redo.id = "sidebar-button-redo";
+    bar.append(undo, redo, liveToggle, activateBtn);
+    footer.appendChild(bar);
+    this._sidebarUndoBtn = undo;
+    this._sidebarRedoBtn = redo;
+    this._syncUndoButtons();
 
     host._switchLightEvent = async (next) => {
       await selectScene(next);
@@ -7565,6 +8566,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     paintChips();
     brightnessGraphCtl?.sync();
     wheelCtl?.sync();
+    this._syncRoomPreviewControl();
     if (this._liveEdit) {
       await applyLive();
     }
@@ -7773,6 +8775,16 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   async _save() {
+    if (!this._readSkipExternalSceneWarn()) {
+      await this._refreshManagedScenes();
+      const external = this._externalScenesTouchedByDrafts();
+      if (external.length) {
+        const ok = await this._confirmExternalSceneSave(external);
+        if (!ok) {
+          return;
+        }
+      }
+    }
     this._saving = true;
     this._error = null;
     try {
@@ -7790,6 +8802,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       // Saving creates the entity — do not treat #new → #edit/id as discard.
       this._leaveConfirmDone = true;
       this._editId = saved.id;
+      await this._refreshManagedScenes();
       this._go(`edit/${saved.id}`);
     } catch (err) {
       this._error = err.message || String(err);
@@ -8398,15 +9411,53 @@ class SceneExtrapolationPanel extends HTMLElement {
   }
 
   _commitSunPath(payload, key) {
+    const prepared = this._withClientLightSamples(payload);
     const from = this._displayedSunPath || this._sunPath;
-    const morphMs = this._takePathMorphMs(from, payload);
-    this._sunPath = payload;
+    const morphMs = this._takePathMorphMs(from, prepared);
+    this._sunPath = prepared;
     this._sunPathKey = key;
-    if (morphMs && from && from !== payload) {
-      this._morphSunPath(from, payload, morphMs);
+    if (morphMs && from && from !== prepared) {
+      this._morphSunPath(from, prepared, morphMs);
       return;
     }
     this._drawSunPath();
+    void this._resumeRoomPreviewIfPreferred();
+  }
+
+  /**
+   * Settled DOMAIN/preview includes mid-segment samples from HA extrapolators.
+   * Keep those for dial and table. Mid-scrub / client sun days stay knotsOnly
+   * — never RGB-densify a 5-minute grid (that disagrees with runtime HS-rim).
+   */
+  _withClientLightSamples(payload) {
+    const lights = payload?.lights;
+    const events = payload?.events;
+    if (!lights?.length || !events?.length) {
+      return payload;
+    }
+    if (this._hasAuthoritativeLightSamples(lights)) {
+      return payload;
+    }
+    const hasKnots = lights.some(
+      (light) => !light.suggested && (light.event_states || []).length
+    );
+    if (!hasKnots) {
+      return payload;
+    }
+    return {
+      ...payload,
+      lights: resampleLightsForEvents(lights, events, draftRgb, {
+        knotsOnly: true,
+      }),
+    };
+  }
+
+  _hasAuthoritativeLightSamples(lights) {
+    return (lights || []).some(
+      (light) =>
+        !light.suggested &&
+        (light.samples?.length || 0) >= AUTHORITATIVE_SAMPLE_MIN
+    );
   }
 
   _cancelSunPathMorph() {
@@ -8418,21 +9469,18 @@ class SceneExtrapolationPanel extends HTMLElement {
 
   _morphSunPath(from, to, durationMs) {
     this._cancelSunPathMorph();
-    // Scrub uses 5-event knots (CSS ramps between stops). Morphing that straight
-    // into Astral's dense samples flashes — especially the midnight wrap at the
-    // bottom of the dial. Densify the "from" lights onto a 5-minute grid first
-    // so frame 0 already matches how we paint rings during the morph.
-    const fromDense = this._withDenseScrubLights(from);
-    this._sunPath = fromDense;
-    this._displayedSunPath = fromDense;
+    // Scrub knots → settled HA samples: lerpSampleSeries samples sparse
+    // "from" at each "to" timestamp — no RGB densify (wrong path).
+    this._sunPath = from;
+    this._displayedSunPath = from;
     if (this._lightView === "dial" && this._clockRingsHost) {
-      this._patchLightClock(fromDense, { morphing: true });
+      this._patchLightClock(from, { morphing: true });
     }
     const started = performance.now();
     const tick = (now) => {
       const u = Math.min(1, (now - started) / durationMs);
       const eased = easeOutCubic(u);
-      const frame = lerpSunPath(fromDense, to, eased);
+      const frame = lerpSunPath(from, to, eased);
       this._sunPath = frame;
       this._displayedSunPath = frame;
       const patched =
@@ -8443,6 +9491,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._cancelSunPathMorph();
         this._sunPath = to;
         this._displayedSunPath = to;
+        void this._resumeRoomPreviewIfPreferred();
         return;
       }
       if (u < 1) {
@@ -8455,34 +9504,9 @@ class SceneExtrapolationPanel extends HTMLElement {
       // Full paint once: bloom + horizon wedges (skipped mid-morph to avoid
       // stacked translucent flashes under the dial).
       this._patchLightClock(to, { morphing: false });
+      void this._resumeRoomPreviewIfPreferred();
     };
     this._sunPathMorphRaf = window.requestAnimationFrame(tick);
-  }
-
-  /**
-   * Expand knot-only scrub lights to a dense sample grid before refine morph.
-   * Leaves already-dense Astral payloads unchanged.
-   */
-  _withDenseScrubLights(payload) {
-    const lights = payload?.lights;
-    if (!lights?.length || !payload?.events?.length) {
-      return payload;
-    }
-    const sparse = lights.some(
-      (light) =>
-        !light.suggested &&
-        (light.samples?.length || 0) > 0 &&
-        (light.samples?.length || 0) <= 8
-    );
-    if (!sparse) {
-      return payload;
-    }
-    return {
-      ...payload,
-      lights: resampleLightsForEvents(lights, payload.events, draftRgb, {
-        stepMinutes: 5,
-      }),
-    };
   }
 
   async _ensureSunPath() {
@@ -8504,10 +9528,10 @@ class SceneExtrapolationPanel extends HTMLElement {
           continue;
         }
         const cached = this._previewCache.get(key);
-        if (cached) {
-          if (listView || !this._previewOverlay) {
-            this._rememberPreview(key, cached);
-          }
+        // Overlay drafts must never reuse a no-overlay payload — membership
+        // (add light) would stay invisible until a full document reload.
+        if (cached && (listView || !this._previewOverlay)) {
+          this._rememberPreview(key, cached);
           this._commitSunPath(cached, key);
           continue;
         }
@@ -9137,7 +10161,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._syncDateToolbar();
       this._syncYearScrubLayout();
       this._pathMorphMs = PREVIEW_REFINE_MS;
-      this._ensureSunPath();
+      this._ensureSunPath().then(() => this._resumeRoomPreviewIfPreferred());
     };
     scrub.addEventListener("pointerup", endScrub);
     scrub.addEventListener("pointercancel", endScrub);
@@ -9545,7 +10569,11 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._lightView = this._readLightView();
     }
     const useClock = this._view === "edit" && this._lightView === "dial";
-    if (useClock && this._clockRingsHost && this._patchLightClock(this._sunPath)) {
+    if (
+      useClock &&
+      this._clockRingsHost?.isConnected &&
+      this._patchLightClock(this._sunPath)
+    ) {
       this._displayedSunPath = this._sunPath;
       if (this._dateToolbar) {
         if (this._yearScrubbing) {
@@ -9979,6 +11007,7 @@ class SceneExtrapolationPanel extends HTMLElement {
     const now = nowSecondsSinceMidnight();
     this._moveClockSunTo(now, { durationMs: CLOCK_SUN_MOVE_MS });
     this._fillHoverReadout(now, { hovering: false });
+    void this._applyRoomPreviewAtClock();
   }
 
   /** Ease the sun along the path when it relocates (event pin, reset, etc.). */
@@ -10928,7 +11957,7 @@ class SceneExtrapolationPanel extends HTMLElement {
       ((fromSeconds % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
     const to =
       ((toSeconds % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY;
-    // Enter sweep wants a fixed 12h forward run; hover uses shortest arc.
+    // Enter sweep wants a fixed 6h forward run; hover uses shortest arc.
     const delta = forward
       ? (((to - from) % SECONDS_PER_DAY) + SECONDS_PER_DAY) % SECONDS_PER_DAY
       : this._shortestSecondsDelta(from, to);
@@ -10954,15 +11983,15 @@ class SceneExtrapolationPanel extends HTMLElement {
   _playClockEnterAnimation(face) {
     const idle = this._clockSunIdleSeconds();
     const from =
-      (((idle - 12 * 3600) % SECONDS_PER_DAY) + SECONDS_PER_DAY) %
+      (((idle - 6 * 3600) % SECONDS_PER_DAY) + SECONDS_PER_DAY) %
       SECONDS_PER_DAY;
     face.classList.remove("clock-face-enter");
     // Restart CSS enter if the face was recycled in the same document.
     void face.offsetWidth;
     face.classList.add("clock-face-enter");
     const clearEnter = (ev) => {
-      // Events + sun finish last (1.5s); wait for that spin before clearing.
-      if (ev.animationName && ev.animationName !== "clock-event-spin") {
+      // Overlay + event-layer spin finish together (1.5s).
+      if (ev.animationName && ev.animationName !== "clock-overlay-spin") {
         return;
       }
       face.classList.remove("clock-face-enter");
@@ -11471,6 +12500,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         this._applyClockSunAppearance(finalSeconds);
       }
       this._fillHoverReadout(finalSeconds, { hovering: false });
+      void this._applyRoomPreviewAtClock();
       if (this._clockCloseSidebarAfterDrag) {
         this._clockCloseSidebarAfterDrag = false;
         this._closeSceneSidebar({ animate: true });
@@ -11509,10 +12539,26 @@ class SceneExtrapolationPanel extends HTMLElement {
    * clones and horizon wedge rebuilds (those are translucent layers that stack
    * and flash under the dial when destroyed/recreated every frame).
    */
+  /**
+   * Year-scrub / date morph may patch rings in place. After the list replaces
+   * the body with the linear chart, those nodes are detached — patching them
+   * would succeed and skip rebuilding the visible dial.
+   */
+  _forgetClockDom() {
+    this._clockRingsHost = undefined;
+    this._clockOverlayEl = undefined;
+    this._clockGlowLayer = undefined;
+    this._layoutDialChromeFn = undefined;
+  }
+
   _patchLightClock(payload, { morphing = false } = {}) {
     const ringsHost = this._clockRingsHost;
     const overlay = this._clockOverlayEl;
-    if (!ringsHost || !overlay || !payload?.events) {
+    if (
+      !ringsHost?.isConnected ||
+      !overlay?.isConnected ||
+      !payload?.events
+    ) {
       return false;
     }
     const ringLights = this._clockRingLights(payload.lights || []);
@@ -12011,6 +13057,8 @@ class SceneExtrapolationPanel extends HTMLElement {
     face.append(horizonBack, glowLayer, core, faceTicks);
 
     const editable = this._view === "edit";
+    const eventLayer = document.createElement("div");
+    eventLayer.className = "clock-event-layer";
     const eventAnchors = [];
     const polarForSeconds = (seconds) => {
       const deg = this._clockAngleDeg(seconds);
@@ -12088,7 +13136,7 @@ class SceneExtrapolationPanel extends HTMLElement {
         });
       }
       anchor.append(meta, btn);
-      face.appendChild(anchor);
+      eventLayer.appendChild(anchor);
       eventAnchors.push(anchor);
 
       if (
@@ -12109,11 +13157,12 @@ class SceneExtrapolationPanel extends HTMLElement {
         ghostIcon.setAttribute("icon", event.icon);
         ghostBtn.appendChild(ghostIcon);
         ghost.appendChild(ghostBtn);
-        face.appendChild(ghost);
+        eventLayer.appendChild(ghost);
         eventAnchors.push(ghost);
       }
     }
     // Hour labels on the face (above event anchors in paint order).
+    face.appendChild(eventLayer);
     for (const label of hourLabels) {
       face.appendChild(label);
     }
@@ -12212,7 +13261,12 @@ class SceneExtrapolationPanel extends HTMLElement {
     this._bindClockSunDrag(face, [this._clockSunHitEl, this._clockHandleHitEl]);
     // Enter once per editor visit (not on date/scene redraws). Cleared when
     // returning to the list so list → edit plays again.
-    if (this._clockEnterPlayed) {
+    // Optimistic paint from the list sun_path has no lights — do not consume
+    // the enter flag there; preview rebuild (with rings) should still animate.
+    const optimisticListCurve =
+      !ringLights.length ||
+      String(this._sunPathKey || "").startsWith("list-sun:");
+    if (this._clockEnterPlayed || optimisticListCurve) {
       this._applyClockSunAppearance(this._clockSunIdleSeconds());
     } else {
       this._clockEnterPlayed = true;
@@ -12233,6 +13287,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     legend.className = "sun-light-clock-legend";
     for (const light of legendLights) {
       legend.appendChild(this._clockLegendRow(light, events));
+    }
+    const addBtn = this._lightListAddControl();
+    if (addBtn) {
+      legend.appendChild(addBtn);
     }
     this._clockLegendEl = legend;
     wrap.appendChild(legend);
@@ -12432,6 +13490,10 @@ class SceneExtrapolationPanel extends HTMLElement {
     wrap.className = "sun-lights";
     for (const light of this._legendLights(lights)) {
       wrap.appendChild(this._lightRow(light, xOf, events));
+    }
+    const addBtn = this._lightListAddControl();
+    if (addBtn) {
+      wrap.appendChild(addBtn);
     }
     return wrap;
   }
@@ -12671,6 +13733,6 @@ function sameLocation(a, b) {
   );
 }
 
-if (!customElements.get("scene-extrapolation-panel")) {
-  customElements.define("scene-extrapolation-panel", SceneExtrapolationPanel);
+if (!customElements.get("circadian-scenes-panel")) {
+  customElements.define("circadian-scenes-panel", CircadianScenesPanel);
 }

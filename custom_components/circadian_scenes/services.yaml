@@ -9,7 +9,7 @@ turn_on:
       selector:
         entity:
           domain: scene
-          integration: scene_extrapolation
+          integration: circadian_scenes
           multiple: true
     transition:
       name: Transition time

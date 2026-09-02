@@ -3,7 +3,7 @@
 # Circadian Scenes
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
-[![GitHub release](https://img.shields.io/github/release/etokheim/scene_extrapolation.svg)](https://github.com/etokheim/scene_extrapolation/releases)
+[![GitHub release](https://img.shields.io/github/release/etokheim/circadian_scenes.svg)](https://github.com/etokheim/circadian_scenes/releases)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=flat-square&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/etokheim)
 
 Daylight that follows the sun between your scenes. The integration builds a Home Assistant scene that blends your day and evening looks from the sun’s cycle — cool by day, warm toward dusk — so activating it lights the room the way you want for *now*.
@@ -14,12 +14,20 @@ Daylight that follows the sun between your scenes. The integration builds a Home
 
 ## Install
 
-1. Install via [HACS](https://hacs.xyz/) (search **Circadian Scenes** or **Scene Extrapolation**), or copy `custom_components/scene_extrapolation` into your config.
+1. Install via [HACS](https://hacs.xyz/) (search **Circadian Scenes**), or copy `custom_components/circadian_scenes` into your config.
 2. Restart Home Assistant.
 3. Add the integration once: **Settings → Devices & services → Add integration → Circadian Scenes**.
 4. Open **Circadian Scenes** from the sidebar to create and edit rooms.
 
 You do **not** add a new integration entry for each room — one instance covers every circadian scene.
+
+### Upgrading from Scene Extrapolation
+
+v4 renames the integration domain and GitHub repo (`scene_extrapolation` → `circadian_scenes`). After updating:
+
+1. Remove the old **Scene Extrapolation** / broken config entry if Home Assistant still lists it.
+2. Add **Circadian Scenes** once (same as a fresh install).
+3. Room configs migrate automatically from the old store key (`scene_extrapolation.scenes` → `circadian_scenes.scenes`). Re-link HACS to the new repository if needed.
 
 ## Setup
 
@@ -92,7 +100,7 @@ If Circadian Scenes saves you setup time or makes your evenings nicer, you can [
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/etokheim)
 
-Issues and ideas: [GitHub Issues](https://github.com/etokheim/scene_extrapolation/issues).
+Issues and ideas: [GitHub Issues](https://github.com/etokheim/circadian_scenes/issues).
 
 ## Q&A
 
