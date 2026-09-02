@@ -73,6 +73,8 @@
     },
     "actions": {
       "live_edit": "Live edit",
+      "room_preview": "Preview room",
+      "activate_scene": "Activate scene",
       "table_view": "Table view",
       "dial_view": "Dial view",
       "preview_location": "Preview another location",

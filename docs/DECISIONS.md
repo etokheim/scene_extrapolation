@@ -527,3 +527,10 @@ Agents: do not reverse these without an explicit user request. Supersede entries
 - **Why:** Users inspect attributes and settings; clarity beats HA-style brevity here.
 - **Do not reverse without user ask.**
 
+## Light sidebar UX: graph path colors, room preview, sticky undo
+
+- **Date:** 2026-09-02
+- **Decision:** Brightness-graph stroke densifies mid-segment colors with the same draft lerp as the hue-wheel path (~8 stops per segment) — cheap client work, not HA mid-segment samples. Graph nodes use a 10px drag threshold and do not write brightness on pointerdown so taps can select a scene; dragging shows live brightness %. Live edit defaults on and both Live edit / Preview room prefs persist per user in localStorage. Preview room applies interpolated light samples at the sticky/scrubbed dial time, pauses while any sidebar is open, and refreshes on scrub/sun release (and after preview settle). Activate scene applies `event_states` plus session drafts (not bare `scene.turn_on` when draft lights exist). Narrow light sidebars put undo/redo in a sticky footer; undo/redo restore focus reopen the light editor for that lamp/event.
+- **Why:** Graph chords looked flat vs the wheel; accidental brightness jumps on select were common; room preview needs a explicit toggle separate from single-lamp live edit; mobile undo was buried in the app bar under the sheet.
+- **Do not reverse without user ask.**
+

@@ -939,6 +939,10 @@ function createLightBrightnessGraph({
   const LABEL_Y0 = HEIGHT - 4;
   const LABEL_Y1 = HEIGHT - 15;
   const LABEL_GAP = 3;
+  // Ignore small pointer jitter so a tap can select without writing brightness.
+  const DRAG_THRESHOLD_PX = 10;
+  // Mid-segment color stops between events (same lerp as the hue-wheel path).
+  const GRADIENT_STEPS_PER_SEGMENT = 8;
   let plotW = 300 - PAD_L - PAD_R;
   let viewW = 300;
 
@@ -954,7 +958,8 @@ function createLightBrightnessGraph({
   title.textContent = headingText;
   const sub = document.createElement("div");
   sub.className = "light-brightness-graph-sub";
-  sub.textContent = subtitle;
+  const defaultSubtitle = subtitle;
+  sub.textContent = defaultSubtitle;
   heading.append(title, sub);
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1071,11 +1076,35 @@ function createLightBrightnessGraph({
     if (!drag || drag.pointerId !== ev.pointerId) {
       return;
     }
-    onBrightness(drag.sceneId, brightnessFromY(ev.clientY));
+    const dx = ev.clientX - drag.startX;
+    const dy = ev.clientY - drag.startY;
+    if (!drag.moved) {
+      if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
+        return;
+      }
+      drag.moved = true;
+    }
+    const brightness = brightnessFromY(ev.clientY);
+    const pct = Math.round((brightness * 100) / 255);
+    sub.textContent = `${pct}%`;
+    onBrightness(drag.sceneId, brightness);
   };
 
   const onWindowPointerUp = (ev) => {
     endDrag(ev);
+  };
+
+  const appendGradientStop = (offsetPct, rgb) => {
+    const stop = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "stop"
+    );
+    stop.setAttribute("offset", `${offsetPct.toFixed(2)}%`);
+    stop.setAttribute(
+      "stop-color",
+      `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`
+    );
+    gradient.appendChild(stop);
   };
 
   const paintGeometry = (points) => {
@@ -1089,26 +1118,34 @@ function createLightBrightnessGraph({
     const minS = points[0].seconds;
     const maxS = points[points.length - 1].seconds;
     const span = Math.max(maxS - minS, 1);
-    for (const point of members) {
-      const stop = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "stop"
-      );
-      const offset = ((point.seconds - minS) / span) * 100;
-      const [r, g, b] = point.rgb;
-      stop.setAttribute("offset", `${offset.toFixed(2)}%`);
-      stop.setAttribute("stop-color", `rgb(${r},${g},${b})`);
-      gradient.appendChild(stop);
-    }
     if (members.length === 1) {
-      const [r, g, b] = members[0].rgb;
-      const end = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "stop"
-      );
-      end.setAttribute("offset", "100%");
-      end.setAttribute("stop-color", `rgb(${r},${g},${b})`);
-      gradient.appendChild(end);
+      appendGradientStop(0, members[0].rgb);
+      appendGradientStop(100, members[0].rgb);
+    } else if (members.length > 1) {
+      // Sample mid-segment colors like the wheel path (cheap: ~8 × segments).
+      for (let index = 0; index < members.length - 1; index += 1) {
+        const from = members[index];
+        const to = members[index + 1];
+        const fromOff = ((from.seconds - minS) / span) * 100;
+        const toOff = ((to.seconds - minS) / span) * 100;
+        for (let step = 0; step <= GRADIENT_STEPS_PER_SEGMENT; step += 1) {
+          if (index > 0 && step === 0) {
+            continue;
+          }
+          const t = step / GRADIENT_STEPS_PER_SEGMENT;
+          const sample =
+            from.draft && to.draft
+              ? interpolateDraftSample(from.draft, to.draft, t)
+              : {
+                  rgb: [
+                    Math.round(from.rgb[0] + (to.rgb[0] - from.rgb[0]) * t),
+                    Math.round(from.rgb[1] + (to.rgb[1] - from.rgb[1]) * t),
+                    Math.round(from.rgb[2] + (to.rgb[2] - from.rgb[2]) * t),
+                  ],
+                };
+          appendGradientStop(fromOff + (toOff - fromOff) * t, sample.rgb);
+        }
+      }
     }
     if (members.length) {
       const memberCoords = members.map((point) => ({
@@ -1172,9 +1209,11 @@ function createLightBrightnessGraph({
     }
     const node = dragNode;
     const pointerId = drag.pointerId;
+    const moved = drag.moved;
     drag = null;
     dragNode = null;
     unbindWindowDrag();
+    sub.textContent = defaultSubtitle;
     if (ev && node) {
       try {
         node.releasePointerCapture(pointerId);
@@ -1183,7 +1222,9 @@ function createLightBrightnessGraph({
       }
     }
     sync();
-    onDragEnd?.();
+    if (moved) {
+      onDragEnd?.();
+    }
   };
 
   const sync = () => {
@@ -1288,12 +1329,15 @@ function createLightBrightnessGraph({
             sceneId: c.point.sceneId,
             eventId: c.point.eventId,
             pointerId: ev.pointerId,
+            startX: ev.clientX,
+            startY: ev.clientY,
+            moved: false,
           };
           window.addEventListener("pointermove", onWindowPointerMove);
           window.addEventListener("pointerup", onWindowPointerUp);
           window.addEventListener("pointercancel", onWindowPointerUp);
           onSelect(c.point.eventId);
-          onBrightness(c.point.sceneId, brightnessFromY(ev.clientY));
+          // Do not write brightness until the pointer moves past the threshold.
         });
       }
       group.appendChild(label);
