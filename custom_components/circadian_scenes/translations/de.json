@@ -73,11 +73,21 @@
     },
     "actions": {
       "live_edit": "Live-Bearbeitung",
+      "live_preview": "Live-Vorschau",
+      "room_preview": "Raum vorschauen",
+      "scene_preview": "Szene vorschauen",
+      "activate_scene": "Szene aktivieren",
       "table_view": "Tabellenansicht",
       "dial_view": "Uhrenansicht",
       "preview_location": "Anderen Ort vorschauen",
       "use_home_location": "Heimatort verwenden",
       "reset_sun_now": "Sonne auf aktuelle Zeit zurücksetzen"
+    },
+    "save_warn": {
+      "title": "Externe Szenen aktualisieren?",
+      "text": "Speichern ändert diese Home-Assistant-Szenen, die nicht von Circadian Scenes erstellt wurden: {scenes}.",
+      "dont_warn": "Nicht erneut warnen",
+      "save": "Änderungen speichern"
     },
     "draft": {
       "title": "Dort weitergemacht, wo du aufgehört hast",
@@ -156,7 +166,11 @@
       "brightness": "Helligkeit",
       "color_brightness": "Farbhelligkeit",
       "white_brightness": "Weißhelligkeit",
-      "graph_sub": "0–100 % je Sonnenereignis"
+      "graph_sub": "0–100 % je Sonnenereignis",
+      "add_light": "Licht hinzufügen",
+      "add_light_title": "Licht hinzufügen",
+      "add_light_help": "Füge ein Licht aus einem anderen Bereich hinzu (oder ein Licht, das noch nicht in diesen Szenen ist). Das aktuelle Aussehen wird in jede zugewiesene native Szene kopiert.",
+      "light": "Licht"
     },
     "defaults": {
       "circadian_scene": "Circadian"

@@ -73,11 +73,21 @@
     },
     "actions": {
       "live_edit": "Edición en vivo",
+      "live_preview": "Vista previa en vivo",
+      "room_preview": "Vista previa de la habitación",
+      "scene_preview": "Vista previa de la escena",
+      "activate_scene": "Activar escena",
       "table_view": "Vista de tabla",
       "dial_view": "Vista de dial",
       "preview_location": "Previsualizar otra ubicación",
       "use_home_location": "Usar ubicación de casa",
       "reset_sun_now": "Restablecer el sol a la hora actual"
+    },
+    "save_warn": {
+      "title": "¿Actualizar escenas externas?",
+      "text": "Guardar cambiará estas escenas de Home Assistant que no creó Circadian Scenes: {scenes}.",
+      "dont_warn": "No avisar de nuevo",
+      "save": "Guardar cambios"
     },
     "draft": {
       "title": "Continuaste donde lo dejaste",
@@ -156,7 +166,11 @@
       "brightness": "Brillo",
       "color_brightness": "Brillo de color",
       "white_brightness": "Brillo blanco",
-      "graph_sub": "0–100 % por evento solar"
+      "graph_sub": "0–100 % por evento solar",
+      "add_light": "Añadir luz",
+      "add_light_title": "Añadir luz",
+      "add_light_help": "Añade una luz de otra zona (o cualquier luz que aún no esté en estas escenas). Su aspecto actual se copia en cada escena nativa asignada.",
+      "light": "Luz"
     },
     "defaults": {
       "circadian_scene": "Circadian"
