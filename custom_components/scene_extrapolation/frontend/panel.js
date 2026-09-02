@@ -458,33 +458,13 @@ class SceneExtrapolationPanel extends HTMLElement {
           --clock-night-outer: ${CLOCK_NIGHT_OUTER_DARK};
           --clock-night-deep: ${CLOCK_NIGHT_DEEP_DARK};
         }
-        /* ha-panel-custom often computes to 0 height, so 100% on the app bar
-           collapses. Fill the viewport, then stretch the bar to this host. */
-        ha-top-app-bar-fixed {
-          height: 100% !important;
-        }
-        .sun-path {
-          /* No HA card chrome — clock/plots sit on the panel surface. */
-          background: transparent;
-          border: none;
-          border-radius: 0;
-          margin-top: var(--ha-space-3);
-          overflow: visible;
-          position: relative;
-        }
-        /* Surface vignette on L/T/R (max 50% opacity) so date chips, Now
-           readout, and event labels read over horizon bleed in light + dark.
-           Long multi-stops ≈ soft blur (hard 88/160 edges read as a hard cut).
-           Extend under --scene-sidebar-gutter like .clock-horizon-back so the
-           right fade does not hard-cut at the drawer. */
-        .sun-path.dial-view::before {
+        /* Dial L/T/R surface vignette — fixed to the panel host (full width /
+           height), not .sun-path. Tying it to --scene-sidebar-gutter made the
+           gradient box resize with the drawer and artifact mid-transition. */
+        :host([data-dial-view])::before {
           content: "";
           position: absolute;
           inset: 0;
-          /* Reach the same top as .clock-horizon-back (host), including under
-             draft/location banners — measured as --dial-banner-h. */
-          top: calc(-1 * var(--dial-banner-h, 0px));
-          right: calc(-1 * var(--scene-sidebar-gutter));
           z-index: 2;
           pointer-events: none;
           background:
@@ -509,6 +489,20 @@ class SceneExtrapolationPanel extends HTMLElement {
               color-mix(in srgb, var(--primary-background-color) 10%, transparent) 220px,
               transparent 360px
             );
+        }
+        /* ha-panel-custom often computes to 0 height, so 100% on the app bar
+           collapses. Fill the viewport, then stretch the bar to this host. */
+        ha-top-app-bar-fixed {
+          height: 100% !important;
+        }
+        .sun-path {
+          /* No HA card chrome — clock/plots sit on the panel surface. */
+          background: transparent;
+          border: none;
+          border-radius: 0;
+          margin-top: var(--ha-space-3);
+          overflow: visible;
+          position: relative;
         }
         .sun-path[hidden] {
           display: none;
@@ -5277,6 +5271,8 @@ class SceneExtrapolationPanel extends HTMLElement {
       this._view === "edit" && this._lightView === "dial";
     this.shadowRoot?.querySelector(".page")?.classList.toggle("dial-wide", dial);
     this._sunPathEl?.classList.toggle("dial-view", dial);
+    // Host-level vignette (not .sun-path) — must not track sidebar gutter.
+    this.toggleAttribute("data-dial-view", dial);
   }
 
   _syncLightViewButtons() {
